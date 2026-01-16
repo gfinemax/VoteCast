@@ -45,7 +45,7 @@ export default function LiveMonitor() {
 
         return (
             <p className="text-[6px] font-serif leading-relaxed text-slate-800 font-medium break-keep">
-                "<span className="font-bold underline decoration-slate-300 underline-offset-2 decoration-1">{projectorData.agendaTitle}</span>"은<br />
+                &quot;<span className="font-bold underline decoration-slate-300 underline-offset-2 decoration-1">{projectorData.agendaTitle}</span>&quot;은<br />
                 전체 참석자 <span className="text-slate-900 font-bold">{(projectorData?.totalAttendance || 0).toLocaleString()}</span>명 중 과반수 찬성으로
             </p>
         );
@@ -98,7 +98,7 @@ export default function LiveMonitor() {
                                         </div>
                                     ) : (
                                         <div className="text-[3px] font-serif leading-none text-slate-800">
-                                            "{currentAgenda?.title}"...
+                                            &quot;{currentAgenda?.title}&quot;...
                                             <div className={`mt-[2px] px-1 rounded text-white font-bold inline-block ${isPassed ? 'bg-emerald-600' : 'bg-red-600'}`}>
                                                 {isPassed ? '가 결' : '부 결'}
                                             </div>

@@ -47,17 +47,19 @@ export default function VoteControl() {
         return members.filter(m => m.isCheckedIn && m.checkInType === 'proxy').length;
     }, [members]);
 
-    const [isInitialized, setIsInitialized] = React.useState(false);
+    const isInitializedRef = React.useRef(false); // Use ref to track initialization without re-renders
     useEffect(() => {
-        if (!isInitialized) {
+        if (!isInitializedRef.current) {
+            // Initial Sync
             if (liveDirectAttendance > voteData.directAttendance) {
                 actions.updateVoteData('directAttendance', liveDirectAttendance);
             }
             if (liveProxyAttendance > voteData.proxyAttendance) {
                 actions.updateVoteData('proxyAttendance', liveProxyAttendance);
             }
-            setIsInitialized(true);
+            isInitializedRef.current = true;
         } else {
+            // Live Sync Updates
             if (liveDirectAttendance !== voteData.directAttendance) {
                 actions.updateVoteData('directAttendance', liveDirectAttendance);
             }
@@ -65,7 +67,7 @@ export default function VoteControl() {
                 actions.updateVoteData('proxyAttendance', liveProxyAttendance);
             }
         }
-    }, [liveDirectAttendance, liveProxyAttendance, isInitialized, voteData.directAttendance, voteData.proxyAttendance, actions]);
+    }, [liveDirectAttendance, liveProxyAttendance, voteData.directAttendance, voteData.proxyAttendance, actions]);
 
     const generateDefaultDeclaration = () => {
         if (!currentAgenda || totalAttendance === 0) return '';

@@ -51,7 +51,7 @@ export default function ProjectorPage() {
         // 2. Default Auto-Generation
         return (
             <p className="text-5xl font-serif leading-relaxed text-slate-800 font-medium break-keep">
-                "<span className="font-bold underline decoration-slate-300 underline-offset-8 decoration-4">{projectorData.agendaTitle}</span>"은<br />
+                &quot;<span className="font-bold underline decoration-slate-300 underline-offset-8 decoration-4">{projectorData.agendaTitle}</span>&quot;은<br />
                 전체 참석자 <span className="text-slate-900 font-bold">{projectorData.totalAttendance.toLocaleString()}</span>명 중 과반수 찬성으로
             </p>
         );
@@ -295,9 +295,9 @@ export default function ProjectorPage() {
                                             <div className="absolute top-0 left-0 w-full h-2 bg-slate-100"></div>
 
                                             {/* Declaration Text */}
-                                            {customDeclaration && customDeclaration.trim() !== '' ? (
+                                            {currentAgenda?.declaration ? (
                                                 <p className="text-5xl font-serif leading-relaxed text-slate-800 font-medium break-keep whitespace-pre-wrap">
-                                                    {customDeclaration.split(/(가결|부결)/g).map((part, i) => {
+                                                    {currentAgenda.declaration.split(/(가결|부결)/g).map((part, i) => {
                                                         if (part === '가결') return (
                                                             <span key={i} className="inline-block mx-2 px-10 py-2 bg-emerald-600 text-white rounded-lg font-sans font-bold tracking-widest border border-emerald-700 shadow-sm align-middle text-6xl">
                                                                 가결
@@ -313,7 +313,7 @@ export default function ProjectorPage() {
                                                 </p>
                                             ) : (
                                                 <p className="text-5xl font-serif leading-relaxed text-slate-800 font-medium break-keep">
-                                                    "<span className="font-bold underline decoration-slate-300 underline-offset-8 decoration-4">{agendaTitle}</span>"은<br />
+                                                    &quot;<span className="font-bold underline decoration-slate-300 underline-offset-8 decoration-4">{agendaTitle}</span>&quot;은<br />
                                                     전체 참석자 <span className="text-slate-900 font-bold">{totalAttendance.toLocaleString()}</span>명 중 과반수 찬성으로
                                                 </p>
                                             )}
