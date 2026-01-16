@@ -116,8 +116,8 @@ export function StoreProvider({ children }) {
         },
 
         addAgenda: async (newAgenda, insertAfterOrderIndex = null) => {
-            const { data } = await supabase.from('agendas').select('id').order('id', { ascending: false }).limit(1);
-            const nextId = (data?.[0]?.id || 0) + 1;
+            // Optimistic ID (temp) - ensuring it doesn't collide with real IDs (usually small integers)
+            const tempId = Date.now();
 
             let autoType = newAgenda.type || 'majority';
             if (newAgenda.title && newAgenda.title.includes('선출')) {
@@ -131,69 +131,15 @@ export function StoreProvider({ children }) {
                 newOrderIndex = insertAfterOrderIndex + 1;
 
                 // 1. Optimistic Update: Shift local state
-                setState(prev => ({
-                    ...prev,
-                    agendas: [
-                        ...prev.agendas.map(a => a.order_index >= newOrderIndex ? { ...a, order_index: a.order_index + 1 } : a),
-                        { ...newAgenda, type: autoType, id: nextId, order_index: newOrderIndex }
-                    ].sort((a, b) => a.order_index - b.order_index)
-                    // Note: Simple sort might be needed if map messes order, but map preserves array order generally. 
-                    // However, we are appending the new item, so we should re-sort or splice.
-                    // Let's use a cleaner approach for local state below.
-                }));
-
-                // Re-calculating local state accurately for splice
                 setState(prev => {
                     const sorted = [...prev.agendas].sort((a, b) => a.order_index - b.order_index);
                     const updated = sorted.map(a => a.order_index >= newOrderIndex ? { ...a, order_index: a.order_index + 1 } : a);
-                    updated.push({ ...newAgenda, type: autoType, id: nextId, order_index: newOrderIndex });
+                    updated.push({ ...newAgenda, type: autoType, id: tempId, order_index: newOrderIndex });
                     return { ...prev, agendas: updated.sort((a, b) => a.order_index - b.order_index) };
                 });
 
-                // 2. DB Update: Shift existing items
-                // Note: This RPC or raw query is ideal, but using standard calls:
-                // We need to shift everyone down.
-                await supabase.rpc('increment_order_index', { start_index: newOrderIndex });
-                // Wait, do we have this RPC? Prob not.
-                // Fallback: Client-side shift allow race conditions but fine for this scale.
-                // Actually, let's just assume we don't have RPC and do a bulk update if possible or hope for best.
-                // Creating a simplified bulk update is hard without RPC.
-                // For now, let's just insert with new ID and allow reordering later? No, duplicate order_index is bad.
-
-                // Let's try to update the conflicting ones.
-                const { error } = await supabase.from('agendas')
-                    .update({ order_index: newOrderIndex + 999999 }) // hack to avoid unique constraint? Assuming no unique constraint on order_index
-                // Actually, let's just proceed with standard insertion and let the user drag/drop later if needed?
-                // User explicitly asked for "Insert here".
-                // I will IMPLEMENT A SIMPLE SHIFT LOOP or Query.
-                // Given the constraints, I will use a raw SQL call via rpc if I could, but I can't create RPCs easily.
-                // I will perform a fetch-all-and-update approach which is slow but safe for small lists (<100 items).
-
-                // REAL IMPLEMENTATION:
-                // Since I cannot ensure atomic shift easily without RPC, I will use a safe gap? 
-                // No, existing order_indexes are integers 1,2,3...
-                // I will update items where order_index >= newOrderIndex.
-                await supabase.from('agendas')
-                    .update({ order_index: undefined }) // Can't easily shift.
-            } else {
-                newOrderIndex = nextId; // Default behavior (append)
-            }
-
-            // WAIT - I need a simpler logic for the store update that works.
-            // If I can't robustly shift in DB without RPC, I might break data integrity.
-            // PROPOSAL: Just use `nextId` representing order? 
-            // The user says "Previous work meeting lost its add button".
-            // If I just add with a HIGH number, it goes to the end.
-
-            // Let's assume standard behavior:
-            if (insertAfterOrderIndex !== null) {
-                newOrderIndex = insertAfterOrderIndex + 1;
-                // Shift everyone else
-                const { error } = await supabase.rpc('shift_agendas', { start: newOrderIndex });
-                // If RPC missing, ignore (it will fail silently or log). 
-                // Actually this is risky.
-
-                // SAFE CLIENT SIDE SHIFT:
+                // 2. Client Side Shift in DB
+                // Fetch all items that need shifting
                 const { data: allAgendas } = await supabase.from('agendas').select('id, order_index').gte('order_index', newOrderIndex);
                 if (allAgendas && allAgendas.length > 0) {
                     for (const item of allAgendas) {
@@ -201,17 +147,38 @@ export function StoreProvider({ children }) {
                     }
                 }
             } else {
-                // Determine max order index
+                // Append Mode
                 const { data: maxOrder } = await supabase.from('agendas').select('order_index').order('order_index', { ascending: false }).limit(1);
                 newOrderIndex = (maxOrder?.[0]?.order_index || 0) + 1;
+
+                // Optimistic Append
+                setState(prev => ({
+                    ...prev,
+                    agendas: [...prev.agendas, { ...newAgenda, type: autoType, id: tempId, order_index: newOrderIndex }]
+                }));
             }
 
-            const agenda = { ...newAgenda, type: autoType, id: nextId, order_index: newOrderIndex };
-            setState(prev => {
-                // simple append locally, subscriptions will fix order
-                return { ...prev, agendas: [...prev.agendas, agenda] };
-            });
-            await supabase.from('agendas').insert(agenda);
+            // Insert into DB (Let DB handle ID)
+            const { data: insertedData, error } = await supabase.from('agendas').insert({
+                ...newAgenda,
+                type: autoType,
+                order_index: newOrderIndex
+            }).select().single();
+
+            if (insertedData) {
+                // Replace temp ID with real ID in local state to prevent "flash" or ref issues
+                setState(prev => ({
+                    ...prev,
+                    agendas: prev.agendas.map(a => a.id === tempId ? insertedData : a)
+                }));
+            } else if (error) {
+                console.error("Failed to add agenda:", error);
+                // Rollback optimistic update
+                setState(prev => ({
+                    ...prev,
+                    agendas: prev.agendas.filter(a => a.id !== tempId)
+                }));
+            }
         },
 
         updateAgenda: async (updatedAgenda) => {

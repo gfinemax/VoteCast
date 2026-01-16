@@ -40,11 +40,15 @@ export default function VoteControl() {
     const isQuorumSatisfied = (totalAttendance >= quorumTarget) && isDirectSatisfied;
 
     const liveDirectAttendance = useMemo(() => {
-        return members.filter(m => m.isCheckedIn && m.checkInType !== 'proxy').length;
+        return members.filter(m => m.is_checked_in && m.check_in_type === 'direct').length; // Fixed prop names
     }, [members]);
 
     const liveProxyAttendance = useMemo(() => {
-        return members.filter(m => m.isCheckedIn && m.checkInType === 'proxy').length;
+        return members.filter(m => m.is_checked_in && m.check_in_type === 'proxy').length;
+    }, [members]);
+
+    const liveWrittenAttendance = useMemo(() => {
+        return members.filter(m => m.is_checked_in && m.check_in_type === 'written').length;
     }, [members]);
 
     const isInitializedRef = React.useRef(false); // Use ref to track initialization without re-renders
@@ -57,6 +61,9 @@ export default function VoteControl() {
             if (liveProxyAttendance > voteData.proxyAttendance) {
                 actions.updateVoteData('proxyAttendance', liveProxyAttendance);
             }
+            if (liveWrittenAttendance > voteData.writtenAttendance) {
+                actions.updateVoteData('writtenAttendance', liveWrittenAttendance);
+            }
             isInitializedRef.current = true;
         } else {
             // Live Sync Updates
@@ -66,8 +73,11 @@ export default function VoteControl() {
             if (liveProxyAttendance !== voteData.proxyAttendance) {
                 actions.updateVoteData('proxyAttendance', liveProxyAttendance);
             }
+            if (liveWrittenAttendance !== voteData.writtenAttendance) {
+                actions.updateVoteData('writtenAttendance', liveWrittenAttendance);
+            }
         }
-    }, [liveDirectAttendance, liveProxyAttendance, voteData.directAttendance, voteData.proxyAttendance, actions]);
+    }, [liveDirectAttendance, liveProxyAttendance, liveWrittenAttendance, voteData.directAttendance, voteData.proxyAttendance, voteData.writtenAttendance, actions]);
 
     const generateDefaultDeclaration = () => {
         if (!currentAgenda || totalAttendance === 0) return '';
@@ -199,12 +209,14 @@ export default function VoteControl() {
                         </div>
                         <div className="flex items-baseline gap-2 mb-1">
                             <div className="text-3xl font-mono font-bold text-slate-800">
-                                {liveDirectAttendance + liveProxyAttendance}명
+                                {liveDirectAttendance + liveProxyAttendance + liveWrittenAttendance}명
                             </div>
                             <div className="text-sm font-medium text-slate-500 bg-white px-2 py-0.5 rounded border border-slate-100 shadow-sm">
                                 <span className="text-emerald-600">조합원 {liveDirectAttendance}</span>
                                 <span className="mx-1 text-slate-300">|</span>
                                 <span className="text-orange-500">대리 {liveProxyAttendance}</span>
+                                <span className="mx-1 text-slate-300">|</span>
+                                <span className="text-blue-500">서면 {liveWrittenAttendance}</span>
                             </div>
                         </div>
                         {isElection && (

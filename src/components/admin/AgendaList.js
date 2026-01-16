@@ -60,30 +60,36 @@ export default function AgendaList() {
         setIsAddingFolder(false);
     };
 
-    const handleAddAgenda = () => {
-        if (!newAgendaTitle.trim()) return;
+    const [isSubmitting, setIsSubmitting] = useState(false);
 
-        // Determine Insertion Index
-        const folderId = addingAgendaFolderId;
-        const group = groupedAgendas.find(g => (g.folder ? g.folder.id : 'ghost') === folderId);
+    const handleAddAgenda = async () => {
+        if (!newAgendaTitle.trim() || isSubmitting) return;
+        setIsSubmitting(true);
 
-        // Default to append if no group found (shouldn't happen)
-        let targetIndex = null;
+        try {
+            // Determine Insertion Index
+            const folderId = addingAgendaFolderId;
+            const group = groupedAgendas.find(g => (g.folder ? g.folder.id : 'ghost') === folderId);
 
-        if (group) {
-            // We want to insert AFTER the last item of this group.
-            // If group has items, use last item's index.
-            // If group has no items but has a folder, use folder's index.
-            // If group is ghost (no folder) and no items, index is 0.
-            const lastItem = group.items.length > 0 ? group.items[group.items.length - 1] : group.folder;
-            targetIndex = lastItem ? lastItem.order_index : 0;
+            // Default to append if no group found (shouldn't happen)
+            let targetIndex = null;
+
+            if (group) {
+                // We want to insert AFTER the last item of this group.
+                const lastItem = group.items.length > 0 ? group.items[group.items.length - 1] : group.folder;
+                targetIndex = lastItem ? lastItem.order_index : 0;
+            }
+
+            // Pass targetIndex to addAgenda (which will insert at targetIndex + 1)
+            await actions.addAgenda({ title: newAgendaTitle, type: 'general' }, targetIndex);
+
+            setNewAgendaTitle("");
+            setAddingAgendaFolderId(null);
+        } catch (error) {
+            console.error("Add Agenda Failed:", error);
+        } finally {
+            setIsSubmitting(false);
         }
-
-        // Pass targetIndex to addAgenda (which will insert at targetIndex + 1)
-        actions.addAgenda({ title: newAgendaTitle, type: 'general' }, targetIndex);
-
-        setNewAgendaTitle("");
-        setAddingAgendaFolderId(null);
     };
 
     const startEdit = (agenda) => {
@@ -128,6 +134,7 @@ export default function AgendaList() {
                         value={newFolderTitle}
                         onChange={e => setNewFolderTitle(e.target.value)}
                         onKeyDown={e => {
+                            if (e.nativeEvent.isComposing) return;
                             if (e.key === 'Enter') handleAddFolder();
                             if (e.key === 'Escape') setIsAddingFolder(false);
                         }}
@@ -240,13 +247,16 @@ export default function AgendaList() {
                                                 value={newAgendaTitle}
                                                 onChange={e => setNewAgendaTitle(e.target.value)}
                                                 onKeyDown={e => {
+                                                    if (e.nativeEvent.isComposing) return;
                                                     if (e.key === 'Enter') handleAddAgenda();
                                                     if (e.key === 'Escape') setAddingAgendaFolderId(null);
                                                 }}
                                             />
                                             <div className="flex gap-1 justify-end">
-                                                <Button variant="ghost" className="h-6 text-[11px]" onClick={() => setAddingAgendaFolderId(null)}>취소</Button>
-                                                <Button variant="primary" className="h-6 text-[11px] bg-slate-800" onClick={handleAddAgenda}>추가</Button>
+                                                <Button variant="ghost" className="h-6 text-[11px]" onClick={() => setAddingAgendaFolderId(null)} disabled={isSubmitting}>취소</Button>
+                                                <Button variant="primary" className="h-6 text-[11px] bg-slate-800" onClick={handleAddAgenda} disabled={isSubmitting}>
+                                                    {isSubmitting ? '추가 중...' : '추가'}
+                                                </Button>
                                             </div>
                                         </div>
                                     ) : (
