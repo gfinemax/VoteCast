@@ -18,12 +18,24 @@ try {
     }
 } catch (e) {
     console.warn("[Supabase Init] ⚠️ Falling back to dummy client. Reason:", e.message);
-    client = {
-        from: () => ({ select: () => ({ eq: () => ({ single: () => ({}) }), order: () => ({}) }) }),
-        channel: () => ({ on: () => ({ on: () => ({ subscribe: () => { } }) }) }),
+    const dummy = {
+        from: () => dummy,
+        select: () => dummy,
+        order: () => dummy,
+        eq: () => dummy,
+        single: () => ({ data: {}, error: null }),
+        insert: () => dummy,
+        update: () => dummy,
+        delete: () => dummy,
+        limit: () => dummy,
+        channel: () => dummy,
+        on: () => dummy,
+        subscribe: () => dummy,
         removeChannel: () => { },
-        rpc: () => ({}),
+        rpc: () => ({ data: {}, error: null }),
+        then: (resolve) => resolve({ data: [], error: null }), // Mock Promise behavior
     };
+    client = dummy;
 }
 
 export const supabase = client;
