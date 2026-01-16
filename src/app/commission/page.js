@@ -2,31 +2,22 @@
 
 import React from 'react';
 import { useStore } from '@/lib/store';
-import { Play, Pause, Monitor, Settings } from 'lucide-react';
+import { Play, ClipboardList, Monitor, Settings } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import DashboardLayout from '@/components/admin/DashboardLayout';
 import AgendaList from '@/components/admin/AgendaList';
 import LiveMonitor from '@/components/admin/LiveMonitor';
 import VoteControl from '@/components/admin/VoteControl';
 
-export default function AdminPage() {
+export default function CommissionPage() {
     const { state, actions } = useStore();
-    const { voteData, currentAgendaId, agendas, projectorMode } = state;
+    const { voteData, currentAgendaId, agendas } = state;
     const currentAgenda = agendas.find(a => a.id === currentAgendaId);
 
-    // Deriving validation logic again
-    // Update: Include Proxy in Total
-    const totalAttendance = (parseInt(voteData.writtenAttendance) || 0) +
-        (parseInt(voteData.directAttendance) || 0) +
-        (parseInt(voteData.proxyAttendance) || 0);
-
+    const totalAttendance = (parseInt(voteData.writtenAttendance) || 0) + (parseInt(voteData.directAttendance) || 0);
     const totalVotesCast = (parseInt(voteData.votesYes) || 0) + (parseInt(voteData.votesNo) || 0) + (parseInt(voteData.votesAbstain) || 0);
     const isVoteCountValid = totalAttendance === totalVotesCast;
-
-    // Pass Logic based on Vote Type
-    const isSpecialVote = voteData.voteType === 'twoThirds';
-    const passThreshold = isSpecialVote ? Math.ceil(totalAttendance * (2 / 3)) : Math.ceil(totalAttendance / 2);
-    const isPassed = voteData.votesYes >= passThreshold;
+    const isPassed = voteData.votesYes >= (totalAttendance / 2);
 
     const handlePublish = () => {
         if (!isVoteCountValid) {
@@ -53,9 +44,6 @@ export default function AdminPage() {
         actions.setProjectorMode('PPT', { agendaTitle: currentAgenda.title });
     };
 
-
-
-
     const openProjectorWindow = () => {
         const width = 1200;
         const height = 800;
@@ -71,19 +59,19 @@ export default function AdminPage() {
 
     return (
         <DashboardLayout
-            title="총회관리자"
-            subtitle="Total Control & Monitor System"
+            title="선거관리위원회"
+            subtitle="Vote Input & Result Management"
             sidebarContent={<AgendaList />}
             headerContent={
                 <>
-                    <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2 mr-6">
-                        <Settings size={20} className="text-slate-400" />
-                        Main Control
+                    <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2 mr-8">
+                        <ClipboardList size={20} className="text-emerald-500" />
+                        Commission Panel
                     </h2>
                     <div className="flex gap-1 items-center flex-grow">
                         {/* 1. Vote Result */}
                         <Button
-                            variant={projectorMode === 'RESULT' ? 'success' : 'secondary'}
+                            variant={state.projectorMode === 'RESULT' ? 'success' : 'secondary'}
                             onClick={handlePublish}
                             className="text-sm px-3 py-1.5"
                         >
@@ -92,7 +80,7 @@ export default function AdminPage() {
 
                         {/* 2. Agenda PPT */}
                         <Button
-                            variant={projectorMode === 'PPT' ? 'success' : 'secondary'}
+                            variant={state.projectorMode === 'PPT' ? 'success' : 'secondary'}
                             onClick={handleProjectorPPT}
                             className="text-sm px-3 py-1.5"
                         >
@@ -101,7 +89,7 @@ export default function AdminPage() {
 
                         {/* 3. Waiting Board */}
                         <Button
-                            variant={projectorMode === 'WAITING' ? 'success' : 'secondary'}
+                            variant={state.projectorMode === 'WAITING' ? 'success' : 'secondary'}
                             onClick={handleProjectorWaiting}
                             className="text-sm px-3 py-1.5"
                         >
@@ -109,8 +97,6 @@ export default function AdminPage() {
                         </Button>
 
                         <div className="flex-grow"></div>
-
-                        {/* 4. Open Window - Red */}
                         <Button
                             className="bg-red-600 text-white hover:bg-red-700 border-0 shadow-lg text-sm px-3 py-1.5 ml-auto"
                             onClick={openProjectorWindow}
@@ -118,21 +104,23 @@ export default function AdminPage() {
                             <Monitor size={14} className="mr-1" />
                             송출창
                         </Button>
-
-
                     </div>
                 </>
             }
         >
             <div className="grid grid-cols-12 gap-8">
                 <div className="col-span-12">
+                    {/* Read-Only Live Monitor (Safety) */}
                     <LiveMonitor />
                 </div>
 
                 <div className="col-span-12">
                     <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-
-                        <div className="text-2xl font-bold text-slate-800 mb-6">{currentAgenda?.title}</div>
+                        <div className="flex justify-between items-start mb-6">
+                            <div>
+                                <div className="text-2xl font-bold text-slate-800">{currentAgenda?.title}</div>
+                            </div>
+                        </div>
 
                         <VoteControl />
                     </div>

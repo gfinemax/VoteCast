@@ -71,28 +71,40 @@ export default function CheckInPage() {
                         </div>
                     ) : (
                         filteredMembers.map(member => (
-                            <Card key={member.id} className={`p-4 transition-all ${member.isCheckedIn ? 'bg-slate-50 opacity-70' : 'bg-white'}`}>
+                            <Card key={member.id} className={`p-4 transition-all ${member.isCheckedIn ? 'bg-slate-50 opacity-90' : 'bg-white'}`}>
                                 <div className="flex items-center justify-between">
                                     <div>
                                         <div className="flex items-center gap-2 mb-1">
                                             <span className="font-mono font-bold text-lg text-slate-800">{member.unit}</span>
-                                            {member.isCheckedIn && <span className="text-xs bg-slate-200 text-slate-500 px-1.5 py-0.5 rounded flex items-center gap-1"><Clock size={10} /> 입장완료</span>}
+                                            {member.isCheckedIn && (
+                                                <span className={`text-xs px-1.5 py-0.5 rounded flex items-center gap-1 ${member.checkInType === 'proxy' ? 'bg-orange-100 text-orange-600' : 'bg-emerald-100 text-emerald-600'}`}>
+                                                    <Clock size={10} /> {member.checkInType === 'proxy' ? '대리' : '직접'}
+                                                </span>
+                                            )}
                                         </div>
                                         <div className="text-slate-500">{member.name} 조합원</div>
                                     </div>
 
                                     {member.isCheckedIn ? (
-                                        <Button variant="secondary" disabled className="text-xs px-3">
-                                            <Check size={16} /> 확인완료
+                                        <Button variant="secondary" disabled className={`text-xs px-3 font-bold ${member.checkInType === 'proxy' ? 'text-orange-600 bg-orange-50 border-orange-100' : 'text-emerald-600 bg-emerald-50 border-emerald-100'}`}>
+                                            <Check size={16} /> {member.checkInType === 'proxy' ? '대리 입장완료' : '직접 입장완료'}
                                         </Button>
                                     ) : (
-                                        <Button
-                                            variant="success"
-                                            onClick={() => actions.checkInMember(member.id)}
-                                            className="px-6 shadow-sm"
-                                        >
-                                            입장 확인
-                                        </Button>
+                                        <div className="flex gap-2">
+                                            <Button
+                                                variant="success"
+                                                onClick={() => actions.checkInMember(member.id, 'direct')}
+                                                className="px-4 shadow-sm"
+                                            >
+                                                직접 입장
+                                            </Button>
+                                            <Button
+                                                onClick={() => actions.checkInMember(member.id, 'proxy')}
+                                                className="px-4 shadow-sm bg-orange-500 hover:bg-orange-600 text-white border-orange-600"
+                                            >
+                                                대리 입장
+                                            </Button>
+                                        </div>
                                     )}
                                 </div>
                             </Card>
