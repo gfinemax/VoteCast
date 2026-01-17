@@ -177,11 +177,11 @@ export default function CheckInPage() {
             </header>
 
             {/* 2. Search & List */}
-            <main className="flex-1 overflow-hidden flex flex-col max-w-4xl mx-auto w-full px-4 pt-4 pb-20">
+            <main className="flex-1 overflow-hidden flex flex-col max-w-4xl mx-auto w-full px-4 pt-4 pb-4">
                 <div className="relative mb-3">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
                     <input
-                        className="w-full pl-9 pr-4 py-2.5 rounded-lg border border-slate-300 shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-base"
+                        className="w-full pl-9 pr-4 py-2.5 rounded-lg border border-slate-300 shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-base bg-white text-slate-900 placeholder:text-slate-400"
                         placeholder="동호수(101-101) 또는 성명..."
                         value={searchTerm}
                         onChange={e => setSearchTerm(e.target.value)}
@@ -189,7 +189,7 @@ export default function CheckInPage() {
                     />
                 </div>
 
-                <div className="flex-1 overflow-y-auto space-y-2 pb-10">
+                <div className="flex-1 overflow-y-auto space-y-2 pb-40">
                     {filteredMembers.map(member => {
                         const record = activeMeetingId ? attendance.find(a => a.member_id === member.id && a.meeting_id === activeMeetingId) : null;
                         const isCheckedIn = !!record;
@@ -211,7 +211,7 @@ export default function CheckInPage() {
                                     </div>
 
                                     {/* Actions (Right) */}
-                                    <div className="flex gap-1.5">
+                                    <div className="flex gap-1">
                                         {!isCheckedIn ? (
                                             <>
                                                 <button
@@ -246,10 +246,7 @@ export default function CheckInPage() {
                                             </>
                                         ) : (
                                             <div className="flex items-center gap-1.5">
-                                                <div className={`w-14 h-14 rounded-lg flex flex-col items-center justify-center text-white shadow-sm ${checkInType === 'proxy' ? 'bg-blue-500' :
-                                                    checkInType === 'written' ? 'bg-orange-400' :
-                                                        'bg-emerald-500'
-                                                    }`}>
+                                                <div className="w-14 h-14 rounded-lg flex flex-col items-center justify-center bg-slate-100 text-slate-400 shadow-sm border border-slate-200">
                                                     <Check size={20} className="mb-0.5 stroke-[3px]" />
                                                     <span className="text-[12px] font-bold leading-none">{
                                                         checkInType === 'written' ? '서면' :
@@ -258,7 +255,7 @@ export default function CheckInPage() {
                                                 </div>
                                                 <button
                                                     onClick={() => handleCancelCheckIn(member.id)}
-                                                    className="w-10 h-14 rounded-lg bg-slate-50 border border-slate-200 text-slate-400 active:text-red-500 active:bg-red-50 flex items-center justify-center transition-colors"
+                                                    className="w-10 h-14 rounded-lg bg-white border border-slate-200 text-slate-400 active:text-red-500 active:bg-red-50 flex items-center justify-center transition-colors"
                                                 >
                                                     <RotateCcw size={18} />
                                                 </button>
