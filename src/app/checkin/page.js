@@ -95,6 +95,26 @@ export default function CheckInPage() {
         }
     };
 
+    // Proxy Modal State
+    const [isProxyModalOpen, setIsProxyModalOpen] = useState(false);
+    const [proxyMemberId, setProxyMemberId] = useState(null);
+    const [proxyNameInput, setProxyNameInput] = useState("");
+
+    const handleOpenProxyModal = (member) => {
+        setProxyMemberId(member.id);
+        setProxyNameInput(member.proxy || ""); // Pre-fill if exists
+        setIsProxyModalOpen(true);
+    };
+
+    const handleConfirmProxy = () => {
+        if (proxyMemberId && proxyNameInput.trim()) {
+            handleCheckIn(proxyMemberId, 'proxy', proxyNameInput.trim());
+            setIsProxyModalOpen(false);
+            setProxyNameInput("");
+            setProxyMemberId(null);
+        }
+    };
+
     return (
         <div className="flex flex-col h-screen bg-slate-100 font-sans">
             {/* 1. Header & Active Meeting Banner (Compact) */}
@@ -223,12 +243,7 @@ export default function CheckInPage() {
                                                     <span className="text-[12px] font-bold leading-none">본인</span>
                                                 </button>
                                                 <button
-                                                    onClick={() => {
-                                                        const inputName = window.prompt("대리인 성명을 입력해주세요.", member.proxy || "");
-                                                        if (inputName !== null && inputName.trim()) {
-                                                            handleCheckIn(member.id, 'proxy', inputName.trim());
-                                                        }
-                                                    }}
+                                                    onClick={() => handleOpenProxyModal(member)}
                                                     disabled={!activeMeetingId}
                                                     className="flex flex-col items-center justify-center w-14 h-14 rounded-lg bg-blue-500 active:bg-blue-600 text-white shadow-sm disabled:opacity-30 disabled:cursor-not-allowed transition-all active:scale-95"
                                                 >
@@ -268,6 +283,45 @@ export default function CheckInPage() {
                     })}
                 </div>
             </main>
+            {/* Proxy Input Modal */}
+            {isProxyModalOpen && (
+                <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center px-4 animate-in fade-in duration-200">
+                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-xs overflow-hidden animate-in zoom-in-95 duration-200">
+                        <div className="p-5">
+                            <h3 className="text-lg font-bold text-slate-800 mb-1">대리인 성명 입력</h3>
+                            <p className="text-sm text-slate-500 mb-4">대리 참석자의 성명을 입력해주세요.</p>
+                            <input
+                                autoFocus
+                                className="w-full px-4 py-3 rounded-xl border-2 border-slate-200 focus:border-blue-500 focus:ring-0 outline-none text-lg font-bold text-slate-800 placeholder:text-slate-300 transition-colors"
+                                placeholder="성명 입력"
+                                value={proxyNameInput}
+                                onChange={(e) => setProxyNameInput(e.target.value)}
+                                onKeyDown={(e) => {
+                                    if (e.key === 'Enter' && proxyNameInput.trim()) {
+                                        handleConfirmProxy();
+                                    }
+                                }}
+                            />
+                        </div>
+                        <div className="flex border-t border-slate-100">
+                            <button
+                                onClick={() => setIsProxyModalOpen(false)}
+                                className="flex-1 py-4 text-base font-bold text-slate-500 hover:bg-slate-50 active:bg-slate-100 transition-colors"
+                            >
+                                취소
+                            </button>
+                            <div className="w-[1px] bg-slate-100"></div>
+                            <button
+                                onClick={handleConfirmProxy}
+                                disabled={!proxyNameInput.trim()}
+                                className="flex-1 py-4 text-base font-bold text-blue-600 hover:bg-blue-50 active:bg-blue-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                            >
+                                확인
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
