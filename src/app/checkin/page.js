@@ -162,31 +162,33 @@ export default function CheckInPage() {
                                         <div className="flex flex-col">
                                             <div className="flex items-center gap-2">
                                                 <span className="font-mono font-black text-xl text-slate-800 leading-tight">{member.unit}</span>
-                                                <div className={`text-[10px] px-1.5 py-0.5 rounded inline-flex items-center gap-1 ${member.check_in_type === 'proxy' ? 'bg-blue-100 text-blue-600' :
-                                                    member.check_in_type === 'written' ? 'bg-orange-100 text-orange-600' :
-                                                        'bg-emerald-100 text-emerald-600'
-                                                    }`}>
-                                                    <Clock size={10} /> {
-                                                        member.check_in_type === 'proxy' ? '대리' :
-                                                            member.check_in_type === 'written' ? '서면제출' :
-                                                                '직접'
-                                                    }
-                                                </div>
+                                                {member.is_checked_in && (
+                                                    <div className={`text-[10px] px-1.5 py-0.5 rounded inline-flex items-center gap-1 ${member.check_in_type === 'proxy' ? 'bg-blue-100 text-blue-600' :
+                                                        member.check_in_type === 'written' ? 'bg-orange-100 text-orange-600' :
+                                                            'bg-emerald-100 text-emerald-600'
+                                                        }`}>
+                                                        <Clock size={10} /> {
+                                                            member.check_in_type === 'proxy' ? '대리' :
+                                                                member.check_in_type === 'written' ? '서면' :
+                                                                    '직접'
+                                                        }
+                                                    </div>
+                                                )}
                                             </div>
-                                            <span className="text-base font-bold text-slate-700 leading-tight">
+                                            <span className={`text-base font-bold text-slate-700 leading-tight ${!member.is_checked_in ? 'truncate block' : ''}`}>
                                                 {member.name}
-                                                {member.proxy && member.check_in_type !== 'direct' && <span className="text-slate-600 text-base ml-1 font-bold">({member.proxy})</span>}
+                                                {member.proxy && (member.is_checked_in ? member.check_in_type !== 'direct' : true) && <span className="text-slate-600 text-base ml-0.5 font-bold">({member.proxy})</span>}
                                             </span>
                                         </div>
                                     </div>
 
                                     {member.is_checked_in ? (
                                         <div className="flex gap-0.5 shrink-0">
-                                            <Button variant="secondary" disabled className={`text-xs px-2 py-1.5 font-bold h-8 ${member.check_in_type === 'proxy'
-                                                ? 'text-blue-600 bg-blue-50 border-blue-100'
+                                            <Button variant="secondary" disabled className={`text-xs px-2 py-1.5 font-black h-8 disabled:opacity-100 ${member.check_in_type === 'proxy'
+                                                ? 'text-blue-800 bg-blue-50 border-blue-100'
                                                 : member.check_in_type === 'written'
-                                                    ? 'text-orange-600 bg-orange-50 border-orange-100'
-                                                    : 'text-emerald-600 bg-emerald-50 border-emerald-100'
+                                                    ? 'text-orange-800 bg-orange-50 border-orange-100'
+                                                    : 'text-emerald-800 bg-emerald-50 border-emerald-100'
                                                 }`}>
                                                 <Check size={14} /> {
                                                     member.check_in_type === 'written' ? '서면제출' :
@@ -207,11 +209,11 @@ export default function CheckInPage() {
                                             </Button>
                                         </div>
                                     ) : (
-                                        <div className="flex gap-1 shrink-0">
+                                        <div className="flex gap-0.5 shrink-0">
                                             <Button
                                                 variant="success"
                                                 onClick={() => actions.checkInMember(member.id, 'direct')}
-                                                className="px-2.5 py-1.5 text-xs h-9 shadow-sm"
+                                                className="px-1.5 py-1.5 text-xs h-9 shadow-sm"
                                             >
                                                 직접
                                             </Button>
@@ -228,14 +230,14 @@ export default function CheckInPage() {
                                                         }
                                                     }
                                                 }}
-                                                className="px-2.5 py-1.5 text-xs h-9 shadow-sm"
+                                                className="px-1.5 py-1.5 text-xs h-9 shadow-sm"
                                             >
                                                 대리
                                             </Button>
                                             <Button
                                                 variant="success"
                                                 onClick={() => actions.checkInMember(member.id, 'written')}
-                                                className="px-2.5 py-1.5 text-xs h-9 shadow-sm"
+                                                className="px-1.5 py-1.5 text-xs h-9 shadow-sm"
                                             >
                                                 서면
                                             </Button>
