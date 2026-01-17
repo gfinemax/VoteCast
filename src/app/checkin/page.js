@@ -163,7 +163,7 @@ export default function CheckInPage() {
                                             <div className="flex flex-col">
                                                 <div className="flex items-center gap-2">
                                                     <span className="font-mono font-black text-lg text-slate-800 leading-tight">{member.unit}</span>
-                                                    <span className="text-base font-bold text-slate-700 truncate leading-tight">
+                                                    <span className="text-base font-bold text-slate-700 leading-tight">
                                                         {member.name}
                                                         {member.proxy && member.check_in_type !== 'direct' && <span className="text-slate-400 text-xs ml-1 font-normal">({member.proxy})</span>}
                                                     </span>
@@ -200,8 +200,8 @@ export default function CheckInPage() {
                                                     : 'text-emerald-600 bg-emerald-50 border-emerald-100'
                                                 }`}>
                                                 <Check size={14} /> {
-                                                    member.check_in_type === 'proxy' ? `대리${member.proxy ? `(${member.proxy})` : ''}` :
-                                                        member.check_in_type === 'written' ? '서면' :
+                                                    member.check_in_type === 'written' ? '서면' :
+                                                        member.check_in_type === 'proxy' ? '대리입장' :
                                                             '입장완료'
                                                 }
                                             </Button>
