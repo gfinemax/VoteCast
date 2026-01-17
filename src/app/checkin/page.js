@@ -158,41 +158,30 @@ export default function CheckInPage() {
                             <Card key={member.id} className={`p-3 transition-all ${member.is_checked_in ? 'bg-slate-50 opacity-90' : 'bg-white'}`}>
                                 <div className="flex items-center justify-between gap-3">
                                     <div className="min-w-0 flex-1 mr-3">
-                                        {member.is_checked_in ? (
-                                            // Checked-in State: Unit + Name on Line 1, Badge on Line 2
-                                            <div className="flex flex-col">
-                                                <div className="flex items-center gap-2">
-                                                    <span className="font-mono font-black text-lg text-slate-800 leading-tight">{member.unit}</span>
-                                                    <span className="text-base font-bold text-slate-700 leading-tight">
-                                                        {member.name}
-                                                        {member.proxy && member.check_in_type !== 'direct' && <span className="text-slate-400 text-xs ml-1 font-normal">({member.proxy})</span>}
-                                                    </span>
-                                                </div>
-                                                <div className={`mt-1 inline-flex self-start text-[10px] px-1.5 py-0.5 rounded items-center gap-1 ${member.check_in_type === 'proxy' ? 'bg-blue-100 text-blue-600' :
+                                        {/* Unified Layout for Checked and Unchecked: Unit (L1) / Name (L2) */}
+                                        <div className="flex flex-col">
+                                            <div className="flex items-center gap-2">
+                                                <span className="font-mono font-black text-xl text-slate-800 leading-tight">{member.unit}</span>
+                                                <div className={`text-[10px] px-1.5 py-0.5 rounded inline-flex items-center gap-1 ${member.check_in_type === 'proxy' ? 'bg-blue-100 text-blue-600' :
                                                     member.check_in_type === 'written' ? 'bg-orange-100 text-orange-600' :
                                                         'bg-emerald-100 text-emerald-600'
                                                     }`}>
                                                     <Clock size={10} /> {
-                                                        member.check_in_type === 'proxy' ? `대리${member.proxy ? `(${member.proxy})` : ''}` :
-                                                            member.check_in_type === 'written' ? '서면' :
+                                                        member.check_in_type === 'proxy' ? '대리' :
+                                                            member.check_in_type === 'written' ? '서면제출' :
                                                                 '직접'
                                                     }
                                                 </div>
                                             </div>
-                                        ) : (
-                                            // Unchecked State: Unit on Line 1, Name on Line 2
-                                            <div className="flex flex-col">
-                                                <span className="font-mono font-black text-xl text-slate-800 leading-tight">{member.unit}</span>
-                                                <span className="text-sm font-medium text-slate-600 truncate leading-tight">
-                                                    {member.name}
-                                                    {member.proxy && <span className="text-slate-400 text-xs ml-1">({member.proxy})</span>}
-                                                </span>
-                                            </div>
-                                        )}
+                                            <span className="text-base font-bold text-slate-700 leading-tight">
+                                                {member.name}
+                                                {member.proxy && member.check_in_type !== 'direct' && <span className="text-slate-600 text-base ml-1 font-bold">({member.proxy})</span>}
+                                            </span>
+                                        </div>
                                     </div>
 
                                     {member.is_checked_in ? (
-                                        <div className="flex gap-1 shrink-0">
+                                        <div className="flex gap-0.5 shrink-0">
                                             <Button variant="secondary" disabled className={`text-xs px-2 py-1.5 font-bold h-8 ${member.check_in_type === 'proxy'
                                                 ? 'text-blue-600 bg-blue-50 border-blue-100'
                                                 : member.check_in_type === 'written'
@@ -200,7 +189,7 @@ export default function CheckInPage() {
                                                     : 'text-emerald-600 bg-emerald-50 border-emerald-100'
                                                 }`}>
                                                 <Check size={14} /> {
-                                                    member.check_in_type === 'written' ? '서면' :
+                                                    member.check_in_type === 'written' ? '서면제출' :
                                                         member.check_in_type === 'proxy' ? '대리입장' :
                                                             '입장완료'
                                                 }
