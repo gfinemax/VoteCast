@@ -158,9 +158,9 @@ export default function CheckInPage() {
                             <Card key={member.id} className={`p-3 transition-all ${member.is_checked_in ? 'bg-slate-50 opacity-90' : 'bg-white'}`}>
                                 <div className="flex items-center justify-between gap-3">
                                     <div className="min-w-0">
-                                        <div className="flex items-center gap-2">
-                                            <span className="font-mono font-bold text-base text-slate-800">{member.unit}</span>
-                                            <span className="text-sm font-medium text-slate-600 truncate">
+                                        <div className="flex flex-col">
+                                            <span className="font-mono font-black text-xl text-slate-800 leading-tight">{member.unit}</span>
+                                            <span className="text-sm font-medium text-slate-600 truncate leading-tight">
                                                 {member.name}
                                                 {member.proxy && member.check_in_type !== 'direct' && <span className="text-slate-400 text-xs ml-1">({member.proxy})</span>}
                                             </span>
