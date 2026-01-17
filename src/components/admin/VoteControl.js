@@ -79,6 +79,8 @@ export default function VoteControl() {
         }
     }, [liveDirectAttendance, liveProxyAttendance, liveWrittenAttendance, voteData.directAttendance, voteData.proxyAttendance, voteData.writtenAttendance, actions]);
 
+
+
     const generateDefaultDeclaration = () => {
         if (!currentAgenda || totalAttendance === 0) return '';
         const criterion = isSpecialVote ? "3분의 2 이상" : "과반수 이상";
@@ -93,6 +95,28 @@ export default function VoteControl() {
 
     // Edit mode state for declaration
     const [isEditingDeclaration, setIsEditingDeclaration] = React.useState(false);
+
+    useEffect(() => {
+        // Auto-update declaration text when numbers change (unless editing)
+        if (!currentAgenda || isEditingDeclaration) return;
+
+        const newDeclaration = generateDefaultDeclaration();
+        if (newDeclaration && newDeclaration !== currentAgenda.declaration) {
+            actions.updateAgenda({ id: currentAgenda.id, declaration: newDeclaration });
+        }
+    }, [
+        totalAttendance,
+        voteData.votesYes,
+        voteData.votesNo,
+        voteData.votesAbstain,
+        currentAgenda?.title,
+        currentAgenda?.type,
+        isEditingDeclaration,
+        // actions and generateDefaultDeclaration are stable or available in scope
+        // strictly speaking generateDefaultDeclaration changes if its deps change, but since it relies on variables available in scope, it's safer to rely on the side-effect running when deps change
+        // better yet, let's include generateDefaultDeclaration in deps if it was a callback, but it's a function defined in render.
+        // To be safe and clean, we rely on the explicit dependencies listed.
+    ]);
 
     // Auto-generate declaration when empty and entering edit mode
     const handleStartEdit = () => {

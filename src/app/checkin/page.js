@@ -52,34 +52,33 @@ export default function CheckInPage() {
                 <div className="max-w-md mx-auto">
                     <Card className="bg-white overflow-hidden shadow-md border-0 ring-1 ring-slate-200">
                         {/* 1. Top Row: Global Stats */}
-                        <div className="flex items-center justify-between p-3 border-b border-slate-100 bg-slate-50/50">
+                        <div className="flex items-center justify-between px-3 py-2 border-b border-slate-100 bg-slate-50/50">
                             <div>
-                                <h1 className="text-sm font-bold text-slate-500 uppercase flex items-center gap-1">
-                                    <UserCheck size={14} className="text-emerald-500" /> 입구 체크인 현황
+                                <h1 className="text-xs font-bold text-slate-500 uppercase flex items-center gap-1">
+                                    <UserCheck size={12} className="text-emerald-500" /> 입구 체크인 현황
                                 </h1>
                             </div>
                             <div className="flex items-baseline gap-1">
-                                <span className="text-2xl font-black text-slate-800">{stats.checkedIn}</span>
-                                <span className="text-xs text-slate-400 font-medium">/ {stats.total}명</span>
-                                <span className="text-xs font-bold text-emerald-600 ml-1">
+                                <span className="text-xl font-black text-slate-800">{stats.checkedIn}</span>
+                                <span className="text-[10px] text-slate-400 font-medium">/ {stats.total}명</span>
+                                <span className="text-[10px] font-bold text-emerald-600 ml-1">
                                     ({((stats.checkedIn / (stats.total || 1)) * 100).toFixed(1)}%)
                                 </span>
                             </div>
                         </div>
 
-                        {/* 2. Middle Row: Breakdown Grid */}
                         <div className="grid grid-cols-3 divide-x divide-slate-100 border-b border-slate-100">
-                            <div className="p-2 text-center bg-emerald-50/30">
-                                <div className="text-[10px] uppercase font-bold text-emerald-600 mb-0.5">직접 (Direct)</div>
-                                <div className="text-lg font-bold text-emerald-700 leading-none">{stats.directCount}</div>
+                            <div className="py-1.5 text-center bg-emerald-50/30">
+                                <div className="text-[10px] uppercase font-bold text-emerald-600">직접 (Direct)</div>
+                                <div className="text-base font-bold text-emerald-700 leading-none">{stats.directCount}</div>
                             </div>
-                            <div className="p-2 text-center bg-orange-50/30">
-                                <div className="text-[10px] uppercase font-bold text-orange-600 mb-0.5">대리 (Proxy)</div>
-                                <div className="text-lg font-bold text-orange-700 leading-none">{stats.proxyCount}</div>
+                            <div className="py-1.5 text-center bg-orange-50/30">
+                                <div className="text-[10px] uppercase font-bold text-orange-600">대리 (Proxy)</div>
+                                <div className="text-base font-bold text-orange-700 leading-none">{stats.proxyCount}</div>
                             </div>
-                            <div className="p-2 text-center bg-blue-50/30">
-                                <div className="text-[10px] uppercase font-bold text-blue-600 mb-0.5">서면 (Written)</div>
-                                <div className="text-lg font-bold text-blue-700 leading-none">{stats.writtenCount}</div>
+                            <div className="py-1.5 text-center bg-blue-50/30">
+                                <div className="text-[10px] uppercase font-bold text-blue-600">서면 (Written)</div>
+                                <div className="text-base font-bold text-blue-700 leading-none">{stats.writtenCount}</div>
                             </div>
                         </div>
 
@@ -137,12 +136,12 @@ export default function CheckInPage() {
 
             <div className="max-w-md mx-auto px-4 pb-24 pt-2">
                 {/* Search */}
-                <div className="relative mb-4">
-                    <Search className="absolute left-3 top-3 text-slate-400" size={20} />
+                <div className="relative mb-2">
+                    <Search className="absolute left-3 top-2.5 text-slate-400" size={18} />
                     <input
                         type="text"
                         placeholder="동/호수(101-102) 또는 이름 검색"
-                        className="w-full pl-10 pr-4 py-3 rounded-xl border border-slate-200 shadow-sm focus:ring-2 focus:ring-emerald-500 outline-none text-slate-900 bg-white placeholder:text-slate-400"
+                        className="w-full pl-9 pr-4 py-2 rounded-lg border border-slate-200 shadow-sm focus:ring-2 focus:ring-emerald-500 outline-none text-slate-900 bg-white placeholder:text-slate-400 text-sm"
                         value={searchTerm}
                         onChange={(e) => setSearchTerm(e.target.value)}
                     />
@@ -156,39 +155,39 @@ export default function CheckInPage() {
                         </div>
                     ) : (
                         filteredMembers.map(member => (
-                            <Card key={member.id} className={`p-4 transition-all ${member.is_checked_in ? 'bg-slate-50 opacity-90' : 'bg-white'}`}>
-                                <div className="flex items-center justify-between">
-                                    <div>
-                                        <div className="flex items-center gap-2 mb-1">
-                                            <span className="font-mono font-bold text-lg text-slate-800">{member.unit}</span>
-                                            {member.is_checked_in && (
-                                                <span className={`text-xs px-1.5 py-0.5 rounded flex items-center gap-1 ${member.check_in_type === 'proxy' ? 'bg-orange-100 text-orange-600' :
-                                                    member.check_in_type === 'written' ? 'bg-blue-100 text-blue-600' :
-                                                        'bg-emerald-100 text-emerald-600'
-                                                    }`}>
-                                                    <Clock size={10} /> {
-                                                        member.check_in_type === 'proxy' ? '대리' :
-                                                            member.check_in_type === 'written' ? '서면' :
-                                                                '직접'
-                                                    }
-                                                </span>
-                                            )}
+                            <Card key={member.id} className={`p-3 transition-all ${member.is_checked_in ? 'bg-slate-50 opacity-90' : 'bg-white'}`}>
+                                <div className="flex items-center justify-between gap-3">
+                                    <div className="min-w-0">
+                                        <div className="flex items-center gap-2">
+                                            <span className="font-mono font-bold text-base text-slate-800">{member.unit}</span>
+                                            <span className="text-sm font-medium text-slate-600 truncate">{member.name}</span>
                                         </div>
-                                        <div className="text-slate-500">{member.name} 조합원</div>
+                                        {member.is_checked_in && (
+                                            <div className={`mt-1 inline-flex text-[10px] px-1.5 py-0.5 rounded items-center gap-1 ${member.check_in_type === 'proxy' ? 'bg-orange-100 text-orange-600' :
+                                                member.check_in_type === 'written' ? 'bg-blue-100 text-blue-600' :
+                                                    'bg-emerald-100 text-emerald-600'
+                                                }`}>
+                                                <Clock size={10} /> {
+                                                    member.check_in_type === 'proxy' ? '대리' :
+                                                        member.check_in_type === 'written' ? '서면' :
+                                                            '직접'
+                                                }
+                                            </div>
+                                        )}
                                     </div>
 
                                     {member.is_checked_in ? (
-                                        <div className="flex gap-1">
-                                            <Button variant="secondary" disabled className={`text-xs px-3 font-bold ${member.check_in_type === 'proxy'
+                                        <div className="flex gap-1 shrink-0">
+                                            <Button variant="secondary" disabled className={`text-xs px-2 py-1.5 font-bold h-8 ${member.check_in_type === 'proxy'
                                                 ? 'text-orange-600 bg-orange-50 border-orange-100'
                                                 : member.check_in_type === 'written'
                                                     ? 'text-blue-600 bg-blue-50 border-blue-100'
                                                     : 'text-emerald-600 bg-emerald-50 border-emerald-100'
                                                 }`}>
-                                                <Check size={16} /> {
-                                                    member.check_in_type === 'proxy' ? '대리 입장완료' :
-                                                        member.check_in_type === 'written' ? '서면 제출완료' :
-                                                            '직접 입장완료'
+                                                <Check size={14} /> {
+                                                    member.check_in_type === 'proxy' ? '대리' :
+                                                        member.check_in_type === 'written' ? '서면' :
+                                                            '입장완료'
                                                 }
                                             </Button>
                                             <Button
@@ -198,31 +197,31 @@ export default function CheckInPage() {
                                                         actions.cancelCheckInMember(member.id);
                                                     }
                                                 }}
-                                                className="px-2 text-slate-400 hover:text-red-500 hover:bg-red-50 border-slate-200"
+                                                className="px-2 h-8 text-slate-400 hover:text-red-500 hover:bg-red-50 border-slate-200"
                                             >
-                                                <RotateCcw size={14} />
+                                                <RotateCcw size={12} />
                                             </Button>
                                         </div>
                                     ) : (
-                                        <div className="flex gap-2">
+                                        <div className="flex gap-1 shrink-0">
                                             <Button
                                                 variant="success"
                                                 onClick={() => actions.checkInMember(member.id, 'direct')}
-                                                className="px-3 text-sm shadow-sm"
+                                                className="px-2.5 py-1.5 text-xs h-9 shadow-sm"
                                             >
                                                 직접
                                             </Button>
                                             <Button
                                                 variant="success"
                                                 onClick={() => actions.checkInMember(member.id, 'proxy')}
-                                                className="px-3 text-sm shadow-sm"
+                                                className="px-2.5 py-1.5 text-xs h-9 shadow-sm"
                                             >
                                                 대리
                                             </Button>
                                             <Button
                                                 variant="success"
                                                 onClick={() => actions.checkInMember(member.id, 'written')}
-                                                className="px-3 text-sm shadow-sm"
+                                                className="px-2.5 py-1.5 text-xs h-9 shadow-sm"
                                             >
                                                 서면
                                             </Button>
