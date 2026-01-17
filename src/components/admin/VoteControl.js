@@ -238,9 +238,9 @@ export default function VoteControl() {
                             <div className="text-sm font-medium text-slate-500 bg-white px-2 py-0.5 rounded border border-slate-100 shadow-sm">
                                 <span className="text-emerald-600">조합원 {liveDirectAttendance}</span>
                                 <span className="mx-1 text-slate-300">|</span>
-                                <span className="text-orange-500">대리 {liveProxyAttendance}</span>
+                                <span className="text-blue-500">대리 {liveProxyAttendance}</span>
                                 <span className="mx-1 text-slate-300">|</span>
-                                <span className="text-blue-500">서면 {liveWrittenAttendance}</span>
+                                <span className="text-orange-500">서면 {liveWrittenAttendance}</span>
                             </div>
                         </div>
                         {isElection && (

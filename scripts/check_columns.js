@@ -18,7 +18,7 @@ async function check() {
     // Try to select the specific columns. If they don't exist, it should error.
     const { data, error } = await supabase
         .from('members')
-        .select('id, is_checked_in, check_in_type')
+        .select('id, proxy')
         .limit(1);
 
     if (error) {

@@ -28,19 +28,36 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 async function main() {
     console.log("Generating 116 members...");
 
+    // Helper for random Korean Name
+    const familyNames = ['김', '이', '박', '최', '정', '강', '조', '윤', '장', '임', '오', '한', '신', '서', '권'];
+    const givenNames = ['민', '수', '지', '현', '진', '영', '호', '준', '서', '연', '우', '도', '훈', '성', '재', '혁', '상', '건', '예', '원'];
+
+    function generateName() {
+        const family = familyNames[Math.floor(Math.random() * familyNames.length)];
+        const first = givenNames[Math.floor(Math.random() * givenNames.length)];
+        const second = givenNames[Math.floor(Math.random() * givenNames.length)];
+        return `${family}${first}${second}`;
+    }
+
     const members = [];
     for (let i = 1; i <= 116; i++) {
-        // Generate Unit: e.g. 101-101 to 104-404 range logic, or just simple
-        const building = 101 + Math.floor((i - 1) / 30);
-        const floor = 1 + Math.floor(((i - 1) % 30) / 4);
-        const room = 1 + ((i - 1) % 4);
-        const unit = `${building}-${floor}0${room}`;
+        // Unit: 001 ~ 116 (3 digits)
+        const unit = i.toString().padStart(3, '0');
+
+        // Name: 3-char Korean Name
+        const name = generateName();
+
+        // Proxy: 3-char Korean Name
+        const proxy = generateName();
 
         members.push({
             id: i,
-            name: `조합원 ${i}`,
+            name: name,
             unit: unit,
-            is_checked_in: false
+            proxy: proxy, // New column
+            is_checked_in: false,
+            check_in_type: null,
+            check_in_time: null
         });
     }
 

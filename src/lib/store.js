@@ -105,13 +105,24 @@ export function StoreProvider({ children }) {
 
     // Actions
     const actions = {
-        checkInMember: async (id, type = 'direct') => {
+        checkInMember: async (id, type = 'direct', proxyName = null) => {
             setState(prev => ({
                 ...prev,
-                members: prev.members.map(m => m.id === id ? { ...m, is_checked_in: true, check_in_type: type } : m)
+                members: prev.members.map(m => {
+                    if (m.id === id) {
+                        const updates = { is_checked_in: true, check_in_type: type };
+                        if (proxyName !== null) updates.proxy = proxyName;
+                        return { ...m, ...updates };
+                    }
+                    return m;
+                })
             }));
+
+            const updates = { is_checked_in: true, check_in_type: type, check_in_time: new Date().toISOString() };
+            if (proxyName !== null) updates.proxy = proxyName;
+
             await supabase.from('members')
-                .update({ is_checked_in: true, check_in_type: type, check_in_time: new Date().toISOString() })
+                .update(updates)
                 .eq('id', id);
         },
 

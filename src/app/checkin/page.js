@@ -72,13 +72,13 @@ export default function CheckInPage() {
                                 <div className="text-[10px] uppercase font-bold text-emerald-600">직접 (Direct)</div>
                                 <div className="text-base font-bold text-emerald-700 leading-none">{stats.directCount}</div>
                             </div>
-                            <div className="py-1.5 text-center bg-orange-50/30">
-                                <div className="text-[10px] uppercase font-bold text-orange-600">대리 (Proxy)</div>
-                                <div className="text-base font-bold text-orange-700 leading-none">{stats.proxyCount}</div>
-                            </div>
                             <div className="py-1.5 text-center bg-blue-50/30">
-                                <div className="text-[10px] uppercase font-bold text-blue-600">서면 (Written)</div>
-                                <div className="text-base font-bold text-blue-700 leading-none">{stats.writtenCount}</div>
+                                <div className="text-[10px] uppercase font-bold text-blue-600">대리 (Proxy)</div>
+                                <div className="text-base font-bold text-blue-700 leading-none">{stats.proxyCount}</div>
+                            </div>
+                            <div className="py-1.5 text-center bg-orange-50/30">
+                                <div className="text-[10px] uppercase font-bold text-orange-600">서면 (Written)</div>
+                                <div className="text-base font-bold text-orange-700 leading-none">{stats.writtenCount}</div>
                             </div>
                         </div>
 
@@ -160,15 +160,18 @@ export default function CheckInPage() {
                                     <div className="min-w-0">
                                         <div className="flex items-center gap-2">
                                             <span className="font-mono font-bold text-base text-slate-800">{member.unit}</span>
-                                            <span className="text-sm font-medium text-slate-600 truncate">{member.name}</span>
+                                            <span className="text-sm font-medium text-slate-600 truncate">
+                                                {member.name}
+                                                {member.proxy && member.check_in_type !== 'direct' && <span className="text-slate-400 text-xs ml-1">({member.proxy})</span>}
+                                            </span>
                                         </div>
                                         {member.is_checked_in && (
-                                            <div className={`mt-1 inline-flex text-[10px] px-1.5 py-0.5 rounded items-center gap-1 ${member.check_in_type === 'proxy' ? 'bg-orange-100 text-orange-600' :
-                                                member.check_in_type === 'written' ? 'bg-blue-100 text-blue-600' :
+                                            <div className={`mt-1 inline-flex text-[10px] px-1.5 py-0.5 rounded items-center gap-1 ${member.check_in_type === 'proxy' ? 'bg-blue-100 text-blue-600' :
+                                                member.check_in_type === 'written' ? 'bg-orange-100 text-orange-600' :
                                                     'bg-emerald-100 text-emerald-600'
                                                 }`}>
                                                 <Clock size={10} /> {
-                                                    member.check_in_type === 'proxy' ? '대리' :
+                                                    member.check_in_type === 'proxy' ? `대리${member.proxy ? `(${member.proxy})` : ''}` :
                                                         member.check_in_type === 'written' ? '서면' :
                                                             '직접'
                                                 }
@@ -179,13 +182,13 @@ export default function CheckInPage() {
                                     {member.is_checked_in ? (
                                         <div className="flex gap-1 shrink-0">
                                             <Button variant="secondary" disabled className={`text-xs px-2 py-1.5 font-bold h-8 ${member.check_in_type === 'proxy'
-                                                ? 'text-orange-600 bg-orange-50 border-orange-100'
+                                                ? 'text-blue-600 bg-blue-50 border-blue-100'
                                                 : member.check_in_type === 'written'
-                                                    ? 'text-blue-600 bg-blue-50 border-blue-100'
+                                                    ? 'text-orange-600 bg-orange-50 border-orange-100'
                                                     : 'text-emerald-600 bg-emerald-50 border-emerald-100'
                                                 }`}>
                                                 <Check size={14} /> {
-                                                    member.check_in_type === 'proxy' ? '대리' :
+                                                    member.check_in_type === 'proxy' ? `대리${member.proxy ? `(${member.proxy})` : ''}` :
                                                         member.check_in_type === 'written' ? '서면' :
                                                             '입장완료'
                                                 }
@@ -213,7 +216,17 @@ export default function CheckInPage() {
                                             </Button>
                                             <Button
                                                 variant="success"
-                                                onClick={() => actions.checkInMember(member.id, 'proxy')}
+                                                onClick={() => {
+                                                    const inputName = window.prompt("대리인 성명을 입력해주세요.", member.proxy || "");
+                                                    if (inputName !== null) {
+                                                        const finalName = inputName.trim();
+                                                        if (finalName) {
+                                                            actions.checkInMember(member.id, 'proxy', finalName);
+                                                        } else {
+                                                            alert("대리인 성명을 입력해야 합니다.");
+                                                        }
+                                                    }
+                                                }}
                                                 className="px-2.5 py-1.5 text-xs h-9 shadow-sm"
                                             >
                                                 대리

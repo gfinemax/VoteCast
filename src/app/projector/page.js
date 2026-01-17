@@ -143,16 +143,16 @@ export default function ProjectorPage() {
 
                                             {/* Breakdown Row (Minimal) */}
                                             <div className="flex items-center text-lg text-slate-400 font-medium">
-                                                <span className="flex items-center text-slate-500">
-                                                    서면 <b className="text-slate-300 ml-2 font-mono">{written}</b>
+                                                <span className="flex items-center text-orange-500/80">
+                                                    서면 <b className="text-orange-400 ml-2 font-mono">{written}</b>
                                                 </span>
                                                 <span className="mx-4 text-slate-700">|</span>
                                                 <span className="flex items-center text-emerald-500/80">
                                                     조합원참석 <b className="text-emerald-400 ml-2 font-mono">{direct}</b>
                                                 </span>
                                                 <span className="mx-4 text-slate-700">|</span>
-                                                <span className="flex items-center text-yellow-500/80">
-                                                    대리인참석 <b className="text-yellow-400 ml-2 font-mono">{proxy}</b>
+                                                <span className="flex items-center text-blue-500/80">
+                                                    대리인참석 <b className="text-blue-400 ml-2 font-mono">{proxy}</b>
                                                 </span>
                                             </div>
                                         </div>
