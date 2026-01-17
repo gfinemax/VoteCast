@@ -156,8 +156,8 @@ export default function CheckInPage() {
                     ) : (
                         filteredMembers.map(member => (
                             <Card key={member.id} className={`p-3 transition-all ${member.is_checked_in ? 'bg-slate-50 opacity-90' : 'bg-white'}`}>
-                                <div className="flex items-center justify-between gap-3">
-                                    <div className="min-w-0 flex-1 mr-3">
+                                <div className="flex items-center justify-between gap-2">
+                                    <div className="min-w-0 flex-1 mr-1">
                                         {/* Unified Layout for Checked and Unchecked: Unit (L1) / Name (L2) */}
                                         <div className="flex flex-col">
                                             <div className="flex items-center gap-2">
@@ -213,7 +213,7 @@ export default function CheckInPage() {
                                             <Button
                                                 variant="success"
                                                 onClick={() => actions.checkInMember(member.id, 'direct')}
-                                                className="px-1.5 py-1.5 text-xs h-9 shadow-sm"
+                                                className="px-1 py-1.5 text-xs h-9 shadow-sm"
                                             >
                                                 직접
                                             </Button>
@@ -230,14 +230,14 @@ export default function CheckInPage() {
                                                         }
                                                     }
                                                 }}
-                                                className="px-1.5 py-1.5 text-xs h-9 shadow-sm"
+                                                className="px-1 py-1.5 text-xs h-9 shadow-sm"
                                             >
                                                 대리
                                             </Button>
                                             <Button
                                                 variant="success"
                                                 onClick={() => actions.checkInMember(member.id, 'written')}
-                                                className="px-1.5 py-1.5 text-xs h-9 shadow-sm"
+                                                className="px-1 py-1.5 text-xs h-9 shadow-sm"
                                             >
                                                 서면
                                             </Button>
