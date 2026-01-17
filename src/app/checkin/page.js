@@ -2,7 +2,7 @@
 
 import React, { useState, useMemo } from 'react';
 import { useStore } from '@/lib/store';
-import { Search, UserCheck, Check, Clock } from 'lucide-react';
+import { Search, UserCheck, Check, Clock, RotateCcw } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import Card from '@/components/ui/Card';
 
@@ -142,7 +142,7 @@ export default function CheckInPage() {
                     <input
                         type="text"
                         placeholder="동/호수(101-102) 또는 이름 검색"
-                        className="w-full pl-10 pr-4 py-3 rounded-xl border border-slate-200 shadow-sm focus:ring-2 focus:ring-emerald-500 outline-none"
+                        className="w-full pl-10 pr-4 py-3 rounded-xl border border-slate-200 shadow-sm focus:ring-2 focus:ring-emerald-500 outline-none text-slate-900 bg-white placeholder:text-slate-400"
                         value={searchTerm}
                         onChange={(e) => setSearchTerm(e.target.value)}
                     />
@@ -178,18 +178,31 @@ export default function CheckInPage() {
                                     </div>
 
                                     {member.is_checked_in ? (
-                                        <Button variant="secondary" disabled className={`text-xs px-3 font-bold ${member.check_in_type === 'proxy'
-                                            ? 'text-orange-600 bg-orange-50 border-orange-100'
-                                            : member.check_in_type === 'written'
-                                                ? 'text-blue-600 bg-blue-50 border-blue-100'
-                                                : 'text-emerald-600 bg-emerald-50 border-emerald-100'
-                                            }`}>
-                                            <Check size={16} /> {
-                                                member.check_in_type === 'proxy' ? '대리 입장완료' :
-                                                    member.check_in_type === 'written' ? '서면 제출완료' :
-                                                        '직접 입장완료'
-                                            }
-                                        </Button>
+                                        <div className="flex gap-1">
+                                            <Button variant="secondary" disabled className={`text-xs px-3 font-bold ${member.check_in_type === 'proxy'
+                                                ? 'text-orange-600 bg-orange-50 border-orange-100'
+                                                : member.check_in_type === 'written'
+                                                    ? 'text-blue-600 bg-blue-50 border-blue-100'
+                                                    : 'text-emerald-600 bg-emerald-50 border-emerald-100'
+                                                }`}>
+                                                <Check size={16} /> {
+                                                    member.check_in_type === 'proxy' ? '대리 입장완료' :
+                                                        member.check_in_type === 'written' ? '서면 제출완료' :
+                                                            '직접 입장완료'
+                                                }
+                                            </Button>
+                                            <Button
+                                                variant="outline"
+                                                onClick={() => {
+                                                    if (window.confirm(`${member.name} (${member.unit})님의 입장을 취소하시겠습니까?`)) {
+                                                        actions.cancelCheckInMember(member.id);
+                                                    }
+                                                }}
+                                                className="px-2 text-slate-400 hover:text-red-500 hover:bg-red-50 border-slate-200"
+                                            >
+                                                <RotateCcw size={14} />
+                                            </Button>
+                                        </div>
                                     ) : (
                                         <div className="flex gap-2">
                                             <Button

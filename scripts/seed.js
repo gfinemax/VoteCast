@@ -30,10 +30,17 @@ async function main() {
 
     const members = [];
     for (let i = 1; i <= 116; i++) {
+        // Generate Unit: e.g. 101-101 to 104-404 range logic, or just simple
+        const building = 101 + Math.floor((i - 1) / 30);
+        const floor = 1 + Math.floor(((i - 1) % 30) / 4);
+        const room = 1 + ((i - 1) % 4);
+        const unit = `${building}-${floor}0${room}`;
+
         members.push({
             id: i,
             name: `조합원 ${i}`,
-            is_checked_in: false // Optional, likely default is false/null but explicit is good
+            unit: unit,
+            is_checked_in: false
         });
     }
 

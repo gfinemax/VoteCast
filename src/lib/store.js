@@ -115,6 +115,16 @@ export function StoreProvider({ children }) {
                 .eq('id', id);
         },
 
+        cancelCheckInMember: async (id) => {
+            setState(prev => ({
+                ...prev,
+                members: prev.members.map(m => m.id === id ? { ...m, is_checked_in: false, check_in_type: null } : m)
+            }));
+            await supabase.from('members')
+                .update({ is_checked_in: false, check_in_type: null, check_in_time: null })
+                .eq('id', id);
+        },
+
         addAgenda: async (newAgenda, insertAfterOrderIndex = null) => {
             // Optimistic ID (temp) - ensuring it doesn't collide with real IDs (usually small integers)
             const tempId = Date.now();
