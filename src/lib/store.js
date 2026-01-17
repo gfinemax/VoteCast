@@ -7,6 +7,9 @@ import { supabase } from '@/lib/supabase';
 const INITIAL_DATA = {
     agendas: [],
     members: [],
+    attendance: [],
+    currentMeetingId: null, // Legacy/UI: Selected Folder(General Meeting) for Admin View
+    activeMeetingId: null,  // New: GLOBALLY Active Meeting for Admission (controlled by Admin)
     voteData: {
         totalMembers: 0,
         directAttendance: 0,
@@ -35,29 +38,28 @@ export function StoreProvider({ children }) {
     useEffect(() => {
         const fetchData = async () => {
             try {
-                const { data: settings } = await supabase
-                    .from('system_settings')
-                    .select('*')
-                    .eq('id', 1)
-                    .single();
+                const { data: settings } = await supabase.from('system_settings').select('*').eq('id', 1).single();
+                const { data: agendas } = await supabase.from('agendas').select('*').order('order_index', { ascending: true });
+                const { data: members } = await supabase.from('members').select('*').order('id', { ascending: true });
+                const { data: attendance } = await supabase.from('attendance').select('*');
 
-                const { data: agendas } = await supabase
-                    .from('agendas')
-                    .select('*')
-                    .order('order_index', { ascending: true });
-
-                const { data: members } = await supabase
-                    .from('members')
-                    .select('*')
-                    .order('id', { ascending: true });
+                // Determine default meeting ID (First folder or first agenda)
+                let defaultMeetingId = null;
+                if (agendas && agendas.length > 0) {
+                    const firstFolder = agendas.find(a => a.type === 'folder');
+                    defaultMeetingId = firstFolder ? firstFolder.id : null;
+                }
 
                 if (settings) {
                     setState(prev => ({
                         ...prev,
                         agendas: agendas || [],
                         members: members || [],
+                        attendance: attendance || [],
                         voteData: { ...INITIAL_DATA.voteData, ...(settings.vote_data || {}) },
                         currentAgendaId: settings.current_agenda_id || 1,
+                        currentMeetingId: defaultMeetingId, // Store Local Admin View Context
+                        activeMeetingId: settings.active_meeting_id || null, // Global Admission Context
                         projectorMode: settings.projector_mode || 'IDLE',
                         projectorData: null
                     }));
@@ -80,6 +82,7 @@ export function StoreProvider({ children }) {
                         ...prev,
                         voteData: { ...INITIAL_DATA.voteData, ...(payload.new.vote_data || {}) },
                         currentAgendaId: payload.new.current_agenda_id,
+                        activeMeetingId: payload.new.active_meeting_id, // Sync Active Meeting
                         projectorMode: payload.new.projector_mode
                     }));
                 }
@@ -92,7 +95,30 @@ export function StoreProvider({ children }) {
                 const { data } = await supabase.from('members').select('*').order('id');
                 if (data) setState(prev => ({ ...prev, members: data }));
             })
-            .subscribe();
+            .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'attendance' }, (payload) => {
+                console.log('[Realtime] Attendance INSERT:', payload.new);
+                setState(prev => ({
+                    ...prev,
+                    attendance: [...prev.attendance, payload.new]
+                }));
+            })
+            .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'attendance' }, (payload) => {
+                console.log('[Realtime] Attendance DELETE:', payload.old);
+                setState(prev => ({
+                    ...prev,
+                    attendance: prev.attendance.filter(a => a.id !== payload.old.id)
+                }));
+            })
+            .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'attendance' }, (payload) => {
+                console.log('[Realtime] Attendance UPDATE:', payload.new);
+                setState(prev => ({
+                    ...prev,
+                    attendance: prev.attendance.map(a => a.id === payload.new.id ? payload.new : a)
+                }));
+            })
+            .subscribe((status) => {
+                console.log('[Realtime] Subscription Status:', status);
+            });
 
         return () => {
             supabase.removeChannel(channel);
@@ -105,35 +131,85 @@ export function StoreProvider({ children }) {
 
     // Actions
     const actions = {
-        checkInMember: async (id, type = 'direct', proxyName = null) => {
-            setState(prev => ({
-                ...prev,
-                members: prev.members.map(m => {
-                    if (m.id === id) {
-                        const updates = { is_checked_in: true, check_in_type: type };
-                        if (proxyName !== null) updates.proxy = proxyName;
-                        return { ...m, ...updates };
-                    }
-                    return m;
-                })
-            }));
-
-            const updates = { is_checked_in: true, check_in_type: type, check_in_time: new Date().toISOString() };
-            if (proxyName !== null) updates.proxy = proxyName;
-
-            await supabase.from('members')
-                .update(updates)
-                .eq('id', id);
+        // Local Admin View Switcher
+        setMeetingId: (id) => {
+            setState(prev => ({ ...prev, currentMeetingId: id }));
         },
 
-        cancelCheckInMember: async (id) => {
+        // Global Admission Control (Admin Only)
+        setActiveMeeting: async (id) => {
+            // Optimistic
+            setState(prev => ({ ...prev, activeMeetingId: id }));
+            // DB Update
+            const { error } = await supabase.from('system_settings')
+                .update({ active_meeting_id: id })
+                .eq('id', 1);
+            if (error) console.error("Failed to set active meeting:", error);
+        },
+
+        checkInMember: async (memberId, type = 'direct', proxyName = null) => {
+            // USE ACTIVE MEETING ID (Global)
+            const meetingId = stateRef.current.activeMeetingId;
+            if (!meetingId) {
+                console.error("No active meeting open for admission.");
+                return; // Block check-in if no meeting is active
+            }
+
+            // Optimistic Update
+            const tempId = Date.now();
+            const newRecord = {
+                id: tempId,
+                member_id: memberId,
+                meeting_id: meetingId,
+                type,
+                proxy_name: proxyName,
+                created_at: new Date().toISOString()
+            };
+
             setState(prev => ({
                 ...prev,
-                members: prev.members.map(m => m.id === id ? { ...m, is_checked_in: false, check_in_type: null } : m)
+                attendance: [...prev.attendance, newRecord]
             }));
-            await supabase.from('members')
-                .update({ is_checked_in: false, check_in_type: null, check_in_time: null })
-                .eq('id', id);
+
+            // DB Insert
+            const { error } = await supabase.from('attendance').insert({
+                member_id: memberId,
+                meeting_id: meetingId,
+                type,
+                proxy_name: proxyName
+            });
+
+            if (error) {
+                console.error("Check-in Failed:", error);
+                // Rollback
+                setState(prev => ({
+                    ...prev,
+                    attendance: prev.attendance.filter(a => a.id !== tempId)
+                }));
+            }
+        },
+
+        cancelCheckInMember: async (memberId) => {
+            // Cancel from the ACTIVE meeting context?
+            // Or should we allow canceling from *any* context if shown in UI?
+            // Usually Check-in UI shows status based on Active Meeting.
+            // So we use activeMeetingId.
+            const meetingId = stateRef.current.activeMeetingId;
+            if (!meetingId) return;
+
+            // Optimistic Update
+            setState(prev => ({
+                ...prev,
+                attendance: prev.attendance.filter(a => !(a.member_id === memberId && a.meeting_id === meetingId))
+            }));
+
+            // DB Delete
+            const { error } = await supabase.from('attendance')
+                .delete()
+                .eq('member_id', memberId)
+                .eq('meeting_id', meetingId);
+
+            if (error) console.error("Cancel Check-in Failed:", error);
         },
 
         addAgenda: async (newAgenda, insertAfterOrderIndex = null) => {
@@ -160,11 +236,17 @@ export function StoreProvider({ children }) {
                 });
 
                 // 2. Client Side Shift in DB
-                // Fetch all items that need shifting
-                const { data: allAgendas } = await supabase.from('agendas').select('id, order_index').gte('order_index', newOrderIndex);
+                // Fetch all items that need shifting, ORDER BY DESC to avoid unique constraint collisions (shift last items first)
+                const { data: allAgendas } = await supabase
+                    .from('agendas')
+                    .select('id, order_index')
+                    .gte('order_index', newOrderIndex)
+                    .order('order_index', { ascending: false });
+
                 if (allAgendas && allAgendas.length > 0) {
                     for (const item of allAgendas) {
-                        await supabase.from('agendas').update({ order_index: item.order_index + 1 }).eq('id', item.id);
+                        const { error: moveError } = await supabase.from('agendas').update({ order_index: item.order_index + 1 }).eq('id', item.id);
+                        if (moveError) console.error("Failed to shift agenda:", item.id, moveError);
                     }
                 }
             } else {
@@ -179,9 +261,14 @@ export function StoreProvider({ children }) {
                 }));
             }
 
+            // Generate Manual ID (DB missing sequence)
+            const { data: maxIdResult } = await supabase.from('agendas').select('id').order('id', { ascending: false }).limit(1);
+            const nextId = (maxIdResult?.[0]?.id || 0) + 1;
+
             // Insert into DB (Let DB handle ID)
             const { data: insertedData, error } = await supabase.from('agendas').insert({
                 ...newAgenda,
+                id: nextId,
                 type: autoType,
                 order_index: newOrderIndex
             }).select().single();
@@ -193,7 +280,7 @@ export function StoreProvider({ children }) {
                     agendas: prev.agendas.map(a => a.id === tempId ? insertedData : a)
                 }));
             } else if (error) {
-                console.error("Failed to add agenda:", error);
+                console.error("Failed to add agenda:", JSON.stringify(error, null, 2));
                 // Rollback optimistic update
                 setState(prev => ({
                     ...prev,

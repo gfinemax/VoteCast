@@ -2,7 +2,7 @@
 
 import React, { useState, useMemo } from 'react';
 import { useStore } from '@/lib/store';
-import { Plus, Trash2, Edit2, Check, X, FolderOpen, ChevronDown, ChevronRight, FolderPlus, FileText } from 'lucide-react';
+import { Plus, Trash2, Edit2, Check, X, FolderOpen, ChevronDown, ChevronRight, FolderPlus, CheckCircle2, Play } from 'lucide-react';
 import Button from '@/components/ui/Button';
 
 export default function AgendaList() {
@@ -156,11 +156,12 @@ export default function AgendaList() {
                     <div key={folderId} className="relative">
                         {!isGhost && (
                             <div
-                                className="flex items-center gap-2 mb-0 px-2 py-0.5 bg-slate-50 hover:bg-slate-100 rounded-sm border border-slate-200 group cursor-pointer transition-colors select-none"
+                                className={`flex items-center gap-2 mb-0 px-2 py-0.5 rounded-sm border cursor-pointer transition-colors select-none ${state.activeMeetingId === group.folder.id ? 'bg-emerald-50 border-emerald-200' : 'bg-slate-50 hover:bg-slate-100 border-slate-200'
+                                    }`}
                                 onClick={() => toggleFolder(folderId)}
                             >
                                 {expanded ? <ChevronDown size={14} className="text-slate-400" /> : <ChevronRight size={14} className="text-slate-400" />}
-                                <FolderOpen size={16} className="text-blue-500" />
+                                <FolderOpen size={16} className={state.activeMeetingId === group.folder.id ? "text-emerald-500" : "text-blue-500"} />
 
                                 {/* Folder Title Editing */}
                                 {editingId === group.folder.id ? (
@@ -180,7 +181,30 @@ export default function AgendaList() {
                                     </div>
                                 ) : (
                                     <>
-                                        <span className="text-sm font-bold text-slate-700 flex-1">{group.folder.title}</span>
+                                        <div className="flex-1 flex flex-col">
+                                            <span className="text-sm font-bold text-slate-700">{group.folder.title}</span>
+                                            {state.activeMeetingId === group.folder.id ? (
+                                                <span className="text-[10px] font-semibold text-emerald-600 flex items-center gap-1 mt-0.5">
+                                                    <span className="relative flex h-2 w-2">
+                                                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                                                        <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                                                    </span>
+                                                    입장 접수 중
+                                                </span>
+                                            ) : (
+                                                <button
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        if (confirm(`'${group.folder.title}'의 입장을 시작하시겠습니까?\n기존에 진행 중인 입장은 중단됩니다.`)) {
+                                                            actions.setActiveMeeting(group.folder.id);
+                                                        }
+                                                    }}
+                                                    className="w-fit text-[10px] text-slate-400 hover:text-blue-600 hover:underline flex items-center gap-0.5 mt-0.5"
+                                                >
+                                                    <Play size={8} /> 입장 시작
+                                                </button>
+                                            )}
+                                        </div>
                                         <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                                             <button className="p-1 text-slate-400 hover:text-blue-600" onClick={(e) => { e.stopPropagation(); startEdit(group.folder); }}>
                                                 <Edit2 size={12} />
@@ -226,8 +250,14 @@ export default function AgendaList() {
                                             </div>
                                         ) : (
                                             <>
-                                                <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${currentAgendaId === agenda.id ? 'bg-emerald-400' : 'bg-slate-300 group-hover:bg-slate-400'}`}></div>
-                                                <span className="line-clamp-1 flex-1 text-xs leading-normal">{agenda.title}</span>
+                                                {agenda.declaration ? (
+                                                    <CheckCircle2 size={14} className="text-emerald-500 flex-shrink-0" />
+                                                ) : (
+                                                    <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${currentAgendaId === agenda.id ? 'bg-emerald-400' : 'bg-slate-300 group-hover:bg-slate-400'}`}></div>
+                                                )}
+                                                <span className={`line-clamp-1 flex-1 text-xs leading-normal ${agenda.declaration ? 'text-slate-400 line-through decoration-slate-300' : ''} ${currentAgendaId === agenda.id ? '!text-white !no-underline' : ''}`}>
+                                                    {agenda.title}
+                                                </span>
                                                 <div className={`flex gap-0.5 transition-opacity ${currentAgendaId === agenda.id ? 'text-slate-400 opacity-100' : 'text-slate-300 opacity-0 group-hover:opacity-100'}`}>
                                                     <button className="p-1 hover:text-white hover:bg-slate-700/50 rounded" onClick={(e) => { e.stopPropagation(); startEdit(agenda); }}><Edit2 size={10} /></button>
                                                     <button className="p-1 hover:text-red-400 hover:bg-red-900/20 rounded" onClick={(e) => handleDelete(e, agenda.id)}><Trash2 size={10} /></button>
