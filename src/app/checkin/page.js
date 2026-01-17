@@ -122,7 +122,7 @@ export default function CheckInPage() {
                             <div className="flex items-center justify-between" onClick={() => setIsStatsOpen(!isStatsOpen)}>
                                 <div className="flex items-baseline gap-2">
                                     <span className="text-2xl font-black text-slate-800 tracking-tight">{stats.checkedIn}</span>
-                                    <span className="text-xs text-slate-400 font-medium">/ {stats.total}명 <span className="text-emerald-600 font-bold">({stats.rate}%)</span></span>
+                                    <span className="text-sm text-slate-500 font-bold">/ {stats.total}명 <span className="text-emerald-600">({stats.rate}%)</span></span>
                                 </div>
                                 <button className="text-xs font-medium text-slate-400 bg-slate-100 px-2 py-1 rounded-full flex items-center gap-1">
                                     {isStatsOpen ? '접기' : '상세보기'}
@@ -131,37 +131,37 @@ export default function CheckInPage() {
 
                             {/* Collapsible Detail Stats */}
                             {isStatsOpen && (
-                                <div className="mt-3 space-y-3 border-t border-slate-100 pt-3 animate-in slide-in-from-top-2 duration-200">
-                                    <div className="grid grid-cols-3 gap-2 text-center">
-                                        <div className="bg-emerald-50 rounded p-2">
-                                            <div className="text-[10px] text-emerald-600 font-bold">직접</div>
-                                            <div className="text-lg font-bold text-emerald-700">{stats.directCount}</div>
+                                <div className="mt-4 space-y-5 border-t border-slate-100 pt-4 animate-in slide-in-from-top-2 duration-200">
+                                    <div className="grid grid-cols-3 gap-3 text-center">
+                                        <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-3">
+                                            <div className="text-sm text-emerald-700 font-bold mb-1">직접</div>
+                                            <div className="text-3xl font-black text-emerald-800 leading-none">{stats.directCount}</div>
                                         </div>
-                                        <div className="bg-blue-50 rounded p-2">
-                                            <div className="text-[10px] text-blue-600 font-bold">대리</div>
-                                            <div className="text-lg font-bold text-blue-700">{stats.proxyCount}</div>
+                                        <div className="bg-blue-50 border border-blue-100 rounded-xl p-3">
+                                            <div className="text-sm text-blue-700 font-bold mb-1">대리</div>
+                                            <div className="text-3xl font-black text-blue-800 leading-none">{stats.proxyCount}</div>
                                         </div>
-                                        <div className="bg-orange-50 rounded p-2">
-                                            <div className="text-[10px] text-orange-600 font-bold">서면</div>
-                                            <div className="text-lg font-bold text-orange-700">{stats.writtenCount}</div>
+                                        <div className="bg-orange-50 border border-orange-100 rounded-xl p-3">
+                                            <div className="text-sm text-orange-700 font-bold mb-1">서면</div>
+                                            <div className="text-3xl font-black text-orange-800 leading-none">{stats.writtenCount}</div>
                                         </div>
                                     </div>
 
                                     {/* Progress Bars (Target) */}
-                                    <div className="space-y-2">
-                                        <div className="space-y-1">
-                                            <div className="flex justify-between text-[10px] text-slate-500">
-                                                <span>직접참석 ({stats.directTarget}명 목표)</span>
-                                                <span className={stats.isDirectMet ? "text-emerald-600 font-bold" : ""}>{stats.directCount}/{stats.directTarget}</span>
+                                    <div className="space-y-4">
+                                        <div className="space-y-1.5">
+                                            <div className="flex justify-between text-sm font-bold text-slate-700">
+                                                <span>직접참석 <span className="text-xs font-medium text-slate-500">({stats.directTarget}명 목표)</span></span>
+                                                <span className={stats.isDirectMet ? "text-emerald-600" : ""}>{stats.directCount}/{stats.directTarget}</span>
                                             </div>
                                             <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
                                                 <div className={`h-full ${stats.isDirectMet ? 'bg-emerald-500' : 'bg-slate-300'}`} style={{ width: `${Math.min(100, (stats.directCount / stats.directTarget) * 100)}%` }}></div>
                                             </div>
                                         </div>
-                                        <div className="space-y-1">
-                                            <div className="flex justify-between text-[10px] text-slate-500">
-                                                <span>전체 성원 (과반 {stats.majorityTarget})</span>
-                                                <span className={stats.isMajorityMet ? "text-blue-600 font-bold" : ""}>{stats.checkedIn}/{stats.majorityTarget}</span>
+                                        <div className="space-y-1.5">
+                                            <div className="flex justify-between text-sm font-bold text-slate-700">
+                                                <span>전체 성원 <span className="text-xs font-medium text-slate-500">(과반 {stats.majorityTarget})</span></span>
+                                                <span className={stats.isMajorityMet ? "text-blue-600" : ""}>{stats.checkedIn}/{stats.majorityTarget}</span>
                                             </div>
                                             <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden relative">
                                                 <div className="absolute top-0 bottom-0 w-[1px] bg-slate-300 left-1/2"></div>
