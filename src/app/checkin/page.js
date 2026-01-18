@@ -2,7 +2,7 @@
 
 import React, { useState, useMemo } from 'react';
 import { useStore } from '@/lib/store';
-import { Search, UserCheck, UserX, AlertCircle, Clock, Check, RotateCcw, ChevronDown, ChevronUp } from 'lucide-react';
+import { Search, UserCheck, UserX, AlertCircle, Clock, Check, RotateCcw, ChevronDown, ChevronUp, User, FileText } from 'lucide-react';
 import FlipNumber from '@/components/ui/FlipNumber';
 import Button from '@/components/ui/Button';
 import Card from '@/components/ui/Card';
@@ -230,17 +230,17 @@ export default function CheckInPage() {
 
                             {/* Collapsible Detail Stats */}
                             {isStatsOpen && (
-                                <div className="mt-4 space-y-5 border-t border-slate-100 pt-4 animate-in slide-in-from-top-2 duration-200">
-                                    <div className="grid grid-cols-3 gap-3 text-center">
-                                        <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-3">
+                                <div className="mt-1 space-y-3 border-t border-slate-100 pt-2 animate-in slide-in-from-top-2 duration-200">
+                                    <div className="grid grid-cols-3 gap-2 text-center">
+                                        <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-2">
                                             <div className="text-sm text-emerald-700 font-bold mb-1">직접</div>
                                             <div className="text-3xl font-black text-emerald-800 leading-none">{stats.directCount}</div>
                                         </div>
-                                        <div className="bg-blue-50 border border-blue-100 rounded-xl p-3">
+                                        <div className="bg-blue-50 border border-blue-100 rounded-xl p-2">
                                             <div className="text-sm text-blue-700 font-bold mb-1">대리</div>
                                             <div className="text-3xl font-black text-blue-800 leading-none">{stats.proxyCount}</div>
                                         </div>
-                                        <div className="bg-orange-50 border border-orange-100 rounded-xl p-3">
+                                        <div className="bg-orange-50 border border-orange-100 rounded-xl p-2">
                                             <div className="text-sm text-orange-700 font-bold mb-1">서면</div>
                                             <div className="text-3xl font-black text-orange-800 leading-none">{stats.writtenCount}</div>
                                         </div>
@@ -281,7 +281,7 @@ export default function CheckInPage() {
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
                     <input
                         className="w-full pl-9 pr-4 py-2.5 rounded-lg border border-slate-300 shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-base bg-white text-slate-900 placeholder:text-slate-400"
-                        placeholder="동호수(101-101) 또는 성명..."
+                        placeholder="조합원넘버 또는 성명..."
                         value={searchTerm}
                         onChange={e => setSearchTerm(e.target.value)}
                         disabled={!activeMeetingId}
@@ -300,8 +300,29 @@ export default function CheckInPage() {
                                 <div className="flex justify-between items-center">
                                     {/* Member Info (Compact Left) */}
                                     <div className="flex flex-col">
-                                        <div className={`text-2xl font-black leading-none mb-1 ${isCheckedIn ? 'text-emerald-700' : 'text-slate-700'}`}>
-                                            {member.unit}
+                                        <div className="flex items-center gap-2 mb-1">
+                                            <div className={`text-2xl font-black leading-none ${isCheckedIn ? 'text-emerald-700' : 'text-slate-700'}`}>
+                                                {member.unit}
+                                            </div>
+                                            {isCheckedIn && (
+                                                <>
+                                                    {checkInType === 'direct' && (
+                                                        <span className="px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 text-[11px] font-bold flex items-center gap-1">
+                                                            <User size={12} /> 본인
+                                                        </span>
+                                                    )}
+                                                    {checkInType === 'proxy' && (
+                                                        <span className="px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 text-[11px] font-bold flex items-center gap-1">
+                                                            <Clock size={12} /> 대리
+                                                        </span>
+                                                    )}
+                                                    {checkInType === 'written' && (
+                                                        <span className="px-1.5 py-0.5 rounded bg-orange-100 text-orange-700 text-[11px] font-bold flex items-center gap-1">
+                                                            <FileText size={12} /> 서면
+                                                        </span>
+                                                    )}
+                                                </>
+                                            )}
                                         </div>
                                         <div className="text-base font-bold text-slate-800 flex items-center">
                                             {member.name}
@@ -340,18 +361,11 @@ export default function CheckInPage() {
                                             </>
                                         ) : (
                                             <div className="flex items-center gap-1.5">
-                                                <div className="w-14 h-14 rounded-lg flex flex-col items-center justify-center bg-slate-100 text-slate-400 shadow-sm border border-slate-200">
-                                                    <Check size={20} className="mb-0.5 stroke-[3px]" />
-                                                    <span className="text-[12px] font-bold leading-none">{
-                                                        checkInType === 'written' ? '서면' :
-                                                            checkInType === 'proxy' ? '대리' : '입장'
-                                                    }</span>
-                                                </div>
                                                 <button
                                                     onClick={() => handleCancelCheckIn(member.id)}
-                                                    className="w-10 h-14 rounded-lg bg-white border border-slate-200 text-slate-400 active:text-red-500 active:bg-red-50 flex items-center justify-center transition-colors"
+                                                    className="w-12 h-12 rounded-lg bg-white border border-slate-200 text-slate-400 active:text-red-500 active:bg-red-50 flex items-center justify-center transition-colors shadow-sm"
                                                 >
-                                                    <RotateCcw size={18} />
+                                                    <RotateCcw size={20} />
                                                 </button>
                                             </div>
                                         )}
