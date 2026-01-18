@@ -204,7 +204,7 @@ export default function CheckInPage() {
                     {/* Compact Stats Bar (Always Visible) */}
                     {activeMeetingId && (
                         <div className="px-4 py-2 bg-white">
-                            <div className="relative flex items-center justify-center py-4 px-2" onClick={() => setIsStatsOpen(!isStatsOpen)}>
+                            <div className="relative flex items-center justify-center py-1 md:py-4 px-2" onClick={() => setIsStatsOpen(!isStatsOpen)}>
 
                                 {/* 1. Left: Total Context */}
                                 <div className="absolute left-0 flex flex-col md:block items-start text-base text-slate-500 font-bold tracking-tighter leading-tight md:leading-normal">
@@ -310,32 +310,32 @@ export default function CheckInPage() {
                                     </div>
 
                                     {/* Actions (Right) */}
-                                    <div className="flex gap-1">
+                                    <div className="flex gap-1.5">
                                         {!isCheckedIn ? (
                                             <>
                                                 <button
                                                     onClick={() => handleCheckIn(member.id, 'direct')}
                                                     disabled={!activeMeetingId}
-                                                    className="flex flex-col items-center justify-center w-14 h-14 rounded-lg bg-emerald-500 active:bg-emerald-600 text-white shadow-sm disabled:opacity-30 disabled:cursor-not-allowed transition-all active:scale-95"
+                                                    className="flex flex-col items-center justify-center w-12 h-12 rounded-lg bg-emerald-500 active:bg-emerald-600 text-white shadow-sm disabled:opacity-30 disabled:cursor-not-allowed transition-all active:scale-95"
                                                 >
-                                                    <UserCheck size={20} className="mb-0.5" />
-                                                    <span className="text-[12px] font-bold leading-none">본인</span>
+                                                    <UserCheck size={18} className="mb-0.5" />
+                                                    <span className="text-[11px] font-bold leading-none">본인</span>
                                                 </button>
                                                 <button
                                                     onClick={() => handleOpenProxyModal(member)}
                                                     disabled={!activeMeetingId}
-                                                    className="flex flex-col items-center justify-center w-14 h-14 rounded-lg bg-blue-500 active:bg-blue-600 text-white shadow-sm disabled:opacity-30 disabled:cursor-not-allowed transition-all active:scale-95"
+                                                    className="flex flex-col items-center justify-center w-12 h-12 rounded-lg bg-blue-500 active:bg-blue-600 text-white shadow-sm disabled:opacity-30 disabled:cursor-not-allowed transition-all active:scale-95"
                                                 >
-                                                    <UserCheck size={20} className="mb-0.5" />
-                                                    <span className="text-[12px] font-bold leading-none">대리</span>
+                                                    <UserCheck size={18} className="mb-0.5" />
+                                                    <span className="text-[11px] font-bold leading-none">대리</span>
                                                 </button>
                                                 <button
                                                     onClick={() => handleOpenWrittenVoteModal(member)}
                                                     disabled={!activeMeetingId}
-                                                    className="flex flex-col items-center justify-center w-14 h-14 rounded-lg bg-orange-400 active:bg-orange-500 text-white shadow-sm disabled:opacity-30 disabled:cursor-not-allowed transition-all active:scale-95"
+                                                    className="flex flex-col items-center justify-center w-12 h-12 rounded-lg bg-orange-400 active:bg-orange-500 text-white shadow-sm disabled:opacity-30 disabled:cursor-not-allowed transition-all active:scale-95"
                                                 >
-                                                    <UserCheck size={20} className="mb-0.5" />
-                                                    <span className="text-[12px] font-bold leading-none">서면</span>
+                                                    <UserCheck size={18} className="mb-0.5" />
+                                                    <span className="text-[11px] font-bold leading-none">서면</span>
                                                 </button>
                                             </>
                                         ) : (
