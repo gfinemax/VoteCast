@@ -185,7 +185,7 @@ export default function CheckInPage() {
             <header className="bg-white border-b border-slate-200 sticky top-0 z-20 shadow-sm">
                 <div className="max-w-4xl mx-auto">
                     {/* Top Bar: Title + Status */}
-                    <div className="flex justify-start items-center gap-3 px-4 py-2 bg-slate-50 border-b border-slate-100">
+                    <div className="flex justify-start items-center gap-3 px-4 py-1 bg-slate-50 border-b border-slate-100">
                         {currentMeeting ? (
                             <div className="flex items-center gap-1.5">
                                 <span className="relative flex h-2.5 w-2.5">
@@ -204,16 +204,16 @@ export default function CheckInPage() {
                     {/* Compact Stats Bar (Always Visible) */}
                     {activeMeetingId && (
                         <div className="px-4 py-2 bg-white">
-                            <div className="relative flex items-center justify-center py-1 md:py-4 px-2" onClick={() => setIsStatsOpen(!isStatsOpen)}>
+                            <div className="relative flex items-center justify-center py-0.5 md:py-4 px-2" onClick={() => setIsStatsOpen(!isStatsOpen)}>
 
                                 {/* 1. Left: Total Context */}
-                                <div className="absolute left-0 flex flex-col md:block items-start text-base text-slate-500 font-bold tracking-tighter leading-tight md:leading-normal">
+                                <div className="absolute left-0 flex flex-col md:block items-start text-base text-slate-500 font-bold tracking-tighter leading-none md:leading-normal">
                                     <span>전체 {stats.total}명</span>
                                     <span className="text-emerald-600">({stats.rate}%)</span>
                                 </div>
 
                                 {/* 2. Center: Hero Number */}
-                                <div className="flex items-center gap-3 cursor-pointer group hover:scale-105 transition-transform duration-200">
+                                <div className="flex items-center gap-2 cursor-pointer group hover:scale-105 transition-transform duration-200">
                                     {/* Flip Counter Component */}
                                     <FlipNumber value={stats.checkedIn} />
                                 </div>
@@ -276,8 +276,8 @@ export default function CheckInPage() {
             </header>
 
             {/* 2. Search & List */}
-            <main className="flex-1 overflow-hidden flex flex-col max-w-4xl mx-auto w-full px-4 pt-4 pb-4">
-                <div className="relative mb-3">
+            <main className="flex-1 overflow-hidden flex flex-col max-w-4xl mx-auto w-full px-4 pt-2 pb-4">
+                <div className="relative mb-2">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
                     <input
                         className="w-full pl-9 pr-4 py-2.5 rounded-lg border border-slate-300 shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-base bg-white text-slate-900 placeholder:text-slate-400"
@@ -296,7 +296,7 @@ export default function CheckInPage() {
                         const displayProxyName = record?.proxy_name || member.proxy;
 
                         return (
-                            <div key={member.id} className="p-3 rounded-xl border border-slate-200 bg-white shadow-sm transition-all hover:border-blue-300">
+                            <div key={member.id} className="p-2 rounded-xl border border-slate-200 bg-white shadow-sm transition-all hover:border-blue-300">
                                 <div className="flex justify-between items-center">
                                     {/* Member Info (Compact Left) */}
                                     <div className="flex flex-col">
