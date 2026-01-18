@@ -207,10 +207,9 @@ export default function CheckInPage() {
                             <div className="relative flex items-center justify-center py-4 px-2" onClick={() => setIsStatsOpen(!isStatsOpen)}>
 
                                 {/* 1. Left: Total Context */}
-                                <div className="absolute left-0 flex items-center">
-                                    <span className="text-base text-slate-500 font-bold tracking-tighter">
-                                        전체 {stats.total}명<span className="text-emerald-600">({stats.rate}%)</span>
-                                    </span>
+                                <div className="absolute left-0 flex flex-col md:block items-start text-base text-slate-500 font-bold tracking-tighter leading-tight md:leading-normal">
+                                    <span>전체 {stats.total}명</span>
+                                    <span className="text-emerald-600">({stats.rate}%)</span>
                                 </div>
 
                                 {/* 2. Center: Hero Number */}

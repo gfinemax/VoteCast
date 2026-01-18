@@ -69,6 +69,8 @@ const FlipDigit = ({ digit, playSound }) => {
                 <span className="absolute top-0 left-0 right-0 h-full flex items-center justify-center text-5xl font-black text-slate-100 translate-y-1/2">
                     {previousDigit}
                 </span>
+                {/* Shadow Overlay: Darkens as it flips down */}
+                <div className={`absolute inset-0 bg-black transition-opacity duration-300 ease-in z-20 ${isFlipping ? 'opacity-60' : 'opacity-0'}`}></div>
             </div>
 
             {/* Bottom Flip (Next Digit - Folds Down) */}
@@ -82,6 +84,8 @@ const FlipDigit = ({ digit, playSound }) => {
                 <span className="absolute bottom-0 left-0 right-0 h-full flex items-center justify-center text-5xl font-black text-slate-100 -translate-y-1/2">
                     {currentDigit}
                 </span>
+                {/* Shadow Overlay: Lightens as it flips flat */}
+                <div className={`absolute inset-0 bg-black transition-opacity duration-300 ease-out z-20 ${isFlipping ? 'opacity-0' : 'opacity-60'}`}></div>
             </div>
 
             {/* Split Line Glow/Shadow */}
