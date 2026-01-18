@@ -205,8 +205,8 @@ export default function CheckInPage() {
                         <div className="px-4 py-2 bg-white">
                             <div className="flex items-center justify-between" onClick={() => setIsStatsOpen(!isStatsOpen)}>
                                 <div className="flex items-baseline gap-2">
-                                    <span className="text-4xl font-black text-slate-800 tracking-tight">{stats.checkedIn}</span>
-                                    <span className="text-sm text-slate-500 font-bold">/ {stats.total}명 <span className="text-emerald-600">({stats.rate}%)</span></span>
+                                    <span className="text-4xl font-black text-blue-600 tracking-tight">{stats.checkedIn}</span>
+                                    <span className="text-base text-slate-500 font-bold">/ {stats.total}명 <span className="text-emerald-600">({stats.rate}%)</span></span>
                                 </div>
                                 <button className="text-xs font-bold text-white bg-slate-800 hover:bg-slate-700 active:scale-95 transition-all px-3 py-1.5 rounded-full flex items-center gap-1 shadow-md">
                                     {isStatsOpen ? (
