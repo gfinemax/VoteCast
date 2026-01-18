@@ -24,3 +24,34 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* Flip Counter Utilities */
+.perspective-1000 {
+  perspective: 1000px;
+}
+.backface-hidden {
+  backface-visibility: hidden;
+}
+.rotate-x-90 {
+  transform: rotateX(-90deg); /* Negative for top flap folding down */
+}
+.rotate-x-0 {
+  transform: rotateX(0deg);
+}
+
+/* Fix for rotate-x-90 on bottom flap which should start at 90 and go to 0 */
+/* Actually, let's just use specific classes for the component logic */
+.flip-card-top {
+    transform-origin: bottom;
+    transform: rotateX(0deg);
+}
+.flip-card-top.flipping {
+    transform: rotateX(-90deg);
+}
+.flip-card-bottom {
+    transform-origin: top;
+    transform: rotateX(90deg);
+}
+.flip-card-bottom.flipping {
+    transform: rotateX(0deg);
+}

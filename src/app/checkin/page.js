@@ -3,6 +3,7 @@
 import React, { useState, useMemo } from 'react';
 import { useStore } from '@/lib/store';
 import { Search, UserCheck, UserX, AlertCircle, Clock, Check, RotateCcw, ChevronDown, ChevronUp } from 'lucide-react';
+import FlipNumber from '@/components/ui/FlipNumber';
 import Button from '@/components/ui/Button';
 import Card from '@/components/ui/Card';
 
@@ -213,12 +214,9 @@ export default function CheckInPage() {
                                 </div>
 
                                 {/* 2. Center: Hero Number */}
-                                <div className="flex items-center gap-1 cursor-pointer group hover:scale-105 transition-transform duration-200">
-                                    <span className="text-lg font-bold text-slate-700">집계</span>
-                                    <span className="text-5xl font-black text-slate-900 drop-shadow-xl tracking-tighter">
-                                        {stats.checkedIn}
-                                    </span>
-                                    <span className="text-lg font-bold text-slate-700">명</span>
+                                <div className="flex items-center gap-3 cursor-pointer group hover:scale-105 transition-transform duration-200">
+                                    {/* Flip Counter Component */}
+                                    <FlipNumber value={stats.checkedIn} />
                                 </div>
 
                                 {/* 3. Right: Detail Button */}
