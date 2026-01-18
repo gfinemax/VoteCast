@@ -74,9 +74,9 @@ export default function CheckInPage() {
     const filteredMembers = useMemo(() => {
         if (!searchTerm) return members;
         return members.filter(m =>
-            m.name.includes(searchTerm) ||
-            (m.unit && m.unit.includes(searchTerm)) ||
-            (m.proxy && m.proxy.includes(searchTerm))
+            String(m.name || '').includes(searchTerm) ||
+            String(m.unit || '').includes(searchTerm) ||
+            String(m.proxy || '').includes(searchTerm)
         );
     }, [members, searchTerm]);
 
@@ -219,11 +219,11 @@ export default function CheckInPage() {
                                 </div>
 
                                 {/* 3. Right: Detail Button */}
-                                <button className="absolute right-0 text-[10px] font-bold text-white bg-slate-500 hover:bg-slate-600 active:scale-95 transition-all px-2.5 py-1 rounded-full flex items-center gap-1 shadow-md">
+                                <button className="absolute right-0 text-xs font-bold text-white bg-slate-600 hover:bg-slate-700 active:scale-95 transition-all px-2 py-0.5 rounded-full flex items-center gap-1 shadow-md">
                                     {isStatsOpen ? (
-                                        <>접기 <ChevronUp size={12} /></>
+                                        <>접기 <ChevronUp size={14} /></>
                                     ) : (
-                                        <>상세 통계 <ChevronDown size={12} /></>
+                                        <>상세 통계 <ChevronDown size={14} /></>
                                     )}
                                 </button>
                             </div>
