@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import { useStore } from '@/lib/store';
 import { supabase } from '@/lib/supabase';
 import { Play, Pause, Monitor, Settings } from 'lucide-react';
@@ -106,17 +106,37 @@ export default function AdminPage() {
         actions.setProjectorMode('PPT', { agendaTitle: currentAgenda.title });
     };
 
+    const [isProjectorOpen, setIsProjectorOpen] = useState(false);
+    const projectorWindowRef = React.useRef(null);
+
     const openProjectorWindow = () => {
+        // Check if window is already open and not closed
+        if (projectorWindowRef.current && !projectorWindowRef.current.closed) {
+            projectorWindowRef.current.focus();
+            return;
+        }
+
         const width = 1200;
         const height = 800;
         const left = (window.screen.width - width) / 2;
         const top = (window.screen.height - height) / 2;
 
-        window.open(
+        projectorWindowRef.current = window.open(
             '/projector',
             'VoteCastProjector',
             `width=${width},height=${height},left=${left},top=${top},menubar=no,toolbar=no,location=no,status=no`
         );
+
+        if (projectorWindowRef.current) {
+            setIsProjectorOpen(true);
+            // Track when window is closed
+            const checkClosed = setInterval(() => {
+                if (projectorWindowRef.current?.closed) {
+                    setIsProjectorOpen(false);
+                    clearInterval(checkClosed);
+                }
+            }, 1000);
+        }
     };
 
     return (
@@ -131,52 +151,21 @@ export default function AdminPage() {
                         <Settings size={20} className="text-slate-400" />
                         Main Control
                     </h2>
-                    <div className="flex gap-1 items-center flex-grow">
-                        {/* 1. Vote Result */}
-                        <Button
-                            variant={projectorMode === 'RESULT' ? 'success' : 'secondary'}
-                            onClick={handlePublish}
-                            className="text-sm px-3 py-1.5"
-                        >
-                            <Play size={14} /> 투표 결과
-                        </Button>
-
-                        {/* 2. Agenda PPT */}
-                        <div className="flex items-center bg-slate-100 rounded-lg p-0.5 gap-0.5">
-                            <Button
-                                variant={projectorMode === 'PPT' ? 'success' : 'secondary'}
-                                onClick={handleProjectorPPT}
-                                className="text-sm px-3 py-1.5"
-                            >
-                                <Monitor size={14} /> 안건 설명
-                            </Button>
-                            {projectorMode === 'PPT' && (
-                                <div className="px-3 py-1.5 text-xs font-black font-mono text-blue-600 bg-white rounded shadow-sm flex items-center gap-1.5">
-                                    <span className="text-[10px] text-slate-400">PAGE</span>
-                                    {voteData?.presentationPage || 1}
-                                </div>
-                            )}
-                        </div>
-
-                        {/* 3. Waiting Board */}
-                        <Button
-                            variant={projectorMode === 'WAITING' ? 'success' : 'secondary'}
-                            onClick={handleProjectorWaiting}
-                            className="text-sm px-3 py-1.5"
-                        >
-                            <Settings size={14} /> 성원현황
-                        </Button>
-
+                    <div className="flex gap-2 items-center flex-grow">
                         <div className="flex-grow"></div>
 
-                        {/* 4. Open Window - Red */}
-                        <Button
-                            className="bg-red-600 text-white hover:bg-red-700 border-0 shadow-lg text-sm px-3 py-1.5 ml-auto"
+                        {/* Open Projector Window */}
+                        <button
                             onClick={openProjectorWindow}
+                            className={`flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-sm transition-all shadow-lg ${isProjectorOpen
+                                    ? 'bg-emerald-500 text-white shadow-emerald-500/30 hover:bg-emerald-600'
+                                    : 'bg-emerald-600 text-white hover:bg-emerald-700'
+                                }`}
                         >
-                            <Monitor size={14} className="mr-1" />
-                            송출창
-                        </Button>
+                            <Monitor size={14} />
+                            <span>{isProjectorOpen ? '송출중' : '송출창'}</span>
+                            {isProjectorOpen && <span className="w-2 h-2 bg-white rounded-full animate-pulse"></span>}
+                        </button>
                         <AuthStatus />
                     </div>
                 </>

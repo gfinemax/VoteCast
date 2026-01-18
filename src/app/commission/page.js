@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import { useStore } from '@/lib/store';
 import { Play, ClipboardList, Monitor, Settings } from 'lucide-react';
 import Button from '@/components/ui/Button';
@@ -45,17 +45,35 @@ export default function CommissionPage() {
         actions.setProjectorMode('PPT', { agendaTitle: currentAgenda.title });
     };
 
+    const [isProjectorOpen, setIsProjectorOpen] = useState(false);
+    const projectorWindowRef = React.useRef(null);
+
     const openProjectorWindow = () => {
+        if (projectorWindowRef.current && !projectorWindowRef.current.closed) {
+            projectorWindowRef.current.focus();
+            return;
+        }
+
         const width = 1200;
         const height = 800;
         const left = (window.screen.width - width) / 2;
         const top = (window.screen.height - height) / 2;
 
-        window.open(
+        projectorWindowRef.current = window.open(
             '/projector',
             'VoteCastProjector',
             `width=${width},height=${height},left=${left},top=${top},menubar=no,toolbar=no,location=no,status=no`
         );
+
+        if (projectorWindowRef.current) {
+            setIsProjectorOpen(true);
+            const checkClosed = setInterval(() => {
+                if (projectorWindowRef.current?.closed) {
+                    setIsProjectorOpen(false);
+                    clearInterval(checkClosed);
+                }
+            }, 1000);
+        }
     };
 
     return (
@@ -69,42 +87,19 @@ export default function CommissionPage() {
                         <ClipboardList size={20} className="text-emerald-500" />
                         Commission Panel
                     </h2>
-                    <div className="flex gap-1 items-center flex-grow">
-                        {/* 1. Vote Result */}
-                        <Button
-                            variant={state.projectorMode === 'RESULT' ? 'success' : 'secondary'}
-                            onClick={handlePublish}
-                            className="text-sm px-3 py-1.5"
-                        >
-                            <Play size={14} /> 투표 결과
-                        </Button>
-
-                        {/* 2. Agenda PPT */}
-                        <Button
-                            variant={state.projectorMode === 'PPT' ? 'success' : 'secondary'}
-                            onClick={handleProjectorPPT}
-                            className="text-sm px-3 py-1.5"
-                        >
-                            <Monitor size={14} /> 안건 설명
-                        </Button>
-
-                        {/* 3. Waiting Board */}
-                        <Button
-                            variant={state.projectorMode === 'WAITING' ? 'success' : 'secondary'}
-                            onClick={handleProjectorWaiting}
-                            className="text-sm px-3 py-1.5"
-                        >
-                            <Settings size={14} /> 성원현황
-                        </Button>
-
+                    <div className="flex gap-2 items-center flex-grow">
                         <div className="flex-grow"></div>
-                        <Button
-                            className="bg-red-600 text-white hover:bg-red-700 border-0 shadow-lg text-sm px-3 py-1.5 ml-auto"
+                        <button
                             onClick={openProjectorWindow}
+                            className={`flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-sm transition-all shadow-lg ${isProjectorOpen
+                                ? 'bg-emerald-500 text-white shadow-emerald-500/30 hover:bg-emerald-600'
+                                : 'bg-emerald-600 text-white hover:bg-emerald-700'
+                                }`}
                         >
-                            <Monitor size={14} className="mr-1" />
-                            송출창
-                        </Button>
+                            <Monitor size={14} />
+                            <span>{isProjectorOpen ? '송출중' : '송출창'}</span>
+                            {isProjectorOpen && <span className="w-2 h-2 bg-white rounded-full animate-pulse"></span>}
+                        </button>
                         <AuthStatus />
                     </div>
                 </>
@@ -118,11 +113,7 @@ export default function CommissionPage() {
 
                 <div className="col-span-12">
                     <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-                        <div className="flex justify-between items-start mb-6">
-                            <div>
-                                <div className="text-2xl font-bold text-slate-800">{currentAgenda?.title}</div>
-                            </div>
-                        </div>
+
 
                         <VoteControl />
                     </div>

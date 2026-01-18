@@ -201,7 +201,7 @@ export default function VoteControl() {
                     ) : (
                         <button
                             onClick={handleConfirmDecision}
-                            className="flex items-center gap-2 bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 shadow-lg hover:shadow-xl transition-all font-bold animate-pulse-slow text-sm"
+                            className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 shadow transition-all text-sm"
                         >
                             <Lock size={18} />
                             의결확정
@@ -314,7 +314,7 @@ export default function VoteControl() {
 
                         {/* 4. Total (Equation Result) */}
                         <div className="flex-1 flex justify-end items-baseline gap-2">
-                            <span className="text-base font-bold text-slate-400">총 성원</span>
+                            <span className="text-base font-bold text-slate-400">총</span>
                             <div className="text-5xl font-black text-blue-600 leading-none">
                                 {displayStats.total.toLocaleString()}<span className="text-xl text-blue-400 font-bold ml-1">명</span>
                             </div>
@@ -440,7 +440,8 @@ export default function VoteControl() {
                         onChange={(e) => actions.updateAgenda({ id: currentAgenda.id, declaration: e.target.value })}
                         disabled={!isEditingDeclaration || isConfirmed}
                         placeholder={isEditingDeclaration ? "선포문구를 입력하세요..." : "편집 버튼을 클릭하면 자동 생성됩니다."}
-                        className={`w-full p-3 border rounded-lg outline-none text-xl font-serif resize-none h-40 leading-relaxed transition-colors ${isEditingDeclaration && !isConfirmed
+                        rows={Math.max(6, (declaration || '').split('\n').length + 2)}
+                        className={`w-full p-3 border rounded-lg outline-none text-xl font-serif resize-none min-h-40 leading-relaxed transition-colors ${isEditingDeclaration && !isConfirmed
                             ? 'border-blue-300 bg-white text-slate-700 focus:ring-2 focus:ring-blue-500'
                             : 'border-slate-200 bg-slate-50 text-slate-600 cursor-not-allowed'
                             }`}
@@ -452,6 +453,6 @@ export default function VoteControl() {
                     )}
                 </Card>
             </section>
-        </div>
+        </div >
     );
 }
