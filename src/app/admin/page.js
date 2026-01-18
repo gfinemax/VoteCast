@@ -185,7 +185,7 @@ export default function AdminPage() {
 
                 <div className="col-span-12">
                     <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-                        <div className="text-2xl font-bold text-slate-800 mb-6">{currentAgenda?.title}</div>
+
                         <VoteControl />
                     </div>
                 </div>

@@ -100,10 +100,16 @@ export function StoreProvider({ children }) {
             })
             .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'attendance' }, (payload) => {
                 console.log('[Realtime] Attendance INSERT:', payload.new);
-                setState(prev => ({
-                    ...prev,
-                    attendance: [...prev.attendance, payload.new]
-                }));
+                setState(prev => {
+                    // Remove potential optimistic record (deduplicate by composite key)
+                    const cleanList = prev.attendance.filter(a =>
+                        !(a.member_id === payload.new.member_id && a.meeting_id === payload.new.meeting_id)
+                    );
+                    return {
+                        ...prev,
+                        attendance: [...cleanList, payload.new]
+                    };
+                });
             })
             .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'attendance' }, (payload) => {
                 console.log('[Realtime] Attendance DELETE:', payload.old);
@@ -150,7 +156,7 @@ export function StoreProvider({ children }) {
             if (error) console.error("Failed to set active meeting:", error);
         },
 
-        checkInMember: async (memberId, type = 'direct', proxyName = null) => {
+        checkInMember: async (memberId, type = 'direct', proxyName = null, votes = null) => {
             // USE ACTIVE MEETING ID (Global)
             const meetingId = stateRef.current.activeMeetingId;
             if (!meetingId) {
@@ -158,7 +164,7 @@ export function StoreProvider({ children }) {
                 return; // Block check-in if no meeting is active
             }
 
-            // Optimistic Update
+            // Optimistic Update (Attendance Only)
             const tempId = Date.now();
             const newRecord = {
                 id: tempId,
@@ -174,29 +180,47 @@ export function StoreProvider({ children }) {
                 attendance: [...prev.attendance, newRecord]
             }));
 
-            // DB Insert
-            const { error } = await supabase.from('attendance').insert({
-                member_id: memberId,
-                meeting_id: meetingId,
-                type,
-                proxy_name: proxyName
+            // Use RPC for Transactional Check-in (with Votes)
+            // Even if no votes, RPC handles attendance insert safely.
+            const { error } = await supabase.rpc('check_in_member', {
+                p_member_id: memberId,
+                p_meeting_id: meetingId,
+                p_type: type,
+                p_proxy_name: proxyName,
+                p_votes: votes // Can be null
             });
 
             if (error) {
-                console.error("Check-in Failed:", error);
-                // Rollback
-                setState(prev => ({
-                    ...prev,
-                    attendance: prev.attendance.filter(a => a.id !== tempId)
-                }));
+                // If RPC fails (e.g., function not found), try fallback only if NO votes
+                if (error.code === '42883' && !votes) { // undefined_function
+                    console.warn("RPC 'check_in_member' not found. Falling back to simple insert.");
+                    const { error: fallbackError } = await supabase.from('attendance').insert({
+                        member_id: memberId,
+                        meeting_id: meetingId,
+                        type,
+                        proxy_name: proxyName
+                    });
+                    if (fallbackError) {
+                        console.error("Fallback Check-in Failed:", fallbackError);
+                        // Rollback
+                        setState(prev => ({
+                            ...prev,
+                            attendance: prev.attendance.filter(a => a.id !== tempId)
+                        }));
+                    }
+                } else {
+                    console.error("Check-in Transaction Failed:", error);
+                    // Rollback
+                    setState(prev => ({
+                        ...prev,
+                        attendance: prev.attendance.filter(a => a.id !== tempId)
+                    }));
+                }
             }
         },
 
         cancelCheckInMember: async (memberId) => {
-            // Cancel from the ACTIVE meeting context?
-            // Or should we allow canceling from *any* context if shown in UI?
-            // Usually Check-in UI shows status based on Active Meeting.
-            // So we use activeMeetingId.
+            // Cancel from the ACTIVE meeting context
             const meetingId = stateRef.current.activeMeetingId;
             if (!meetingId) return;
 
@@ -206,13 +230,25 @@ export function StoreProvider({ children }) {
                 attendance: prev.attendance.filter(a => !(a.member_id === memberId && a.meeting_id === meetingId))
             }));
 
-            // DB Delete
-            const { error } = await supabase.from('attendance')
-                .delete()
-                .eq('member_id', memberId)
-                .eq('meeting_id', meetingId);
+            // Use RPC to Cancel (and reverse votes)
+            const { error } = await supabase.rpc('cancel_check_in_member', {
+                p_member_id: memberId,
+                p_meeting_id: meetingId
+            });
 
-            if (error) console.error("Cancel Check-in Failed:", error);
+            if (error) {
+                // Fallback for simple delete if RPC missing
+                if (error.code === '42883') {
+                    console.warn("RPC 'cancel_check_in_member' not found. Falling back to simple delete.");
+                    const { error: fallbackError } = await supabase.from('attendance')
+                        .delete()
+                        .eq('member_id', memberId)
+                        .eq('meeting_id', meetingId);
+                    if (fallbackError) console.error("Fallback Cancel Check-in Failed:", fallbackError);
+                } else {
+                    console.error("Cancel Check-in Failed:", error);
+                }
+            }
         },
 
         addAgenda: async (newAgenda, insertAfterOrderIndex = null) => {

@@ -106,6 +106,69 @@ export default function CheckInPage() {
         setIsProxyModalOpen(true);
     };
 
+
+    // Written Vote Modal State
+    const [isWrittenVoteModalOpen, setIsWrittenVoteModalOpen] = useState(false);
+    const [writtenVoteMemberId, setWrittenVoteMemberId] = useState(null);
+    const [writtenVotes, setWrittenVotes] = useState({}); // { agendaId: 'yes' | 'no' | 'abstain' }
+
+    // Derive Active Agendas (Items inside the current Active Meeting Folder)
+    // Assumption: Agendas are ordered. Meeting is a folder. Items follow it until next folder.
+    const activeAgendas = useMemo(() => {
+        if (!activeMeetingId || agendas.length === 0) return [];
+
+        const folderIndex = agendas.findIndex(a => a.id === activeMeetingId);
+        if (folderIndex === -1) return [];
+
+        const items = [];
+        for (let i = folderIndex + 1; i < agendas.length; i++) {
+            if (agendas[i].type === 'folder') break; // Stop at next folder
+            items.push(agendas[i]);
+        }
+        return items;
+    }, [agendas, activeMeetingId]);
+
+    const handleOpenWrittenVoteModal = (member) => {
+        setWrittenVoteMemberId(member.id);
+
+        // Initialize Default Votes (Abstain)
+        const initialVotes = {};
+        activeAgendas.forEach(a => {
+            initialVotes[a.id] = 'abstain';
+        });
+        setWrittenVotes(initialVotes);
+
+        setIsWrittenVoteModalOpen(true);
+    };
+
+    const handleConfirmWrittenVote = () => {
+        if (!writtenVoteMemberId) return;
+
+        // Convert Map to Array for API
+        const votesArray = Object.entries(writtenVotes).map(([agendaId, choice]) => ({
+            agenda_id: parseInt(agendaId),
+            choice: choice
+        }));
+
+        handleCheckIn(writtenVoteMemberId, 'written', null); // Pass votes via specialized call if needed, but here handleCheckIn is generic wrapper
+        // Wait, handleCheckIn uses actions.checkInMember. 
+        // We need to pass votes to actions.checkInMember.
+        // Let's modify handleCheckIn or call action directly.
+        // Actually handleCheckIn wrapper has alert logic. Let's reuse it or bypass.
+        // It calls actions.checkInMember(memberId, type, proxyName).
+        // I need to update handleCheckIn or call action directly.
+        // Let's update handleCheckIn signature OR call action directly here.
+        // Calling action directly is cleaner here since we already checked activeMeetingId via activeAgendas logic?
+        // But handleCheckIn has the check.
+        // Let's call checkInMember directly.
+
+        actions.checkInMember(writtenVoteMemberId, 'written', null, votesArray);
+
+        setIsWrittenVoteModalOpen(false);
+        setWrittenVoteMemberId(null);
+        setWrittenVotes({});
+    };
+
     const handleConfirmProxy = () => {
         if (proxyMemberId && proxyNameInput.trim()) {
             handleCheckIn(proxyMemberId, 'proxy', proxyNameInput.trim());
@@ -255,7 +318,7 @@ export default function CheckInPage() {
                                                     <span className="text-[12px] font-bold leading-none">대리</span>
                                                 </button>
                                                 <button
-                                                    onClick={() => handleCheckIn(member.id, 'written')}
+                                                    onClick={() => handleOpenWrittenVoteModal(member)}
                                                     disabled={!activeMeetingId}
                                                     className="flex flex-col items-center justify-center w-14 h-14 rounded-lg bg-orange-400 active:bg-orange-500 text-white shadow-sm disabled:opacity-30 disabled:cursor-not-allowed transition-all active:scale-95"
                                                 >
@@ -321,6 +384,88 @@ export default function CheckInPage() {
                                 className="flex-1 py-4 text-base font-bold text-blue-600 hover:bg-blue-50 active:bg-blue-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                             >
                                 확인
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Written Vote Input Modal */}
+            {isWrittenVoteModalOpen && (
+                <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center px-4 animate-in fade-in duration-200">
+                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden animate-in zoom-in-95 duration-200 flex flex-col max-h-[90vh]">
+                        {/* Header */}
+                        <div className="p-5 border-b border-slate-100 bg-slate-50 flex justify-between items-center">
+                            <div>
+                                <h3 className="text-lg font-bold text-slate-800">서면 결의 입력</h3>
+                                <p className="text-sm text-slate-500">
+                                    {members.find(m => m.id === writtenVoteMemberId)?.unit} {members.find(m => m.id === writtenVoteMemberId)?.name}
+                                </p>
+                            </div>
+                            <button
+                                onClick={() => {
+                                    // Batch Set All to YES
+                                    const newVotes = {};
+                                    activeAgendas.forEach(agenda => {
+                                        newVotes[agenda.id] = 'yes';
+                                    });
+                                    setWrittenVotes(newVotes);
+                                }}
+                                className="px-3 py-1.5 bg-emerald-100 text-emerald-700 rounded-lg text-xs font-bold hover:bg-emerald-200 transition-colors"
+                            >
+                                전체 찬성
+                            </button>
+                        </div>
+
+                        {/* Agenda List */}
+                        <div className="flex-1 overflow-y-auto p-5 space-y-4">
+                            {activeAgendas.length === 0 ? (
+                                <p className="text-center text-slate-400 py-10">투표할 안건이 없습니다.</p>
+                            ) : (
+                                activeAgendas.map(agenda => (
+                                    <div key={agenda.id} className="flex flex-col gap-2">
+                                        <span className="text-sm font-bold text-slate-700 break-keep leading-tight">
+                                            {agenda.title}
+                                        </span>
+                                        <div className="flex bg-slate-100 rounded-lg p-1">
+                                            <button
+                                                onClick={() => setWrittenVotes(prev => ({ ...prev, [agenda.id]: 'yes' }))}
+                                                className={`flex-1 py-2 rounded-md text-sm font-bold transition-all ${writtenVotes[agenda.id] === 'yes' ? 'bg-white text-emerald-600 shadow-sm ring-1 ring-slate-200' : 'text-slate-400 hover:text-slate-600'}`}
+                                            >
+                                                찬성
+                                            </button>
+                                            <button
+                                                onClick={() => setWrittenVotes(prev => ({ ...prev, [agenda.id]: 'no' }))}
+                                                className={`flex-1 py-2 rounded-md text-sm font-bold transition-all ${writtenVotes[agenda.id] === 'no' ? 'bg-white text-red-500 shadow-sm ring-1 ring-slate-200' : 'text-slate-400 hover:text-slate-600'}`}
+                                            >
+                                                반대
+                                            </button>
+                                            <button
+                                                onClick={() => setWrittenVotes(prev => ({ ...prev, [agenda.id]: 'abstain' }))}
+                                                className={`flex-1 py-2 rounded-md text-sm font-bold transition-all ${writtenVotes[agenda.id] === 'abstain' ? 'bg-white text-slate-600 shadow-sm ring-1 ring-slate-200' : 'text-slate-400 hover:text-slate-600'}`}
+                                            >
+                                                기권
+                                            </button>
+                                        </div>
+                                    </div>
+                                ))
+                            )}
+                        </div>
+
+                        {/* Footer */}
+                        <div className="flex border-t border-slate-100 bg-white">
+                            <button
+                                onClick={() => setIsWrittenVoteModalOpen(false)}
+                                className="flex-1 py-4 text-base font-bold text-slate-500 hover:bg-slate-50 active:bg-slate-100 transition-colors"
+                            >
+                                취소
+                            </button>
+                            <div className="w-[1px] bg-slate-100"></div>
+                            <button
+                                onClick={handleConfirmWrittenVote}
+                                className="flex-1 py-4 text-base font-bold text-orange-600 hover:bg-orange-50 active:bg-orange-100 transition-colors"
+                            >
+                                확인 (입장 처리)
                             </button>
                         </div>
                     </div>

@@ -180,7 +180,7 @@ export default function VoteControl() {
             {/* Header Section */}
             <div className="flex justify-between items-start">
                 <div>
-                    <h2 className="text-xl font-bold flex items-center gap-2">
+                    <h2 className="text-2xl font-bold flex items-center gap-2">
                         {currentAgenda.title}
                         <span className="text-sm font-normal text-slate-500 bg-slate-100 px-2 py-0.5 rounded">
                             {isSpecialVote ? '특별결의(2/3)' : '일반결의(과반)'}
@@ -193,18 +193,18 @@ export default function VoteControl() {
                     {isConfirmed ? (
                         <button
                             onClick={handleResetDecision}
-                            className="flex items-center gap-2 bg-slate-600 text-white px-4 py-2 rounded-lg hover:bg-slate-700 shadow transition-all"
+                            className="flex items-center gap-2 bg-slate-600 text-white px-4 py-2 rounded-lg hover:bg-slate-700 shadow transition-all text-sm"
                         >
                             <Unlock size={18} />
-                            확정 취소 (초기화)
+                            확정취소
                         </button>
                     ) : (
                         <button
                             onClick={handleConfirmDecision}
-                            className="flex items-center gap-2 bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 shadow-lg hover:shadow-xl transition-all font-bold animate-pulse-slow"
+                            className="flex items-center gap-2 bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 shadow-lg hover:shadow-xl transition-all font-bold animate-pulse-slow text-sm"
                         >
                             <Lock size={18} />
-                            의결 확정 (저장)
+                            의결확정
                         </button>
                     )}
                 </div>
@@ -214,7 +214,7 @@ export default function VoteControl() {
             {isConfirmed && (
                 <div className="bg-blue-50 border border-blue-200 p-3 rounded-lg flex justify-center items-center gap-2 text-blue-700 font-bold animate-in fade-in slide-in-from-top-2">
                     <Lock size={16} />
-                    현재 의결 결과가 확정(박제)되었습니다. (실시간 성원 변동의 영향을 받지 않습니다)
+                    현재 의결 결과가 확정되었습니다. (실시간 성원 변동의 영향을 받지 않습니다)
                 </div>
             )}
 
