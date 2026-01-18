@@ -207,26 +207,26 @@ export default function CheckInPage() {
 
                                 {/* 1. Left: Total Context */}
                                 <div className="absolute left-0 flex items-center">
-                                    <span className="text-lg text-slate-500 font-bold tracking-tight">
-                                        전체 {stats.total}명 중 <span className="text-emerald-600">({stats.rate}%)</span>
+                                    <span className="text-base text-slate-500 font-bold tracking-tighter">
+                                        전체 {stats.total}명<span className="text-emerald-600">({stats.rate}%)</span>
                                     </span>
                                 </div>
 
                                 {/* 2. Center: Hero Number */}
-                                <div className="flex items-center gap-2 cursor-pointer group hover:scale-105 transition-transform duration-200">
-                                    <span className="text-xl font-bold text-slate-700">집계</span>
-                                    <span className="text-6xl font-black text-slate-900 drop-shadow-xl tracking-tighter">
+                                <div className="flex items-center gap-1 cursor-pointer group hover:scale-105 transition-transform duration-200">
+                                    <span className="text-lg font-bold text-slate-700">집계</span>
+                                    <span className="text-5xl font-black text-slate-900 drop-shadow-xl tracking-tighter">
                                         {stats.checkedIn}
                                     </span>
-                                    <span className="text-xl font-bold text-slate-700">명</span>
+                                    <span className="text-lg font-bold text-slate-700">명</span>
                                 </div>
 
                                 {/* 3. Right: Detail Button */}
-                                <button className="absolute right-0 text-xs font-bold text-white bg-slate-800 hover:bg-slate-700 active:scale-95 transition-all px-3 py-1.5 rounded-full flex items-center gap-1 shadow-md">
+                                <button className="absolute right-0 text-[10px] font-bold text-white bg-slate-800 hover:bg-slate-700 active:scale-95 transition-all px-2.5 py-1 rounded-full flex items-center gap-1 shadow-md">
                                     {isStatsOpen ? (
-                                        <>접기 <ChevronUp size={14} /></>
+                                        <>접기 <ChevronUp size={12} /></>
                                     ) : (
-                                        <>상세 통계 <ChevronDown size={14} /></>
+                                        <>상세 통계 <ChevronDown size={12} /></>
                                     )}
                                 </button>
                             </div>
