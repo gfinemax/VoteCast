@@ -203,12 +203,26 @@ export default function CheckInPage() {
                     {/* Compact Stats Bar (Always Visible) */}
                     {activeMeetingId && (
                         <div className="px-4 py-2 bg-white">
-                            <div className="flex items-center justify-between" onClick={() => setIsStatsOpen(!isStatsOpen)}>
-                                <div className="flex items-baseline gap-2">
-                                    <span className="text-4xl font-black text-slate-900 drop-shadow-md tracking-tight">{stats.checkedIn}</span>
-                                    <span className="text-base text-slate-500 font-bold">/ {stats.total}명 <span className="text-emerald-600">({stats.rate}%)</span></span>
+                            <div className="relative flex items-center justify-center py-4 px-2" onClick={() => setIsStatsOpen(!isStatsOpen)}>
+
+                                {/* 1. Left: Total Context */}
+                                <div className="absolute left-0 flex items-center">
+                                    <span className="text-lg text-slate-500 font-bold tracking-tight">
+                                        전체 {stats.total}명 중 <span className="text-emerald-600">({stats.rate}%)</span>
+                                    </span>
                                 </div>
-                                <button className="text-xs font-bold text-white bg-slate-800 hover:bg-slate-700 active:scale-95 transition-all px-3 py-1.5 rounded-full flex items-center gap-1 shadow-md">
+
+                                {/* 2. Center: Hero Number */}
+                                <div className="flex items-center gap-2 cursor-pointer group hover:scale-105 transition-transform duration-200">
+                                    <span className="text-xl font-bold text-slate-700">집계</span>
+                                    <span className="text-6xl font-black text-slate-900 drop-shadow-xl tracking-tighter">
+                                        {stats.checkedIn}
+                                    </span>
+                                    <span className="text-xl font-bold text-slate-700">명</span>
+                                </div>
+
+                                {/* 3. Right: Detail Button */}
+                                <button className="absolute right-0 text-xs font-bold text-white bg-slate-800 hover:bg-slate-700 active:scale-95 transition-all px-3 py-1.5 rounded-full flex items-center gap-1 shadow-md">
                                     {isStatsOpen ? (
                                         <>접기 <ChevronUp size={14} /></>
                                     ) : (
