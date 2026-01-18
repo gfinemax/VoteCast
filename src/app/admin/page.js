@@ -2,6 +2,7 @@
 
 import React from 'react';
 import { useStore } from '@/lib/store';
+import { supabase } from '@/lib/supabase';
 import { Play, Pause, Monitor, Settings } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import DashboardLayout from '@/components/admin/DashboardLayout';
@@ -11,22 +12,72 @@ import VoteControl from '@/components/admin/VoteControl';
 
 export default function AdminPage() {
     const { state, actions } = useStore();
-    const { voteData, currentAgendaId, agendas, projectorMode } = state;
+    const { voteData, currentAgendaId, agendas, projectorMode, attendance, members } = state;
     const currentAgenda = agendas.find(a => a.id === currentAgendaId);
+    const projectorModeRef = React.useRef(projectorMode);
+    projectorModeRef.current = projectorMode;
 
-    // Deriving validation logic again
-    // Update: Include Proxy in Total
-    const totalAttendance = (parseInt(voteData.writtenAttendance) || 0) +
-        (parseInt(voteData.directAttendance) || 0) +
-        (parseInt(voteData.proxyAttendance) || 0);
+    // Remote PPT Keyboard Control
+    React.useEffect(() => {
+        const handleKeyDown = (e) => {
+            // Allow control in both IDLE and PPT mode as both show the PDF base layer
+            if (projectorModeRef.current !== 'PPT' && projectorModeRef.current !== 'IDLE') return;
 
-    const totalVotesCast = (parseInt(voteData.votesYes) || 0) + (parseInt(voteData.votesNo) || 0) + (parseInt(voteData.votesAbstain) || 0);
-    const isVoteCountValid = totalAttendance === totalVotesCast;
+            // Only trigger if focus is not in an input/textarea
+            if (['INPUT', 'TEXTAREA'].includes(document.activeElement?.tagName)) return;
+
+            if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+                e.preventDefault();
+                actions.updatePresentationPage(1);
+            } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+                e.preventDefault();
+                actions.updatePresentationPage(-1);
+            }
+        };
+
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [actions]);
+
+
+    // 1. Identify Context (Meeting/Folder) for stats
+    const meetingId = React.useMemo(() => {
+        if (!currentAgenda) return null;
+        if (currentAgenda.type === 'folder') return currentAgenda.id;
+        const currentIndex = agendas.findIndex(a => a.id === currentAgendaId);
+        for (let i = currentIndex - 1; i >= 0; i--) {
+            if (agendas[i].type === 'folder') return agendas[i].id;
+        }
+        return null;
+    }, [agendas, currentAgendaId, currentAgenda]);
+
+    // 2. Derive LIVE stats (Instead of relying on voteData)
+    const meetingStats = React.useMemo(() => {
+        if (!meetingId) return { direct: 0, proxy: 0, written: 0, total: 0 };
+        const relevantRecords = attendance.filter(a => a.meeting_id === meetingId);
+        return {
+            direct: relevantRecords.filter(a => a.type === 'direct').length,
+            proxy: relevantRecords.filter(a => a.type === 'proxy').length,
+            written: relevantRecords.filter(a => a.type === 'written').length,
+            total: relevantRecords.length
+        };
+    }, [attendance, meetingId]);
 
     // Pass Logic based on Vote Type
-    const isSpecialVote = voteData.voteType === 'twoThirds';
-    const passThreshold = isSpecialVote ? Math.ceil(totalAttendance * (2 / 3)) : Math.ceil(totalAttendance / 2);
-    const isPassed = voteData.votesYes >= passThreshold;
+    const normalizeType = (type) => {
+        if (type === 'general') return 'majority';
+        if (type === 'special') return 'twoThirds';
+        return type || 'majority';
+    };
+    const currentAgendaType = normalizeType(currentAgenda?.type);
+    const isSpecialVote = currentAgendaType === 'twoThirds';
+    const totalAttendance = meetingStats.total;
+    const passThreshold = isSpecialVote ? Math.ceil(totalAttendance * (2 / 3)) : (totalAttendance / 2);
+    const votesYes = currentAgenda?.votes_yes || 0;
+    const isPassed = votesYes >= passThreshold;
+
+    const totalVotesCast = (currentAgenda?.votes_yes || 0) + (currentAgenda?.votes_no || 0) + (currentAgenda?.votes_abstain || 0);
+    const isVoteCountValid = totalAttendance === totalVotesCast;
 
     const handlePublish = () => {
         if (!isVoteCountValid) {
@@ -52,9 +103,6 @@ export default function AdminPage() {
     const handleProjectorPPT = () => {
         actions.setProjectorMode('PPT', { agendaTitle: currentAgenda.title });
     };
-
-
-
 
     const openProjectorWindow = () => {
         const width = 1200;
@@ -91,13 +139,21 @@ export default function AdminPage() {
                         </Button>
 
                         {/* 2. Agenda PPT */}
-                        <Button
-                            variant={projectorMode === 'PPT' ? 'success' : 'secondary'}
-                            onClick={handleProjectorPPT}
-                            className="text-sm px-3 py-1.5"
-                        >
-                            <Monitor size={14} /> 안건 설명
-                        </Button>
+                        <div className="flex items-center bg-slate-100 rounded-lg p-0.5 gap-0.5">
+                            <Button
+                                variant={projectorMode === 'PPT' ? 'success' : 'secondary'}
+                                onClick={handleProjectorPPT}
+                                className="text-sm px-3 py-1.5"
+                            >
+                                <Monitor size={14} /> 안건 설명
+                            </Button>
+                            {projectorMode === 'PPT' && (
+                                <div className="px-3 py-1.5 text-xs font-black font-mono text-blue-600 bg-white rounded shadow-sm flex items-center gap-1.5">
+                                    <span className="text-[10px] text-slate-400">PAGE</span>
+                                    {voteData?.presentationPage || 1}
+                                </div>
+                            )}
+                        </div>
 
                         {/* 3. Waiting Board */}
                         <Button
@@ -118,8 +174,6 @@ export default function AdminPage() {
                             <Monitor size={14} className="mr-1" />
                             송출창
                         </Button>
-
-
                     </div>
                 </>
             }
@@ -131,9 +185,7 @@ export default function AdminPage() {
 
                 <div className="col-span-12">
                     <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-
                         <div className="text-2xl font-bold text-slate-800 mb-6">{currentAgenda?.title}</div>
-
                         <VoteControl />
                     </div>
                 </div>

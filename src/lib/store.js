@@ -24,6 +24,7 @@ const INITIAL_DATA = {
     currentAgendaId: 1,
     projectorMode: 'IDLE',
     projectorData: null,
+    masterPresentationSource: null, // Global Master PPT
 };
 
 // Create Context
@@ -61,7 +62,8 @@ export function StoreProvider({ children }) {
                         currentMeetingId: defaultMeetingId, // Store Local Admin View Context
                         activeMeetingId: settings.active_meeting_id || null, // Global Admission Context
                         projectorMode: settings.projector_mode || 'IDLE',
-                        projectorData: null
+                        projectorData: null,
+                        masterPresentationSource: settings.master_presentation_source // Sync Master PPT
                     }));
                 }
                 setIsInitialized(true);
@@ -83,7 +85,8 @@ export function StoreProvider({ children }) {
                         voteData: { ...INITIAL_DATA.voteData, ...(payload.new.vote_data || {}) },
                         currentAgendaId: payload.new.current_agenda_id,
                         activeMeetingId: payload.new.active_meeting_id, // Sync Active Meeting
-                        projectorMode: payload.new.projector_mode
+                        projectorMode: payload.new.projector_mode,
+                        masterPresentationSource: payload.new.master_presentation_source
                     }));
                 }
             })
@@ -130,7 +133,7 @@ export function StoreProvider({ children }) {
     useEffect(() => { stateRef.current = state; }, [state]);
 
     // Actions
-    const actions = {
+    const actions = React.useMemo(() => ({
         // Local Admin View Switcher
         setMeetingId: (id) => {
             setState(prev => ({ ...prev, currentMeetingId: id }));
@@ -334,7 +337,8 @@ export function StoreProvider({ children }) {
             const newVoteData = {
                 ...vData,
                 voteType: newType,
-                customDeclaration: defaultDecl
+                customDeclaration: defaultDecl,
+                presentationPage: targetAgenda.start_page || 1
             };
 
             console.log('[setAgenda] Setting currentAgendaId to:', id);
@@ -367,6 +371,21 @@ export function StoreProvider({ children }) {
             if (error) console.error("Update VoteData Error:", error);
         },
 
+        updatePresentationPage: async (delta) => {
+            const currentVoteData = stateRef.current.voteData;
+            const currentPage = parseInt(currentVoteData.presentationPage) || 1;
+            const newPage = Math.max(1, currentPage + delta);
+
+            if (currentPage === newPage) return;
+
+            const newVoteData = { ...currentVoteData, presentationPage: newPage };
+            setState(prev => ({ ...prev, voteData: newVoteData }));
+
+            await supabase.from('system_settings')
+                .update({ vote_data: newVoteData })
+                .eq('id', 1);
+        },
+
         setProjectorMode: async (mode, data = null) => {
             // Save both mode AND data to state
             setState(prev => ({
@@ -381,7 +400,7 @@ export function StoreProvider({ children }) {
         },
 
         resetHelper: async () => { }
-    };
+    }), []); // Actions are stable because they use stateRef to access current state values
 
     return (
         <StoreContext.Provider value={{ state, actions }}>
