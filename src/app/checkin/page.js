@@ -184,19 +184,20 @@ export default function CheckInPage() {
             <header className="bg-white border-b border-slate-200 sticky top-0 z-20 shadow-sm">
                 <div className="max-w-4xl mx-auto">
                     {/* Top Bar: Title + Status */}
-                    <div className="flex justify-between items-center px-4 py-2 bg-slate-50 border-b border-slate-100">
-                        <h1 className="text-lg font-bold text-slate-800">입장 확인</h1>
+                    <div className="flex justify-start items-center gap-3 px-4 py-2 bg-slate-50 border-b border-slate-100">
                         {currentMeeting ? (
                             <div className="flex items-center gap-1.5">
                                 <span className="relative flex h-2.5 w-2.5">
                                     <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
                                     <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
                                 </span>
-                                <span className="text-xs font-bold text-emerald-700 truncate max-w-[150px]">{currentMeeting.title}</span>
+                                <span className="text-lg font-bold text-emerald-700 truncate max-w-[200px]">{currentMeeting.title}</span>
                             </div>
                         ) : (
                             <span className="text-xs font-bold text-red-500 flex items-center gap-1"><AlertCircle size={12} /> 입장 중단됨</span>
                         )}
+                        <div className="h-4 w-px bg-slate-300 mx-1"></div>
+                        <h1 className="text-lg font-bold text-slate-800">등록 데스크</h1>
                     </div>
 
                     {/* Compact Stats Bar (Always Visible) */}
@@ -204,7 +205,7 @@ export default function CheckInPage() {
                         <div className="px-4 py-2 bg-white">
                             <div className="flex items-center justify-between" onClick={() => setIsStatsOpen(!isStatsOpen)}>
                                 <div className="flex items-baseline gap-2">
-                                    <span className="text-2xl font-black text-slate-800 tracking-tight">{stats.checkedIn}</span>
+                                    <span className="text-4xl font-black text-slate-800 tracking-tight">{stats.checkedIn}</span>
                                     <span className="text-sm text-slate-500 font-bold">/ {stats.total}명 <span className="text-emerald-600">({stats.rate}%)</span></span>
                                 </div>
                                 <button className="text-xs font-bold text-white bg-slate-800 hover:bg-slate-700 active:scale-95 transition-all px-3 py-1.5 rounded-full flex items-center gap-1 shadow-md">
