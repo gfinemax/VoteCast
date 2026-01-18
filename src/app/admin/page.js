@@ -10,6 +10,7 @@ import AgendaList from '@/components/admin/AgendaList';
 import LiveMonitor from '@/components/admin/LiveMonitor';
 import VoteControl from '@/components/admin/VoteControl';
 import AudioPlayer from '@/components/admin/AudioPlayer';
+import AuthStatus from '@/components/ui/AuthStatus';
 
 export default function AdminPage() {
     const { state, actions } = useStore();
@@ -176,6 +177,7 @@ export default function AdminPage() {
                             <Monitor size={14} className="mr-1" />
                             송출창
                         </Button>
+                        <AuthStatus />
                     </div>
                 </>
             }

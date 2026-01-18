@@ -6,6 +6,7 @@ import { Search, UserCheck, UserX, AlertCircle, Clock, Check, RotateCcw, Chevron
 import FlipNumber from '@/components/ui/FlipNumber';
 import Button from '@/components/ui/Button';
 import Card from '@/components/ui/Card';
+import AuthStatus from '@/components/ui/AuthStatus';
 
 export default function CheckInPage() {
     const { state, actions } = useStore();
@@ -199,6 +200,8 @@ export default function CheckInPage() {
                         )}
                         <div className="h-4 w-px bg-slate-300 mx-1"></div>
                         <h1 className="text-lg font-bold text-slate-800">등록 데스크</h1>
+                        <div className="flex-grow"></div>
+                        <AuthStatus />
                     </div>
 
                     {/* Compact Stats Bar (Always Visible) */}

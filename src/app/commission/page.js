@@ -8,6 +8,7 @@ import DashboardLayout from '@/components/admin/DashboardLayout';
 import AgendaList from '@/components/admin/AgendaList';
 import LiveMonitor from '@/components/admin/LiveMonitor';
 import VoteControl from '@/components/admin/VoteControl';
+import AuthStatus from '@/components/ui/AuthStatus';
 
 export default function CommissionPage() {
     const { state, actions } = useStore();
@@ -104,6 +105,7 @@ export default function CommissionPage() {
                             <Monitor size={14} className="mr-1" />
                             송출창
                         </Button>
+                        <AuthStatus />
                     </div>
                 </>
             }
