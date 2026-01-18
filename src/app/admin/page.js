@@ -9,6 +9,7 @@ import DashboardLayout from '@/components/admin/DashboardLayout';
 import AgendaList from '@/components/admin/AgendaList';
 import LiveMonitor from '@/components/admin/LiveMonitor';
 import VoteControl from '@/components/admin/VoteControl';
+import AudioPlayer from '@/components/admin/AudioPlayer';
 
 export default function AdminPage() {
     const { state, actions } = useStore();
@@ -122,6 +123,7 @@ export default function AdminPage() {
             title="총회관리자"
             subtitle="Total Control & Monitor System"
             sidebarContent={<AgendaList />}
+            sidebarFooter={<AudioPlayer />}
             headerContent={
                 <>
                     <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2 mr-6">

@@ -3,12 +3,12 @@
 import React from 'react';
 import { FileText } from 'lucide-react';
 
-export default function DashboardLayout({ title, subtitle, sidebarContent, headerContent, children }) {
+export default function DashboardLayout({ title, subtitle, sidebarContent, sidebarFooter, headerContent, children }) {
     return (
         <div className="flex h-screen bg-slate-50 font-sans text-slate-800 overflow-hidden">
             {/* Sidebar */}
-            <aside className="w-80 bg-white border-r border-slate-200 flex flex-col shadow-lg z-10">
-                <div className="p-6 border-b border-slate-100">
+            <aside className="w-80 bg-white border-r border-slate-200 flex flex-col shadow-lg z-10 relative">
+                <div className="p-6 border-b border-slate-100 shrink-0">
                     <h1 className="text-xl font-bold text-slate-900 flex items-center gap-2">
                         <div className="w-8 h-8 bg-slate-900 rounded-lg flex items-center justify-center text-white">
                             <FileText size={18} />
@@ -17,7 +17,18 @@ export default function DashboardLayout({ title, subtitle, sidebarContent, heade
                     </h1>
                     <p className="text-xs text-slate-500 mt-1">{subtitle}</p>
                 </div>
-                {sidebarContent}
+
+                {/* Scrollable Sidebar Content */}
+                <div className="flex-1 overflow-y-auto">
+                    {sidebarContent}
+                </div>
+
+                {/* Sticky Sidebar Footer */}
+                {sidebarFooter && (
+                    <div className="shrink-0 z-20">
+                        {sidebarFooter}
+                    </div>
+                )}
             </aside>
 
             {/* Main Content */}
