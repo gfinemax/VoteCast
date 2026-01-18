@@ -93,7 +93,7 @@ export default function CommissionPage() {
                             onClick={handleProjectorWaiting}
                             className="text-sm px-3 py-1.5"
                         >
-                            <Settings size={14} /> 성원보고
+                            <Settings size={14} /> 성원현황
                         </Button>
 
                         <div className="flex-grow"></div>

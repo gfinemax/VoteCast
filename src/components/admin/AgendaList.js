@@ -301,13 +301,13 @@ export default function AgendaList() {
                                     </div>
                                 ) : (
                                     <>
-                                        <div className="flex-1 flex flex-col">
+                                        <div className="flex-1 flex flex-row items-center justify-between">
                                             <span className="text-sm font-bold text-slate-700">{group.folder.title}</span>
                                             {state.activeMeetingId === group.folder.id ? (
-                                                <span className="text-[10px] font-semibold text-emerald-600 flex items-center gap-1 mt-0.5">
+                                                <span className="text-[10px] font-semibold text-orange-600 flex items-center gap-1">
                                                     <span className="relative flex h-2 w-2">
-                                                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                                                        <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                                                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-orange-400 opacity-75"></span>
+                                                        <span className="relative inline-flex rounded-full h-2 w-2 bg-orange-500"></span>
                                                     </span>
                                                     입장 접수 중
                                                 </span>
@@ -319,7 +319,7 @@ export default function AgendaList() {
                                                             actions.setActiveMeeting(group.folder.id);
                                                         }
                                                     }}
-                                                    className="w-fit text-[10px] text-slate-400 hover:text-blue-600 hover:underline flex items-center gap-0.5 mt-0.5"
+                                                    className="w-fit text-[10px] text-slate-400 hover:text-blue-600 hover:underline flex items-center gap-0.5"
                                                 >
                                                     <Play size={8} /> 입장 시작
                                                 </button>

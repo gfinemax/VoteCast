@@ -128,31 +128,31 @@ export default function LiveMonitor() {
                         <div className="absolute inset-1 border border-slate-200 rounded pointer-events-none"></div>
                         <div className="w-full h-full flex flex-col items-center justify-between p-2 z-10">
                             {/* Header */}
-                            <div className="flex flex-col items-center w-full mt-0.5">
-                                <div className="bg-slate-900 text-white px-2 py-[1px] rounded-full text-[4px] font-bold shadow-sm mb-[2px] tracking-wide">
+                            <div className="flex flex-col items-center w-full mt-1">
+                                <div className="bg-slate-900 text-white px-3 py-0.5 rounded-full text-[6px] font-bold shadow-sm mb-1 tracking-wide">
                                     투표 결과 보고
                                 </div>
-                                <h1 className="text-[5px] font-black text-slate-900 leading-tight text-center line-clamp-1 w-full px-1">
+                                <h1 className="text-[11px] font-black text-slate-900 leading-tight text-center line-clamp-2 w-full px-1 break-keep">
                                     {currentAgenda?.title}
                                 </h1>
                             </div>
 
                             {/* Declaration Box */}
-                            <div className="w-full flex-grow flex items-center justify-center px-0.5 py-[2px]">
-                                <div className="w-full h-full bg-white border border-slate-800 p-[2px] rounded shadow-sm flex flex-col items-center justify-center text-center relative overflow-hidden">
-                                    <div className="absolute top-0 left-0 w-full h-[1px] bg-slate-100"></div>
+                            <div className="w-full flex-grow flex items-center justify-center px-1 py-1">
+                                <div className="w-full h-full bg-white border border-slate-800 p-1 rounded shadow-sm flex flex-col items-center justify-center text-center relative overflow-hidden">
+                                    <div className="absolute top-0 left-0 w-full h-[2px] bg-slate-100"></div>
                                     {currentAgenda?.declaration ? (
-                                        <div className="text-[3px] font-sans leading-none text-slate-800 font-medium break-keep whitespace-pre-wrap">
+                                        <div className="text-[5px] font-sans leading-relaxed text-slate-800 font-medium break-keep whitespace-pre-wrap">
                                             {currentAgenda.declaration.split(/(가결|부결)/g).map((part, i) => {
-                                                if (part === '가결') return <span key={i} className="inline-block bg-emerald-600 text-white px-[2px] py-[0.5px] rounded mx-[1px] font-bold align-middle mb-[1px]">가결</span>;
-                                                if (part === '부결') return <span key={i} className="inline-block bg-red-600 text-white px-[2px] py-[0.5px] rounded mx-[1px] font-bold align-middle mb-[1px]">부결</span>;
+                                                if (part === '가결') return <span key={i} className="inline-block bg-emerald-600 text-white px-1 py-0.5 rounded mx-0.5 font-bold align-middle text-[6px]">가결</span>;
+                                                if (part === '부결') return <span key={i} className="inline-block bg-red-600 text-white px-1 py-0.5 rounded mx-0.5 font-bold align-middle text-[6px]">부결</span>;
                                                 return part;
                                             })}
                                         </div>
                                     ) : (
-                                        <div className="text-[3px] font-serif leading-none text-slate-800">
-                                            &quot;{currentAgenda?.title}&quot;...
-                                            <div className={`mt-[2px] px-1 rounded text-white font-bold inline-block ${isPassed ? 'bg-emerald-600' : 'bg-red-600'}`}>
+                                        <div className="text-[5px] font-serif leading-relaxed text-slate-800">
+                                            &quot;<span className="font-bold underline decoration-slate-300 underline-offset-2 decoration-2">{currentAgenda?.title}</span>&quot;...
+                                            <div className={`mt-1 px-2 py-0.5 rounded text-white font-bold inline-block text-[6px] ${isPassed ? 'bg-emerald-600' : 'bg-red-600'}`}>
                                                 {isPassed ? '가 결' : '부 결'}
                                             </div>
                                         </div>
@@ -161,22 +161,22 @@ export default function LiveMonitor() {
                             </div>
 
                             {/* Stats Grid */}
-                            <div className="grid grid-cols-4 gap-[2px] w-full mb-[1px]">
-                                <div className="flex flex-col items-center bg-slate-50 rounded-[1px] p-[1px] border border-slate-100">
-                                    <div className="text-[2px] font-bold text-slate-500">총</div>
-                                    <div className="text-[4px] font-black font-mono text-slate-800">{totalAttendance}</div>
+                            <div className="grid grid-cols-4 gap-1 w-full mb-0.5">
+                                <div className="flex flex-col items-center bg-slate-50 rounded p-0.5 border border-slate-100">
+                                    <div className="text-[6px] font-bold text-slate-500">총</div>
+                                    <div className="text-[8px] font-black font-mono text-slate-800 tracking-tight">{totalAttendance}</div>
                                 </div>
-                                <div className="flex flex-col items-center bg-blue-50 rounded-[1px] p-[1px] border border-blue-100">
-                                    <div className="text-[2px] font-bold text-blue-600">찬</div>
-                                    <div className="text-[4px] font-black font-mono text-blue-700">{votesYes}</div>
+                                <div className="flex flex-col items-center bg-blue-50 rounded p-0.5 border border-blue-100">
+                                    <div className="text-[6px] font-bold text-blue-600">찬</div>
+                                    <div className="text-[8px] font-black font-mono text-blue-700 tracking-tight">{votesYes}</div>
                                 </div>
-                                <div className="flex flex-col items-center bg-red-50 rounded-[1px] p-[1px] border border-red-50">
-                                    <div className="text-[2px] font-bold text-red-700">반</div>
-                                    <div className="text-[4px] font-black font-mono text-red-800">{votesNo}</div>
+                                <div className="flex flex-col items-center bg-red-50 rounded p-0.5 border border-red-50">
+                                    <div className="text-[6px] font-bold text-red-700">반</div>
+                                    <div className="text-[8px] font-black font-mono text-red-800 tracking-tight">{votesNo}</div>
                                 </div>
-                                <div className="flex flex-col items-center bg-slate-100 rounded-[1px] p-[1px] border border-slate-200">
-                                    <div className="text-[2px] font-bold text-slate-600">무</div>
-                                    <div className="text-[4px] font-black font-mono text-slate-700">{votesAbstain}</div>
+                                <div className="flex flex-col items-center bg-slate-100 rounded p-0.5 border border-slate-200">
+                                    <div className="text-[6px] font-bold text-slate-600">무</div>
+                                    <div className="text-[8px] font-black font-mono text-slate-700 tracking-tight">{votesAbstain}</div>
                                 </div>
                             </div>
                         </div>
@@ -216,51 +216,69 @@ export default function LiveMonitor() {
                         <div className="absolute -bottom-[20%] -left-[10%] w-20 h-20 bg-emerald-600 rounded-full blur-xl"></div>
                     </div>
 
-                    <div className="relative z-10 w-full h-full flex flex-col items-center p-2">
-                        <div className="flex items-center gap-1 mb-1 opacity-50">
-                            <div className="text-[3px] text-slate-300 tracking-wider">2026 GENERAL MEETING</div>
-                        </div>
-                        <div className="text-[5px] font-bold text-white mb-2">정기 총회 성원 보고</div>
-
-                        <div className="flex items-baseline gap-1 mb-2 scale-110">
-                            <span className="text-[12px] font-black leading-none text-white tabular-nums drop-shadow">{totalAttendance}</span>
-                            <span className="text-[4px] text-slate-500">명</span>
-                        </div>
-
-                        <div className="w-full bg-slate-800/50 rounded p-[2px] border border-white/5 flex flex-col gap-[2px]">
-                            <div className="flex justify-between items-end text-[2px] text-slate-400 mb-[1px]">
-                                <span>전체 성원</span>
-                                <span>{totalAttendance}/{quorumCount}(과반)</span>
+                    <div className="relative z-10 w-full h-full flex flex-col items-center justify-between px-4 py-1.5">
+                        <div className="flex flex-col items-center gap-0.5 mt-0.5">
+                            <div className="flex items-center gap-1 opacity-50">
+                                <div className="text-[3px] text-slate-300 tracking-wider">2026 GENERAL MEETING</div>
                             </div>
-                            <div className="w-full h-1 bg-slate-700 rounded-full overflow-hidden relative">
-                                <div className="absolute top-0 bottom-0 left-1/2 w-[0.5px] bg-white/30 z-20"></div>
-                                <div className={`h-full ${isTotalQuorumReached ? 'bg-gradient-to-r from-emerald-600 to-emerald-400' : 'bg-blue-600'}`} style={{ width: `${Math.min(100, (totalAttendance / (liveTotalMembers || 1)) * 100)}%` }}></div>
+                            <div className="text-[8px] font-bold text-white leading-none">정기 총회 성원 현황</div>
+                        </div>
+
+                        <div className="flex flex-col items-center flex-grow justify-center">
+                            <div className="text-[5px] font-medium text-slate-400 mb-0.5">현재 집계 인원</div>
+                            <div className="relative flex items-baseline justify-center mb-0.5">
+                                <span className="text-[28px] font-black leading-none tracking-tighter text-white tabular-nums drop-shadow-sm">
+                                    {totalAttendance}
+                                </span>
+                                <span className="absolute left-full bottom-1 ml-0.5 text-[6px] text-slate-500 font-light whitespace-nowrap">명</span>
+                            </div>
+                            <div className="flex items-center text-[4px] text-slate-400 font-medium font-mono gap-1">
+                                <span className="text-emerald-400">참석 {meetingStats.direct}</span>
+                                <span className="text-slate-700">|</span>
+                                <span className="text-blue-400">대리 {meetingStats.proxy}</span>
+                                <span className="text-slate-700">|</span>
+                                <span className="text-orange-400">서면 {meetingStats.written}</span>
+                            </div>
+                        </div>
+
+                        <div className="w-full bg-slate-800/50 rounded p-1 px-3 border border-white/5 flex flex-col gap-0.5 mb-0.5">
+                            <div className="flex justify-between items-end text-[4px] text-slate-400 mb-[1px]">
+                                <span><span className="font-bold text-white">전체 성원</span> (과반수)</span>
+                                <div><span className="font-bold text-white">{totalAttendance}</span><span className="mx-0.5">/</span>{quorumCount}명</div>
+                            </div>
+                            <div className="w-full h-[2px] bg-slate-700 rounded-full overflow-hidden relative shadow-inner">
+                                <div className="absolute top-0 bottom-0 left-1/2 w-[0.5px] bg-white/30 z-20 border-r border-black/20"></div>
+                                <div className={`h-full transition-all duration-1000 ease-out ${isTotalQuorumReached ? 'bg-gradient-to-r from-emerald-600 to-emerald-400' : 'bg-gradient-to-r from-blue-900 to-blue-500'}`} style={{ width: `${Math.min(100, (totalAttendance / (liveTotalMembers || 1)) * 100)}%` }}></div>
                             </div>
 
                             {isElection && (
                                 <>
-                                    <div className="flex justify-between items-end text-[2px] text-emerald-100/80 mt-[1px]">
-                                        <span>직접 참석</span>
-                                        <span>{directAttendance}/{directTarget}(20%)</span>
+                                    <div className="flex justify-between items-end text-[4px] text-emerald-100/80 mt-[1px]">
+                                        <span><span className="font-bold text-emerald-400">직접 참석</span> (20%)</span>
+                                        <div><span className={isDirectSatisfied ? 'text-emerald-400 font-bold' : 'text-red-400 font-bold'}>{directAttendance}</span><span className="text-slate-500 mx-0.5">/</span>{directTarget}명</div>
                                     </div>
-                                    <div className="w-full h-1 bg-slate-700 rounded-full overflow-hidden relative">
-                                        <div className="absolute top-0 bottom-0 left-[20%] w-[0.5px] bg-emerald-500/50 z-20"></div>
-                                        <div className={`h-full ${isDirectSatisfied ? 'bg-gradient-to-r from-emerald-600 to-emerald-400' : 'bg-red-600'}`} style={{ width: `${Math.min(100, (directAttendance / (liveTotalMembers || 1)) * 100)}%` }}></div>
+                                    <div className="w-full h-[2px] bg-slate-700 rounded-full overflow-hidden relative shadow-inner">
+                                        <div className="absolute top-0 bottom-0 left-[20%] w-[0.5px] bg-emerald-500/50 z-20 border-r border-black/10"></div>
+                                        <div className={`h-full transition-all duration-1000 ease-out ${isDirectSatisfied ? 'bg-gradient-to-r from-emerald-600 to-emerald-400' : 'bg-gradient-to-r from-red-900 to-red-600'}`} style={{ width: `${Math.min(100, (directAttendance / (liveTotalMembers || 1)) * 100)}%` }}></div>
                                     </div>
                                 </>
                             )}
-                        </div>
 
-                        <div className="mt-auto mb-1">
-                            {isReadyToOpen ? (
-                                <div className="flex items-center gap-1 bg-emerald-900/80 text-emerald-400 px-2 py-0.5 rounded-full border border-emerald-500/30 text-[3px] font-bold">
-                                    <CheckCircle2 size={4} /> 성원 충족
-                                </div>
-                            ) : (
-                                <div className="bg-slate-800/80 text-slate-400 px-2 py-0.5 rounded-full border border-white/5 text-[3px]">
-                                    입장 대기중...
-                                </div>
-                            )}
+                            <div className="text-center mt-0.5">
+                                {isReadyToOpen ? (
+                                    <div className="inline-flex items-center gap-1 bg-emerald-950/90 text-emerald-400 px-3 py-1 rounded-full border border-emerald-500/50 text-[5px] font-bold shadow-[0_0_10px_rgba(16,185,129,0.3)] backdrop-blur-md whitespace-nowrap">
+                                        <CheckCircle2 size={5} className="animate-bounce" />
+                                        <span>성원이 충족되었습니다. 잠시 후 개회하겠습니다.</span>
+                                    </div>
+                                ) : (
+                                    <div className="inline-flex flex-col gap-0.5 items-center">
+                                        <div className="inline-flex items-center justify-center gap-1 bg-slate-800/80 text-slate-300 px-2 py-0.5 rounded-full border border-white/10 shadow-lg backdrop-blur-sm text-[5px] whitespace-nowrap">
+                                            <div className="w-1 h-1 bg-red-500 rounded-full animate-pulse"></div>
+                                            <span className="font-medium">조합원님의 입장을 기다리고 있습니다...</span>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
                         </div>
                     </div>
 

@@ -128,7 +128,7 @@ export default function ProjectorPage() {
         const handleResize = () => {
             const scaleX = window.innerWidth / 1920;
             const scaleY = window.innerHeight / 1080;
-            setScale(Math.min(scaleX, scaleY));
+            setScale(Math.min(scaleX, scaleY) * 0.98);
         };
         window.addEventListener('resize', handleResize);
         handleResize();
@@ -217,21 +217,21 @@ export default function ProjectorPage() {
                                 <div className="w-20 h-px bg-slate-600"></div>
                                 <span className="font-serif italic font-sans">Live Status</span>
                             </div>
-                            <h1 className="text-6xl font-black mb-16 tracking-tight text-center">정기 총회 성원 보고</h1>
+                            <h1 className="text-6xl font-black mb-16 tracking-tight text-center">정기 총회 성원 현황</h1>
                             <div className="flex flex-col items-center mb-16 scale-125">
-                                <div className="text-2xl font-medium text-slate-400 mb-4">현재 참석 인원</div>
-                                <div className="flex items-baseline gap-4 mb-2">
+                                <div className="text-2xl font-medium text-slate-400 mb-4">현재 집계 인원</div>
+                                <div className="relative flex items-baseline justify-center mb-2">
                                     <span className="text-[12rem] font-black leading-none tracking-tighter text-white tabular-nums drop-shadow-2xl">
                                         {waitingStats.liveTotalAttendance.toLocaleString()}
                                     </span>
-                                    <span className="text-4xl text-slate-500 font-light">명</span>
+                                    <span className="absolute left-full bottom-8 ml-4 text-4xl text-slate-500 font-light whitespace-nowrap">명</span>
                                 </div>
                                 <div className="flex items-center text-lg text-slate-400 font-medium font-mono">
-                                    <span className="text-orange-400">서면 {meetingStats.written}</span>
-                                    <span className="mx-4 text-slate-700">|</span>
                                     <span className="text-emerald-400">참석 {meetingStats.direct}</span>
                                     <span className="mx-4 text-slate-700">|</span>
                                     <span className="text-blue-400">대리 {meetingStats.proxy}</span>
+                                    <span className="mx-4 text-slate-700">|</span>
+                                    <span className="text-orange-400">서면 {meetingStats.written}</span>
                                 </div>
                             </div>
                             <div className="w-full bg-slate-800/50 rounded-3xl p-10 backdrop-blur-sm border border-white/10 shadow-2xl space-y-8">
