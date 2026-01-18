@@ -14,7 +14,7 @@ const FlipDigit = ({ digit, playSound }) => {
     }
 
     return (
-        <div className="relative w-14 h-20 bg-slate-900 rounded-lg overflow-hidden shrink-0 shadow-lg perspective-1000">
+        <div className="relative w-11 h-16 bg-slate-900 rounded-lg overflow-hidden shrink-0 shadow-lg perspective-1000">
             {/* --- Base Layer (Static) --- */}
             {/* Shows the NEW number normally. This acts as the "background" that gets revealed. */}
             <div className="absolute inset-0 z-0">
