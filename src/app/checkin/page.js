@@ -219,7 +219,7 @@ export default function CheckInPage() {
                                 </div>
 
                                 {/* 3. Right: Detail Button */}
-                                <button className="absolute right-0 text-[10px] font-bold text-white bg-slate-800 hover:bg-slate-700 active:scale-95 transition-all px-2.5 py-1 rounded-full flex items-center gap-1 shadow-md">
+                                <button className="absolute right-0 text-[10px] font-bold text-white bg-slate-500 hover:bg-slate-600 active:scale-95 transition-all px-2.5 py-1 rounded-full flex items-center gap-1 shadow-md">
                                     {isStatsOpen ? (
                                         <>접기 <ChevronUp size={12} /></>
                                     ) : (
