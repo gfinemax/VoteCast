@@ -2,7 +2,7 @@
 
 import React, { useState, useMemo } from 'react';
 import { useStore } from '@/lib/store';
-import { Search, UserCheck, UserX, AlertCircle, Clock, Check, RotateCcw } from 'lucide-react';
+import { Search, UserCheck, UserX, AlertCircle, Clock, Check, RotateCcw, ChevronDown, ChevronUp } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import Card from '@/components/ui/Card';
 
@@ -144,8 +144,12 @@ export default function CheckInPage() {
                                     <span className="text-2xl font-black text-slate-800 tracking-tight">{stats.checkedIn}</span>
                                     <span className="text-sm text-slate-500 font-bold">/ {stats.total}명 <span className="text-emerald-600">({stats.rate}%)</span></span>
                                 </div>
-                                <button className="text-xs font-medium text-slate-400 bg-slate-100 px-2 py-1 rounded-full flex items-center gap-1">
-                                    {isStatsOpen ? '접기' : '상세보기'}
+                                <button className="text-xs font-bold text-white bg-slate-800 hover:bg-slate-700 active:scale-95 transition-all px-3 py-1.5 rounded-full flex items-center gap-1 shadow-md">
+                                    {isStatsOpen ? (
+                                        <>접기 <ChevronUp size={14} /></>
+                                    ) : (
+                                        <>상세 통계 <ChevronDown size={14} /></>
+                                    )}
                                 </button>
                             </div>
 
