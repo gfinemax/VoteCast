@@ -3,14 +3,44 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useStore } from '@/lib/store';
 import { Monitor, CheckCircle2, Play, Settings } from 'lucide-react';
+import AlertModal from '@/components/ui/AlertModal';
 
 import dynamic from 'next/dynamic';
 
 const PDFViewer = dynamic(() => import('@/components/PDFViewer'), { ssr: false });
 
-export default function LiveMonitor() {
+export default function LiveMonitor({ mode = 'admin' }) {
     const { state, actions } = useStore();
-    const { projectorMode, projectorData, agendas, currentAgendaId, voteData, attendance, members } = state;
+    const { projectorMode, projectorData, agendas, currentAgendaId, voteData, attendance, members, projectorConnected } = state;
+    const [showProjectorAlert, setShowProjectorAlert] = useState(false);
+    const [showRestrictionAlert, setShowRestrictionAlert] = useState(false);
+
+    // Help Message Logic
+    const handleProjectorAction = (actionFn) => {
+        if (!projectorConnected) {
+            setShowProjectorAlert(true);
+            return;
+        }
+        actionFn();
+    };
+
+    const handleRestrictedAction = () => {
+        setShowRestrictionAlert(true);
+    };
+
+    const handleCommissionCheck = (callback) => {
+        // Explicitly check mode string
+        if (mode === 'commission') {
+            setShowRestrictionAlert(true);
+            return;
+        }
+        handleProjectorAction(callback);
+    };
+
+    // Debug Mode
+    useEffect(() => {
+        console.log('[LiveMonitor] Current Mode:', mode, 'ProjectorMode:', projectorMode);
+    }, [mode, projectorMode]);
 
     const currentAgenda = useMemo(() => agendas.find(a => a.id === currentAgendaId), [agendas, currentAgendaId]);
 
@@ -131,10 +161,10 @@ export default function LiveMonitor() {
                                 {/* Header */}
                                 <div className="flex flex-col items-center w-full mt-1">
                                     <div className="bg-slate-900 text-white px-3 py-0.5 rounded-full text-[6px] font-bold shadow-sm mb-1 tracking-wide">
-                                        투표 결과 보고
+                                        {projectorMode === 'ADJUSTING' ? '잠시 대기' : '투표 결과 보고'}
                                     </div>
                                     <h1 className="text-[11px] font-black text-slate-900 leading-tight text-center line-clamp-2 w-full px-1 break-keep">
-                                        {currentAgenda?.title}
+                                        {projectorMode === 'ADJUSTING' ? '결과 데이터 정정 중...' : currentAgenda?.title}
                                     </h1>
                                 </div>
 
@@ -182,19 +212,40 @@ export default function LiveMonitor() {
                                 </div>
                             </div>
                         </div>
+                        {/* Maintenance/Adjusting Overlay */}
+                        {projectorMode === 'ADJUSTING' && (
+                            <div className="absolute inset-0 bg-slate-950 z-20 flex flex-col items-center justify-center text-white">
+                                <Settings size={24} className="animate-spin text-slate-400 mb-2" />
+                                <div className="text-[8px] font-bold text-slate-300">결과 데이터 정정 중입니다...</div>
+                                <div className="text-[6px] text-slate-500 mt-0.5">화면 송출이 일시 중단되었습니다.</div>
+                            </div>
+                        )}
+
                         <div className="absolute top-1 left-1 px-1 py-0.5 bg-black/60 text-[8px] text-slate-300 font-mono rounded z-10">SCREEN 1</div>
                         {projectorMode === 'RESULT' && <div className="absolute top-1 right-1 px-1.5 py-0.5 bg-emerald-600/90 text-white text-[8px] font-bold rounded z-10">ON AIR</div>}
+                        {projectorMode === 'ADJUSTING' && <div className="absolute top-1 right-1 px-1.5 py-0.5 bg-amber-600/90 text-white text-[8px] font-bold rounded z-10">WAIT</div>}
                     </div>
                     {/* Button */}
                     <button
-                        onClick={() => actions.setProjectorMode('RESULT', { agendaTitle: currentAgenda?.title })}
+                        onClick={() => handleProjectorAction(() => {
+                            // Toggle Logic Check
+                            console.log('[VoteResult] Clicked. Current:', projectorMode);
+                            if (projectorMode === 'RESULT') {
+                                actions.setProjectorMode('ADJUSTING', { agendaTitle: currentAgenda?.title });
+                            } else {
+                                // If IDLE, PPT, WAITING, or ADJUSTING -> Go to RESULT
+                                actions.setProjectorMode('RESULT', { agendaTitle: currentAgenda?.title });
+                            }
+                        })}
                         className={`w-full py-2 px-3 rounded-lg font-semibold text-xs flex items-center justify-center gap-2 transition-all ${projectorMode === 'RESULT'
                             ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/30'
-                            : 'bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white'
+                            : projectorMode === 'ADJUSTING'
+                                ? 'bg-amber-600 text-white shadow-lg shadow-amber-500/30' // Adjusting State
+                                : 'bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white'
                             }`}
                     >
-                        <Play size={14} />
-                        <span>투표 결과</span>
+                        {projectorMode === 'ADJUSTING' ? <Settings size={14} className="animate-spin" /> : <Play size={14} />}
+                        <span>{projectorMode === 'ADJUSTING' ? '화면 켜기 (대기중)' : '투표 결과'}</span>
                         {projectorMode === 'RESULT' && <span className="w-2 h-2 bg-white rounded-full animate-pulse"></span>}
                     </button>
                 </div>
@@ -224,15 +275,19 @@ export default function LiveMonitor() {
                     </div>
                     {/* Button */}
                     <button
-                        onClick={() => actions.setProjectorMode('PPT', { agendaTitle: currentAgenda?.title })}
-                        className={`w-full py-2 px-3 rounded-lg font-semibold text-xs flex items-center justify-center gap-2 transition-all ${projectorMode === 'PPT' || projectorMode === 'IDLE'
-                            ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/30'
-                            : 'bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white'
+                        onClick={() => handleCommissionCheck(() =>
+                            actions.setProjectorMode('PPT', { agendaTitle: currentAgenda?.title })
+                        )}
+                        className={`w-full py-2 px-3 rounded-lg font-semibold text-xs flex items-center justify-center gap-2 transition-all ${mode === 'commission'
+                            ? 'bg-slate-800/50 text-slate-600 cursor-not-allowed border border-slate-800' // Restricted Style
+                            : (projectorMode === 'PPT' || projectorMode === 'IDLE'
+                                ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/30'
+                                : 'bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white')
                             }`}
                     >
                         <Monitor size={14} />
                         <span>안건 설명</span>
-                        {(projectorMode === 'PPT' || projectorMode === 'IDLE') && <span className="w-2 h-2 bg-white rounded-full animate-pulse"></span>}
+                        {mode !== 'commission' && (projectorMode === 'PPT' || projectorMode === 'IDLE') && <span className="w-2 h-2 bg-white rounded-full animate-pulse"></span>}
                     </button>
                 </div>
 
@@ -316,18 +371,39 @@ export default function LiveMonitor() {
                     </div>
                     {/* Button */}
                     <button
-                        onClick={() => actions.setProjectorMode('WAITING', {})}
-                        className={`w-full py-2 px-3 rounded-lg font-semibold text-xs flex items-center justify-center gap-2 transition-all ${projectorMode === 'WAITING'
-                            ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/30'
-                            : 'bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white'
+                        onClick={() => handleCommissionCheck(() =>
+                            actions.setProjectorMode('WAITING', {})
+                        )}
+                        className={`w-full py-2 px-3 rounded-lg font-semibold text-xs flex items-center justify-center gap-2 transition-all ${mode === 'commission'
+                            ? 'bg-slate-800/50 text-slate-600 cursor-not-allowed border border-slate-800' // Restricted Style
+                            : (projectorMode === 'WAITING'
+                                ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/30'
+                                : 'bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white')
                             }`}
                     >
                         <Settings size={14} />
                         <span>성원현황</span>
-                        {projectorMode === 'WAITING' && <span className="w-2 h-2 bg-white rounded-full animate-pulse"></span>}
+                        {mode !== 'commission' && projectorMode === 'WAITING' && <span className="w-2 h-2 bg-white rounded-full animate-pulse"></span>}
                     </button>
                 </div>
             </div>
+
+            {/* Alert Modal */}
+            < AlertModal
+                isOpen={showProjectorAlert}
+                onClose={() => setShowProjectorAlert(false)
+                }
+                title="송출창 연결 확인"
+                message={`송출창(프로젝터 화면)이 연결되지 않았습니다.\n\n우측 상단의 '송출창' 버튼을 눌러\n프로젝터 화면을 먼저 띄워주세요.`}
+            />
+
+            {/* Restricted Alert Modal */}
+            <AlertModal
+                isOpen={showRestrictionAlert}
+                onClose={() => setShowRestrictionAlert(false)}
+                title="🚫 권한 제한 알림"
+                message={`선거관리위원회(심사) 계정은 '투표 결과' 송출만 가능합니다.\n\n성원 현황 및 안건 설명은 총회 관리자(Admin) 권한입니다.`}
+            />
         </div>
     );
 }

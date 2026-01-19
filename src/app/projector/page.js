@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useStore } from '@/lib/store';
+import { supabase } from '@/lib/supabase';
 import { CheckCircle2, Settings } from 'lucide-react';
 import dynamic from 'next/dynamic';
 
@@ -11,6 +12,27 @@ export default function ProjectorPage() {
     const { state } = useStore();
     const { projectorMode, agendas, currentAgendaId, voteData, attendance, members } = state;
     const [scale, setScale] = useState(1);
+
+    // Broadcast Presence
+    useEffect(() => {
+        const channel = supabase.channel('room_presence', {
+            config: {
+                presence: {
+                    key: 'projector',
+                },
+            },
+        });
+
+        channel.subscribe(async (status) => {
+            if (status === 'SUBSCRIBED') {
+                await channel.track({ type: 'projector', online_at: new Date().toISOString() });
+            }
+        });
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
+    }, []);
 
     // Find info about current agenda
     const currentAgenda = useMemo(() => agendas.find(a => a.id === currentAgendaId), [agendas, currentAgendaId]);
@@ -202,147 +224,171 @@ export default function ProjectorPage() {
                     </div>
                 </div>
 
+            </div>
 
-                {/* 2. LAYER: WAITING (Z-index 20) */}
-                {/* REMOVED scale-105 to ensure visual stability */}
-                <div className={`absolute inset-0 transition-opacity duration-300 ${projectorMode === 'WAITING' ? 'opacity-100 z-20' : 'opacity-0 z-0 pointer-events-none'}`}>
-                    <div className="w-full h-full flex flex-col bg-slate-900 text-white relative items-center justify-center p-20">
-                        <div className="absolute inset-0 overflow-hidden opacity-10 font-sans">
-                            <div className="absolute -top-[20%] -right-[10%] w-[1000px] h-[1000px] bg-blue-600 rounded-full blur-[150px]"></div>
-                            <div className="absolute -bottom-[20%] -left-[10%] w-[800px] h-[800px] bg-emerald-600 rounded-full blur-[150px]"></div>
+            {/* 1.5 LAYER: ADJUSTING (Z-index 25) */}
+            <div className={`absolute inset-0 transition-opacity duration-300 ${projectorMode === 'ADJUSTING' ? 'opacity-100 z-25' : 'opacity-0 z-0 pointer-events-none'}`}>
+                <div className="w-full h-full bg-slate-950 flex flex-col items-center justify-center text-white overflow-hidden relative">
+                    <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-slate-900 to-slate-950"></div>
+
+                    {/* Content */}
+                    <div className="relative z-10 flex flex-col items-center animate-in fade-in duration-700">
+                        <Settings
+                            size={120}
+                            strokeWidth={0.8}
+                            className="text-slate-400 mb-8 animate-[spin_8s_linear_infinite] drop-shadow-2xl"
+                        />
+                        <h1 className="text-4xl font-bold text-slate-200 tracking-tight mb-4">결과 데이터 정정 중입니다...</h1>
+                        <p className="text-xl text-slate-500 font-light tracking-wide">잠시만 기다려주세요.</p>
+                    </div>
+
+                    {/* Footer Gradient Line */}
+                    <div className="absolute bottom-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-amber-500/50 to-transparent"></div>
+                </div>
+            </div>
+
+
+            {/* 2. LAYER: WAITING (Z-index 20) */}
+            {/* REMOVED scale-105 to ensure visual stability */}
+            <div className={`absolute inset-0 transition-opacity duration-300 ${projectorMode === 'WAITING' ? 'opacity-100 z-20' : 'opacity-0 z-0 pointer-events-none'}`}>
+                <div className="w-full h-full flex flex-col bg-slate-900 text-white relative items-center justify-center p-8">
+                    <div className="absolute inset-0 overflow-hidden opacity-10 font-sans">
+                        <div className="absolute -top-[20%] -right-[10%] w-[1000px] h-[1000px] bg-blue-600 rounded-full blur-[150px]"></div>
+                        <div className="absolute -bottom-[20%] -left-[10%] w-[800px] h-[800px] bg-emerald-600 rounded-full blur-[150px]"></div>
+                    </div>
+                    <div className="relative z-10 flex flex-col items-center w-full max-w-5xl">
+                        <div className="flex items-center gap-4 mb-4 text-slate-400">
+                            <span className="uppercase tracking-[0.3em] font-bold">2026 Regular General Meeting</span>
+                            <div className="w-20 h-px bg-slate-600"></div>
+                            <span className="font-serif italic font-sans">Live Status</span>
                         </div>
-                        <div className="relative z-10 flex flex-col items-center w-full max-w-5xl">
-                            <div className="flex items-center gap-4 mb-10 text-slate-400">
-                                <span className="uppercase tracking-[0.3em] font-bold">2026 Regular General Meeting</span>
-                                <div className="w-20 h-px bg-slate-600"></div>
-                                <span className="font-serif italic font-sans">Live Status</span>
+                        <h1 className="text-5xl font-black mb-8 tracking-tight text-center">정기 총회 성원 현황</h1>
+                        <div className="flex flex-col items-center mb-8 scale-100">
+                            <div className="text-xl font-medium text-slate-400 mb-2">현재 집계 인원</div>
+                            <div className="relative flex items-baseline justify-center mb-0">
+                                <span className="text-[10rem] font-black leading-none tracking-tighter text-white tabular-nums drop-shadow-2xl">
+                                    {waitingStats.liveTotalAttendance.toLocaleString()}
+                                </span>
+                                <span className="absolute left-full bottom-6 ml-4 text-3xl text-slate-500 font-light whitespace-nowrap">명</span>
                             </div>
-                            <h1 className="text-6xl font-black mb-16 tracking-tight text-center">정기 총회 성원 현황</h1>
-                            <div className="flex flex-col items-center mb-16 scale-125">
-                                <div className="text-2xl font-medium text-slate-400 mb-4">현재 집계 인원</div>
-                                <div className="relative flex items-baseline justify-center mb-2">
-                                    <span className="text-[12rem] font-black leading-none tracking-tighter text-white tabular-nums drop-shadow-2xl">
-                                        {waitingStats.liveTotalAttendance.toLocaleString()}
-                                    </span>
-                                    <span className="absolute left-full bottom-8 ml-4 text-4xl text-slate-500 font-light whitespace-nowrap">명</span>
+                            <div className="flex items-center text-lg text-slate-400 font-medium font-mono mt-4">
+                                <span className="text-emerald-400">참석 {meetingStats.direct}</span>
+                                <span className="mx-4 text-slate-700">|</span>
+                                <span className="text-blue-400">대리 {meetingStats.proxy}</span>
+                                <span className="mx-4 text-slate-700">|</span>
+                                <span className="text-orange-400">서면 {meetingStats.written}</span>
+                            </div>
+                        </div>
+                        <div className="w-full bg-slate-800/50 rounded-3xl p-10 backdrop-blur-sm border border-white/10 shadow-2xl space-y-8">
+                            <div>
+                                <div className="flex justify-between items-end mb-4">
+                                    <div className="text-xl text-slate-400"><span className="font-bold text-white">전체 성원</span> (과반수 기준)</div>
+                                    <div className="text-right">
+                                        <span className="text-2xl font-bold text-white tabular-nums">{waitingStats.liveTotalAttendance}</span>
+                                        <span className="text-slate-500 mx-2">/</span>
+                                        <span className="text-xl text-slate-400">{waitingStats.quorumCount}명</span>
+                                    </div>
                                 </div>
-                                <div className="flex items-center text-lg text-slate-400 font-medium font-mono">
-                                    <span className="text-emerald-400">참석 {meetingStats.direct}</span>
-                                    <span className="mx-4 text-slate-700">|</span>
-                                    <span className="text-blue-400">대리 {meetingStats.proxy}</span>
-                                    <span className="mx-4 text-slate-700">|</span>
-                                    <span className="text-orange-400">서면 {meetingStats.written}</span>
+                                <div className="w-full h-8 bg-slate-700 rounded-full overflow-hidden relative shadow-inner">
+                                    <div className="absolute top-0 bottom-0 left-1/2 w-0.5 bg-white/30 z-20 border-r border-black/20"></div>
+                                    <div className={`h-full transition-all duration-1000 ease-out ${waitingStats.isTotalQuorumReached ? 'bg-gradient-to-r from-emerald-600 to-emerald-400' : 'bg-gradient-to-r from-blue-900 to-blue-500'}`} style={{ width: `${Math.min(100, (waitingStats.liveTotalAttendance / (waitingStats.liveTotalMembers || 1)) * 100)}%` }}></div>
                                 </div>
                             </div>
-                            <div className="w-full bg-slate-800/50 rounded-3xl p-10 backdrop-blur-sm border border-white/10 shadow-2xl space-y-8">
-                                <div>
+                            {waitingStats.isElection && (
+                                <div className="pt-6 border-t border-white/5">
                                     <div className="flex justify-between items-end mb-4">
-                                        <div className="text-xl text-slate-400"><span className="font-bold text-white">전체 성원</span> (과반수 기준)</div>
-                                        <div className="text-right">
-                                            <span className="text-2xl font-bold text-white tabular-nums">{waitingStats.liveTotalAttendance}</span>
-                                            <span className="text-slate-500 mx-2">/</span>
-                                            <span className="text-xl text-slate-400">{waitingStats.quorumCount}명</span>
+                                        <div className="text-xl text-emerald-100/80"><span className="font-bold text-emerald-400">직접 참석</span> (조합원 20% 필수)</div>
+                                        <div className="text-right flex items-baseline gap-2">
+                                            <span className={`text-2xl font-bold tabular-nums ${waitingStats.isDirectSatisfied ? 'text-emerald-400' : 'text-red-400'}`}>
+                                                {waitingStats.directPercent.toFixed(1)}%
+                                            </span>
+                                            <span className="text-slate-500">/</span>
+                                            <span className="text-xl text-slate-400">20% ({waitingStats.directTarget}명)</span>
                                         </div>
                                     </div>
-                                    <div className="w-full h-8 bg-slate-700 rounded-full overflow-hidden relative shadow-inner">
-                                        <div className="absolute top-0 bottom-0 left-1/2 w-0.5 bg-white/30 z-20 border-r border-black/20"></div>
-                                        <div className={`h-full transition-all duration-1000 ease-out ${waitingStats.isTotalQuorumReached ? 'bg-gradient-to-r from-emerald-600 to-emerald-400' : 'bg-gradient-to-r from-blue-900 to-blue-500'}`} style={{ width: `${Math.min(100, (waitingStats.liveTotalAttendance / (waitingStats.liveTotalMembers || 1)) * 100)}%` }}></div>
+                                    <div className="w-full h-6 bg-slate-700/50 rounded-full overflow-hidden relative shadow-inner">
+                                        <div className="absolute top-0 bottom-0 left-[20%] w-0.5 bg-emerald-500/50 z-20 border-r border-black/10"></div>
+                                        <div className={`h-full transition-all duration-1000 ease-out ${waitingStats.isDirectSatisfied ? 'bg-gradient-to-r from-emerald-600 to-emerald-400' : 'bg-gradient-to-r from-red-900 to-red-600'}`} style={{ width: `${Math.min(100, (meetingStats.direct / (waitingStats.liveTotalMembers || 1)) * 100)}%` }}></div>
                                     </div>
                                 </div>
-                                {waitingStats.isElection && (
-                                    <div className="pt-6 border-t border-white/5">
-                                        <div className="flex justify-between items-end mb-4">
-                                            <div className="text-xl text-emerald-100/80"><span className="font-bold text-emerald-400">직접 참석</span> (조합원 20% 필수)</div>
-                                            <div className="text-right flex items-baseline gap-2">
-                                                <span className={`text-2xl font-bold tabular-nums ${waitingStats.isDirectSatisfied ? 'text-emerald-400' : 'text-red-400'}`}>
-                                                    {waitingStats.directPercent.toFixed(1)}%
-                                                </span>
-                                                <span className="text-slate-500">/</span>
-                                                <span className="text-xl text-slate-400">20% ({waitingStats.directTarget}명)</span>
-                                            </div>
-                                        </div>
-                                        <div className="w-full h-6 bg-slate-700/50 rounded-full overflow-hidden relative shadow-inner">
-                                            <div className="absolute top-0 bottom-0 left-[20%] w-0.5 bg-emerald-500/50 z-20 border-r border-black/10"></div>
-                                            <div className={`h-full transition-all duration-1000 ease-out ${waitingStats.isDirectSatisfied ? 'bg-gradient-to-r from-emerald-600 to-emerald-400' : 'bg-gradient-to-r from-red-900 to-red-600'}`} style={{ width: `${Math.min(100, (meetingStats.direct / (waitingStats.liveTotalMembers || 1)) * 100)}%` }}></div>
+                            )}
+                            <div className="text-center pt-2">
+                                {waitingStats.isReadyToOpen && waitingStats.liveTotalMembers > 0 ? (
+                                    <div className="inline-flex items-center gap-3 bg-emerald-950/90 text-emerald-400 px-10 py-4 rounded-full border border-emerald-500/50 shadow-[0_0_50px_rgba(16,185,129,0.3)] backdrop-blur-md">
+                                        <CheckCircle2 size={32} className="animate-bounce" />
+                                        <span className="text-4xl font-bold tracking-tight">성원이 충족되었습니다. 잠시 후 개회하겠습니다.</span>
+                                    </div>
+                                ) : (
+                                    <div className="inline-flex flex-col gap-4 items-center">
+                                        <div className="inline-flex items-center justify-center gap-3 bg-slate-800/80 text-slate-300 px-8 py-3 rounded-full border border-white/10 shadow-lg backdrop-blur-sm">
+                                            <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse"></div>
+                                            <span className="text-2xl font-medium">조합원님의 입장을 기다리고 있습니다...</span>
                                         </div>
                                     </div>
                                 )}
-                                <div className="text-center pt-2">
-                                    {waitingStats.isReadyToOpen && waitingStats.liveTotalMembers > 0 ? (
-                                        <div className="inline-flex items-center gap-3 bg-emerald-950/90 text-emerald-400 px-10 py-4 rounded-full border border-emerald-500/50 shadow-[0_0_50px_rgba(16,185,129,0.3)] backdrop-blur-md">
-                                            <CheckCircle2 size={32} className="animate-bounce" />
-                                            <span className="text-4xl font-bold tracking-tight">성원이 충족되었습니다. 잠시 후 개회하겠습니다.</span>
-                                        </div>
-                                    ) : (
-                                        <div className="inline-flex flex-col gap-4 items-center">
-                                            <div className="inline-flex items-center justify-center gap-3 bg-slate-800/80 text-slate-300 px-8 py-3 rounded-full border border-white/10 shadow-lg backdrop-blur-sm">
-                                                <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse"></div>
-                                                <span className="text-2xl font-medium">조합원님의 입장을 기다리고 있습니다...</span>
-                                            </div>
-                                        </div>
-                                    )}
-                                </div>
                             </div>
                         </div>
                     </div>
                 </div>
+            </div>
 
-                {/* 3. LAYER: RESULT (Z-index 30) */}
-                {/* REMOVED scale-110 to ensure visual stability */}
-                <div className={`absolute inset-0 transition-opacity duration-300 ${projectorMode === 'RESULT' ? 'opacity-100 z-30' : 'opacity-0 z-0 pointer-events-none'}`}>
-                    <div className="w-full h-full flex flex-col bg-slate-50 text-slate-900 relative">
-                        <div className="absolute inset-8 border-4 border-slate-700 pointer-events-none z-10 rounded-xl opacity-10"></div>
-                        <div className="flex-1 flex flex-col items-center py-16 px-24 z-20 h-full justify-between pb-24">
-                            <div className="flex flex-col items-center justify-center w-full mt-4">
-                                <div className="bg-slate-900 text-white px-12 py-3 rounded-full text-3xl font-bold shadow-md mb-6 tracking-wide">투표 결과 보고</div>
-                                <h1 className="text-7xl font-black text-slate-900 leading-tight text-center break-keep drop-shadow-sm">{resultStats.agendaTitle}</h1>
+            {/* 3. LAYER: RESULT (Z-index 30) */}
+            {/* REMOVED scale-110 to ensure visual stability */}
+            <div className={`absolute inset-0 transition-opacity duration-300 ${projectorMode === 'RESULT' ? 'opacity-100 z-30' : 'opacity-0 z-0 pointer-events-none'}`}>
+                <div className="w-full h-full flex flex-col bg-slate-50 text-slate-900 relative">
+                    <div className="absolute inset-8 border-4 border-slate-700 pointer-events-none z-10 rounded-xl opacity-10"></div>
+                    <div className="flex-1 flex flex-col items-center py-8 px-12 z-20 h-full justify-between pb-12">
+                        <div className="flex-1 flex flex-col items-center py-4 px-8 z-20 h-full justify-between pb-8">
+                            <div className="flex flex-col items-center justify-center w-full mt-2">
+                                <div className="bg-slate-900 text-white px-8 py-2 rounded-full text-2xl font-bold shadow-md mb-4 tracking-wide">투표 결과 보고</div>
+                                <h1 className="text-5xl font-black text-slate-900 leading-tight text-center break-keep drop-shadow-sm">{resultStats.agendaTitle}</h1>
                             </div>
-                            <div className="w-full h-px bg-slate-200 opacity-50"></div>
-                            <div className="w-full max-w-7xl flex-grow flex items-center justify-center py-4">
-                                <div className="w-full bg-white border-2 border-slate-800 p-12 rounded-2xl shadow-[0_10px_40px_-10px_rgba(0,0,0,0.1)] flex flex-col items-center justify-center gap-8 text-center relative overflow-hidden">
+                            <div className="w-full h-px bg-slate-200 opacity-50 my-2"></div>
+                            <div className="w-full max-w-7xl flex-grow flex items-center justify-center py-2 h-0 min-h-0">
+                                <div className="w-full bg-white border-2 border-slate-800 p-6 rounded-2xl shadow-[0_10px_40px_-10px_rgba(0,0,0,0.1)] flex flex-col items-center justify-center gap-6 text-center relative overflow-hidden h-full">
                                     <div className="absolute top-0 left-0 w-full h-2 bg-slate-100"></div>
                                     {resultStats.customDeclaration ? (
-                                        <div className="text-5xl font-serif leading-relaxed text-slate-800 font-medium break-keep whitespace-pre-wrap">
+                                        <div className="text-3xl font-serif leading-relaxed text-slate-800 font-medium break-keep whitespace-pre-wrap overflow-y-auto max-h-full px-4 scrollbar-hide">
                                             {resultStats.customDeclaration.split(/(가결|부결)/g).map((part, i) => {
-                                                if (part === '가결') return <span key={i} className="inline-block mx-2 px-10 py-2 bg-emerald-600 text-white rounded-lg font-sans font-bold tracking-widest border border-emerald-700 shadow-sm align-middle text-6xl uppercase">가결</span>;
-                                                if (part === '부결') return <span key={i} className="inline-block mx-2 px-10 py-2 bg-red-600 text-white rounded-lg font-sans font-bold tracking-widest border border-red-700 shadow-sm align-middle text-6xl uppercase">부결</span>;
+                                                if (part === '가결') return <span key={i} className="inline-block mx-2 px-6 py-1 bg-emerald-600 text-white rounded-md font-sans font-bold tracking-widest border border-emerald-700 shadow-sm align-middle text-4xl uppercase">가결</span>;
+                                                if (part === '부결') return <span key={i} className="inline-block mx-2 px-6 py-1 bg-red-600 text-white rounded-md font-sans font-bold tracking-widest border border-red-700 shadow-sm align-middle text-4xl uppercase">부결</span>;
                                                 return part;
                                             })}
                                         </div>
                                     ) : (
-                                        <p className="text-5xl font-serif leading-relaxed text-slate-800 font-medium break-keep">
+                                        <p className="text-3xl font-serif leading-relaxed text-slate-800 font-medium break-keep">
                                             &quot;<span className="font-bold underline decoration-slate-300 underline-offset-8 decoration-4">{resultStats.agendaTitle}</span>&quot;은<br />
                                             전체 참석자 <span className="text-slate-900 font-bold">{resultStats.totalAttendance.toLocaleString()}</span>명 중 {resultStats.isSpecialVote ? '3분의 2' : '과반수'} 찬성으로
                                         </p>
                                     )}
                                     {(!resultStats.customDeclaration || !resultStats.customDeclaration.includes('선포')) && (
-                                        <div className="flex items-center gap-6 mt-2">
-                                            <div className={`px-10 py-3 rounded-lg shadow-md ${resultStats.isPassed ? 'bg-emerald-600' : 'bg-red-600'}`}><span className="text-5xl font-black text-white tracking-widest">{resultStats.isPassed ? '가 결' : '부 결'}</span></div>
-                                            <span className="text-5xl font-serif font-bold text-slate-800">되었음을 선포합니다.</span>
+                                        <div className="flex items-center gap-4 mt-1">
+                                            <div className={`px-8 py-2 rounded-lg shadow-md ${resultStats.isPassed ? 'bg-emerald-600' : 'bg-red-600'}`}><span className="text-4xl font-black text-white tracking-widest">{resultStats.isPassed ? '가 결' : '부 결'}</span></div>
+                                            <span className="text-4xl font-serif font-bold text-slate-800">되었음을 선포합니다.</span>
                                         </div>
                                     )}
                                 </div>
                             </div>
-                            <div className="w-full max-w-7xl grid grid-cols-4 gap-6 h-48">
-                                <div className="flex flex-col items-center justify-center bg-slate-50 rounded-2xl p-4 border border-slate-100 shadow-sm">
-                                    <div className="text-lg font-bold text-slate-500 mb-2">총 참석</div>
-                                    <div className="text-6xl font-black font-mono tracking-tight text-slate-800 mb-1">{resultStats.totalAttendance.toLocaleString()}</div>
-                                    <div className="text-lg text-slate-400">명</div>
+                            <div className="w-full max-w-7xl grid grid-cols-4 gap-4 h-32">
+                                <div className="flex flex-col items-center justify-center bg-slate-50 rounded-xl p-3 border border-slate-100 shadow-sm">
+                                    <div className="text-base font-bold text-slate-500 mb-1">총 참석</div>
+                                    <div className="text-5xl font-black font-mono tracking-tight text-slate-800 mb-0.5">{resultStats.totalAttendance.toLocaleString()}</div>
+                                    <div className="text-sm text-slate-400">명</div>
                                 </div>
-                                <div className="flex flex-col items-center justify-center bg-blue-50 rounded-2xl p-4 border border-blue-100 shadow-md transform scale-105 z-10">
-                                    <div className="flex items-center gap-2 mb-2"><div className="text-lg font-bold text-blue-600">찬성</div><CheckCircle2 size={24} className="text-blue-500" /></div>
-                                    <div className="text-6xl font-black font-mono tracking-tight text-blue-700 mb-1">{resultStats.votesYes.toLocaleString()}</div>
-                                    <div className="text-lg text-blue-500">표</div>
+                                <div className="flex flex-col items-center justify-center bg-blue-50 rounded-xl p-3 border border-blue-100 shadow-md transform scale-105 z-10">
+                                    <div className="flex items-center gap-2 mb-1"><div className="text-base font-bold text-blue-600">찬성</div><CheckCircle2 size={18} className="text-blue-500" /></div>
+                                    <div className="text-5xl font-black font-mono tracking-tight text-blue-700 mb-0.5">{resultStats.votesYes.toLocaleString()}</div>
+                                    <div className="text-sm text-blue-500">표</div>
                                 </div>
-                                <div className="flex flex-col items-center justify-center bg-red-50 rounded-2xl p-4 border border-red-50 shadow-sm">
-                                    <div className="text-lg font-bold text-red-700 mb-2">반대</div>
-                                    <div className="text-6xl font-black font-mono tracking-tight text-red-800 mb-1">{resultStats.votesNo.toLocaleString()}</div>
-                                    <div className="text-lg text-red-500/50">표</div>
+                                <div className="flex flex-col items-center justify-center bg-red-50 rounded-xl p-3 border border-red-50 shadow-sm">
+                                    <div className="text-base font-bold text-red-700 mb-1">반대</div>
+                                    <div className="text-5xl font-black font-mono tracking-tight text-red-800 mb-0.5">{resultStats.votesNo.toLocaleString()}</div>
+                                    <div className="text-sm text-red-500/50">표</div>
                                 </div>
-                                <div className="flex flex-col items-center justify-center bg-slate-100 rounded-2xl p-4 border border-slate-200 shadow-sm">
-                                    <div className="text-lg font-bold text-slate-600 mb-2">기권/무효</div>
-                                    <div className="text-6xl font-black font-mono tracking-tight text-slate-700 mb-1">{resultStats.votesAbstain.toLocaleString()}</div>
-                                    <div className="text-lg text-slate-400">표</div>
+                                <div className="flex flex-col items-center justify-center bg-slate-100 rounded-xl p-3 border border-slate-200 shadow-sm">
+                                    <div className="text-base font-bold text-slate-600 mb-1">기권/무효</div>
+                                    <div className="text-5xl font-black font-mono tracking-tight text-slate-700 mb-0.5">{resultStats.votesAbstain.toLocaleString()}</div>
+                                    <div className="text-sm text-slate-400">표</div>
                                 </div>
                             </div>
                         </div>

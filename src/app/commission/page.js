@@ -108,7 +108,7 @@ export default function CommissionPage() {
             <div className="grid grid-cols-12 gap-8">
                 <div className="col-span-12">
                     {/* Read-Only Live Monitor (Safety) */}
-                    <LiveMonitor />
+                    <LiveMonitor mode="commission" />
                 </div>
 
                 <div className="col-span-12">

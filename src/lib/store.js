@@ -25,6 +25,7 @@ const INITIAL_DATA = {
     projectorMode: 'IDLE',
     projectorData: null,
     masterPresentationSource: null, // Global Master PPT
+    projectorConnected: false, // New: Projector Online Status
 };
 
 // Create Context
@@ -129,8 +130,33 @@ export function StoreProvider({ children }) {
                 console.log('[Realtime] Subscription Status:', status);
             });
 
+        // New: Presence Channel for Projector Detection
+        const presenceChannel = supabase.channel('room_presence', {
+            config: {
+                presence: {
+                    key: 'admin',
+                },
+            },
+        });
+
+        presenceChannel
+            .on('presence', { event: 'sync' }, () => {
+                const newState = presenceChannel.presenceState();
+                // Check if any presence entry has type: 'projector'
+                const isConnected = Object.values(newState).some(users =>
+                    users.some(user => user.type === 'projector')
+                );
+
+                setState(prev => {
+                    if (prev.projectorConnected === isConnected) return prev;
+                    return { ...prev, projectorConnected: isConnected };
+                });
+            })
+            .subscribe();
+
         return () => {
             supabase.removeChannel(channel);
+            supabase.removeChannel(presenceChannel);
         };
     }, []);
 
