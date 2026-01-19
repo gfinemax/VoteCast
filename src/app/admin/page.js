@@ -107,38 +107,7 @@ export default function AdminPage() {
         actions.setProjectorMode('PPT', { agendaTitle: currentAgenda.title });
     };
 
-    const [isProjectorOpen, setIsProjectorOpen] = useState(false);
-    const projectorWindowRef = React.useRef(null);
 
-    const openProjectorWindow = () => {
-        // Check if window is already open and not closed
-        if (projectorWindowRef.current && !projectorWindowRef.current.closed) {
-            projectorWindowRef.current.focus();
-            return;
-        }
-
-        const width = 1200;
-        const height = 800;
-        const left = (window.screen.width - width) / 2;
-        const top = (window.screen.height - height) / 2;
-
-        projectorWindowRef.current = window.open(
-            '/projector',
-            'VoteCastProjector',
-            `width=${width},height=${height},left=${left},top=${top},menubar=no,toolbar=no,location=no,status=no`
-        );
-
-        if (projectorWindowRef.current) {
-            setIsProjectorOpen(true);
-            // Track when window is closed
-            const checkClosed = setInterval(() => {
-                if (projectorWindowRef.current?.closed) {
-                    setIsProjectorOpen(false);
-                    clearInterval(checkClosed);
-                }
-            }, 1000);
-        }
-    };
 
     return (
         <DashboardLayout
@@ -155,18 +124,7 @@ export default function AdminPage() {
                     <div className="flex gap-2 items-center flex-grow">
                         <div className="flex-grow"></div>
 
-                        {/* Open Projector Window */}
-                        <button
-                            onClick={openProjectorWindow}
-                            className={`flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-sm transition-all shadow-lg ${isProjectorOpen
-                                ? 'bg-emerald-500 text-white shadow-emerald-500/30 hover:bg-emerald-600'
-                                : 'bg-emerald-600 text-white hover:bg-emerald-700'
-                                }`}
-                        >
-                            <Monitor size={14} />
-                            <span>{isProjectorOpen ? '송출중' : '송출창'}</span>
-                            {isProjectorOpen && <span className="w-2 h-2 bg-white rounded-full animate-pulse"></span>}
-                        </button>
+
                         <FullscreenToggle />
                         <AuthStatus />
                     </div>

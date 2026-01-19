@@ -173,7 +173,7 @@ export default function LoginPage() {
     return (
         <div className="min-h-screen flex">
             {/* Left Side - Branding */}
-            <div className="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 relative overflow-hidden flex-col justify-between p-12">
+            <div className="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 relative overflow-hidden flex-col justify-between p-12 bg-grid-pattern">
                 {/* Background Effects */}
                 <div className="absolute inset-0 overflow-hidden pointer-events-none">
                     <div className="absolute -top-1/4 -left-1/4 w-[500px] h-[500px] bg-emerald-500/10 rounded-full blur-3xl"></div>
@@ -192,6 +192,28 @@ export default function LoginPage() {
 
                 {/* Main Content */}
                 <div className="relative z-10 flex-1 flex flex-col justify-center">
+
+                    {/* Isometric Illustration */}
+                    <div className="relative mb-12 flex justify-center transform scale-110">
+                        <div className="relative w-32 h-32">
+                            {/* Card 1 */}
+                            <div className="absolute inset-0 bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-2xl transform rotate-6 scale-95 opacity-50 blur-sm"></div>
+                            {/* Card 2 */}
+                            <div className="absolute inset-0 bg-gradient-to-br from-blue-500 to-blue-600 rounded-2xl transform -rotate-6 scale-95 opacity-50 blur-sm"></div>
+                            {/* Main Card */}
+                            <div className="absolute inset-0 bg-gradient-to-br from-slate-800 to-slate-900 rounded-2xl border border-white/10 flex items-center justify-center shadow-2xl backdrop-blur-xl">
+                                <CheckCircle size={48} className="text-emerald-400 drop-shadow-[0_0_15px_rgba(52,211,153,0.5)]" />
+                            </div>
+
+                            {/* Floating Satellite Icons */}
+                            <div className="absolute -top-4 -right-4 w-12 h-12 bg-slate-800 rounded-xl border border-white/10 flex items-center justify-center shadow-lg animate-bounce delay-75">
+                                <Users size={20} className="text-blue-400" />
+                            </div>
+                            <div className="absolute -bottom-2 -left-6 w-10 h-10 bg-slate-800 rounded-xl border border-white/10 flex items-center justify-center shadow-lg animate-bounce delay-150">
+                                <div className="w-3 h-3 bg-red-400 rounded-full animate-pulse"></div>
+                            </div>
+                        </div>
+                    </div>
                     <h1 className="text-4xl font-black text-white mb-4 leading-tight">
                         총회 관리<br />
                         <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-blue-400">스마트 시스템</span>
@@ -247,10 +269,10 @@ export default function LoginPage() {
             </div>
 
             {/* Right Side - Login Form */}
-            <div className="w-full lg:w-1/2 bg-slate-50 flex items-center justify-center p-6 lg:p-12">
-                <div className="w-full max-w-md bg-white rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-slate-100 p-8 md:p-10">
+            <div className="w-full lg:w-1/2 bg-slate-50 flex items-center justify-center p-4 lg:p-8">
+                <div className="w-full max-w-md bg-white rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-slate-100 p-5 md:p-6">
                     {/* Mobile Logo */}
-                    <div className="lg:hidden text-center mb-8">
+                    <div className="lg:hidden text-center mb-6">
                         <div className="inline-flex items-center justify-center w-14 h-14 bg-gradient-to-br from-emerald-500 to-blue-600 rounded-2xl mb-4 shadow-lg">
                             <CheckCircle size={28} className="text-white" />
                         </div>
@@ -259,13 +281,13 @@ export default function LoginPage() {
                     </div>
 
                     {/* Login Header */}
-                    <div className="mb-8">
+                    <div className="mb-4">
                         <h2 className="text-2xl font-bold text-slate-900">로그인</h2>
                         <p className="text-slate-500 text-sm mt-1">시스템 접속을 위해 인증해주세요</p>
                     </div>
 
                     {/* Tab Switcher */}
-                    <div className="flex mb-6 bg-slate-50 rounded-xl p-1 border border-slate-100">
+                    <div className="flex mb-4 bg-slate-50 rounded-xl p-1 border border-slate-100">
                         <button
                             onClick={() => { setMode('login'); setError(null); setSuccess(null); }}
                             className={`flex-1 py-2.5 text-sm font-semibold rounded-lg transition-all ${mode === 'login'
@@ -301,7 +323,7 @@ export default function LoginPage() {
                     )}
 
                     {/* Email/Password Form */}
-                    <form onSubmit={handleEmailAuth} className="space-y-4">
+                    <form onSubmit={handleEmailAuth} className="space-y-3">
                         {/* Email Input */}
                         <div>
                             <label className="block text-sm font-medium text-slate-700 mb-1.5">이메일</label>
@@ -312,7 +334,7 @@ export default function LoginPage() {
                                     placeholder="name@example.com"
                                     value={email}
                                     onChange={(e) => setEmail(e.target.value)}
-                                    className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500 transition-all"
+                                    className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500 transition-all"
                                 />
                             </div>
                         </div>
@@ -327,7 +349,7 @@ export default function LoginPage() {
                                     placeholder="••••••••"
                                     value={password}
                                     onChange={(e) => setPassword(e.target.value)}
-                                    className="w-full pl-10 pr-12 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500 transition-all"
+                                    className="w-full pl-10 pr-12 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500 transition-all"
                                 />
                                 <button
                                     type="button"
@@ -360,7 +382,7 @@ export default function LoginPage() {
                         <button
                             type="submit"
                             disabled={isLoading}
-                            className="w-full flex items-center justify-center gap-2 bg-slate-900 hover:bg-slate-800 text-white font-semibold py-3 px-6 rounded-xl transition-all duration-200 shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed"
+                            className="w-full flex items-center justify-center gap-2 bg-slate-900 hover:bg-slate-800 text-white font-semibold py-2.5 px-6 rounded-xl transition-all duration-200 shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                             {isLoading ? (
                                 <Loader2 className="w-5 h-5 animate-spin" />
@@ -374,7 +396,7 @@ export default function LoginPage() {
                     </form>
 
                     {/* Divider */}
-                    <div className="my-6 flex items-center gap-4">
+                    <div className="my-4 flex items-center gap-4">
                         <div className="flex-1 h-px bg-slate-200"></div>
                         <span className="text-xs text-slate-400">또는</span>
                         <div className="flex-1 h-px bg-slate-200"></div>
@@ -384,7 +406,7 @@ export default function LoginPage() {
                     <button
                         onClick={handleGoogleLogin}
                         disabled={isGoogleLoading}
-                        className="w-full flex items-center justify-center gap-3 bg-white hover:bg-slate-50 text-slate-700 font-medium py-3 px-6 rounded-xl border border-slate-200 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="w-full flex items-center justify-center gap-3 bg-white hover:bg-slate-50 text-slate-700 font-medium py-2.5 px-6 rounded-xl border border-slate-200 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                         {isGoogleLoading ? (
                             <Loader2 className="w-5 h-5 animate-spin" />
@@ -400,7 +422,7 @@ export default function LoginPage() {
                     </button>
 
                     {/* Demo Section Card */}
-                    <div className="mt-8 pt-6 border-t border-slate-100">
+                    <div className="mt-4 pt-4 border-t border-slate-100">
                         <div className="bg-gradient-to-r from-slate-50 to-emerald-50/50 rounded-xl p-4 border border-slate-100">
                             <p className="text-center text-xs text-slate-600 font-medium mb-3">
                                 🎯 심사위원 / 체험용 간편 접속
@@ -409,7 +431,7 @@ export default function LoginPage() {
                                 <button
                                     onClick={() => handleDemoLogin('admin@demo.com', 'demo1234')}
                                     disabled={isLoading || isGoogleLoading}
-                                    className="flex items-center justify-center gap-2 bg-white hover:bg-blue-50 text-slate-700 py-2.5 rounded-lg border border-slate-200 hover:border-blue-300 transition-all text-sm font-medium disabled:opacity-50 shadow-sm"
+                                    className="flex items-center justify-center gap-2 bg-white hover:bg-blue-50 text-slate-700 py-2 rounded-lg border border-slate-200 hover:border-blue-300 transition-all text-sm font-medium disabled:opacity-50 shadow-sm"
                                 >
                                     <Settings size={14} className="text-blue-500" />
                                     <span>관리자</span>
@@ -417,7 +439,7 @@ export default function LoginPage() {
                                 <button
                                     onClick={() => handleDemoLogin('desk@demo.com', 'demo1234')}
                                     disabled={isLoading || isGoogleLoading}
-                                    className="flex items-center justify-center gap-2 bg-white hover:bg-emerald-50 text-slate-700 py-2.5 rounded-lg border border-slate-200 hover:border-emerald-300 transition-all text-sm font-medium disabled:opacity-50 shadow-sm"
+                                    className="flex items-center justify-center gap-2 bg-white hover:bg-emerald-50 text-slate-700 py-2 rounded-lg border border-slate-200 hover:border-emerald-300 transition-all text-sm font-medium disabled:opacity-50 shadow-sm"
                                 >
                                     <Users size={14} className="text-emerald-500" />
                                     <span>안내데스크</span>

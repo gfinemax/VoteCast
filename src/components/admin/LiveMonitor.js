@@ -4,6 +4,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useStore } from '@/lib/store';
 import { Monitor, CheckCircle2, Play, Settings } from 'lucide-react';
 import AlertModal from '@/components/ui/AlertModal';
+import { useProjector } from '@/components/admin/ProjectorContext';
 
 import dynamic from 'next/dynamic';
 
@@ -14,6 +15,9 @@ export default function LiveMonitor({ mode = 'admin' }) {
     const { projectorMode, projectorData, agendas, currentAgendaId, voteData, attendance, members, projectorConnected } = state;
     const [showProjectorAlert, setShowProjectorAlert] = useState(false);
     const [showRestrictionAlert, setShowRestrictionAlert] = useState(false);
+
+    // Projector Window Logic (Global)
+    const { isProjectorOpen, openProjectorWindow, closeProjectorWindow } = useProjector();
 
     // Help Message Logic
     const handleProjectorAction = (actionFn) => {
@@ -143,9 +147,24 @@ export default function LiveMonitor({ mode = 'admin' }) {
                     <span className="tracking-widest text-emerald-500">TRIPLE LIVE MONITOR</span>
                 </div>
                 <div className="flex items-center gap-3">
-                    <div className="px-2 py-1 bg-slate-800 rounded text-[10px] text-slate-400 font-mono">
-                        STATUS: <span className="text-white">{projectorMode}</span>
-                    </div>
+                    <button
+                        onClick={() => {
+                            if (isProjectorOpen || projectorConnected) {
+                                closeProjectorWindow();
+                            } else {
+                                openProjectorWindow();
+                            }
+                        }}
+                        className={`flex items-center gap-2 px-3 py-1 rounded font-semibold text-xs transition-all border ${(isProjectorOpen || projectorConnected)
+                            ? 'bg-emerald-900/50 text-emerald-400 border-emerald-500/50 hover:bg-red-900/50 hover:text-red-400 hover:border-red-500/50'
+                            : 'bg-slate-800 text-slate-400 border-slate-700 hover:bg-slate-700 hover:text-white'
+                            }`}
+                    >
+                        <Monitor size={12} />
+                        <span>{(isProjectorOpen || projectorConnected) ? '송출중 (닫기)' : '송출창 열기'}</span>
+                        {(isProjectorOpen || projectorConnected) && <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse"></span>}
+                    </button>
+
                 </div>
             </div>
 

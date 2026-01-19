@@ -26,6 +26,8 @@ const INITIAL_DATA = {
     projectorData: null,
     masterPresentationSource: null, // Global Master PPT
     projectorConnected: false, // New: Projector Online Status
+    // UI State for Declaration Editing (per-agenda map)
+    declarationEditState: {}, // { [agendaId]: { isEditing: bool, isAutoCalc: bool } }
 };
 
 // Create Context
@@ -93,7 +95,26 @@ export function StoreProvider({ children }) {
             })
             .on('postgres_changes', { event: '*', schema: 'public', table: 'agendas' }, async () => {
                 const { data } = await supabase.from('agendas').select('*').order('order_index');
-                if (data) setState(prev => ({ ...prev, agendas: data }));
+                if (data) {
+                    setState(prev => {
+                        // Preserve declaration field for any agenda currently being edited
+                        const editingAgendaIds = Object.keys(prev.declarationEditState || {})
+                            .filter(id => prev.declarationEditState[id]?.isEditing);
+
+                        const mergedAgendas = data.map(agenda => {
+                            // If this agenda is being edited, preserve its local declaration
+                            if (editingAgendaIds.includes(String(agenda.id))) {
+                                const existingAgenda = prev.agendas.find(a => a.id === agenda.id);
+                                if (existingAgenda) {
+                                    return { ...agenda, declaration: existingAgenda.declaration };
+                                }
+                            }
+                            return agenda;
+                        });
+
+                        return { ...prev, agendas: mergedAgendas };
+                    });
+                }
             })
             .on('postgres_changes', { event: '*', schema: 'public', table: 'members' }, async () => {
                 const { data } = await supabase.from('members').select('*').order('id');
@@ -459,6 +480,22 @@ export function StoreProvider({ children }) {
             await supabase.from('system_settings')
                 .update({ projector_mode: mode })
                 .eq('id', 1);
+        },
+
+        // Declaration Editing State Management (per-agenda, local only)
+        setDeclarationEditMode: (agendaId, isEditing, isAutoCalc) => {
+            setState(prev => ({
+                ...prev,
+                declarationEditState: {
+                    ...prev.declarationEditState,
+                    [agendaId]: { isEditing, isAutoCalc }
+                }
+            }));
+        },
+
+        getDeclarationEditState: (agendaId) => {
+            const editState = stateRef.current.declarationEditState[agendaId];
+            return editState || { isEditing: false, isAutoCalc: true };
         },
 
         resetHelper: async () => { }
