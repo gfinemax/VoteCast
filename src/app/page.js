@@ -94,65 +94,98 @@ export default function LandingPage() {
           <p className="text-slate-400 text-lg">지역주택조합 총회 운영 시스템</p>
         </div>
 
-        {/* Cards Grid */}
-        <div className="grid md:grid-cols-3 gap-6 mb-12">
-          {/* Entrance Staff */}
-          <div className="group bg-white/5 backdrop-blur-md border border-white/10 rounded-2xl p-8 hover:bg-white/10 transition-all duration-300 flex flex-col relative overflow-hidden">
-            {/* Glow effect */}
-            <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-emerald-500 to-emerald-400"></div>
+        {/* Conditional Cards Grid */}
+        {user?.email === 'desk@demo.com' ? (
+          /* Check-in Desk View (Demo) */
+          <div className="max-w-md mx-auto">
+            <div className="group bg-white/5 backdrop-blur-md border border-white/10 rounded-2xl p-8 hover:bg-white/10 transition-all duration-300 flex flex-col relative overflow-hidden text-center">
+              <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-emerald-500 to-blue-500"></div>
 
-            <div className="h-14 w-14 bg-emerald-500/20 text-emerald-400 rounded-xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
-              <Users size={28} />
-            </div>
-            <h2 className="text-xl font-bold text-white mb-3">입구 안내 요원</h2>
-            <p className="text-slate-400 mb-8 text-sm flex-1 leading-relaxed">
-              조합원 입장을 검색하고 실시간으로 체크인합니다.<br />태블릿 사용을 권장합니다.
-            </p>
-            <Link href="/checkin" className="w-full mt-auto">
-              <button className="w-full py-3 bg-white/10 hover:bg-emerald-500 text-white font-semibold rounded-xl border border-white/10 hover:border-emerald-500 transition-all duration-300 shadow-lg hover:shadow-emerald-500/20">
-                입장 관리 시작
+              <div className="h-16 w-16 mx-auto bg-emerald-500/20 text-emerald-400 rounded-2xl flex items-center justify-center mb-6">
+                <Users size={32} />
+              </div>
+
+              <h2 className="text-2xl font-bold text-white mb-2">안내데스크</h2>
+              <p className="text-slate-400 mb-8 text-sm leading-relaxed">
+                조합원 입장을 검색하고<br />
+                실시간으로 체크인합니다.
+              </p>
+
+              <Link href="/checkin" className="w-full">
+                <button className="w-full py-4 bg-gradient-to-r from-emerald-500 to-blue-600 hover:from-emerald-600 hover:to-blue-700 text-white font-bold rounded-xl shadow-lg transition-all transform hover:scale-[1.02]">
+                  입장 관리 시작
+                </button>
+              </Link>
+
+              <button
+                onClick={() => window.open('/projector', '_blank')}
+                className="w-full mt-3 py-3 bg-white/5 hover:bg-white/10 text-slate-300 font-semibold rounded-xl transition-all"
+              >
+                실시간 총회 화면 보기 (Projector)
               </button>
-            </Link>
-          </div>
-
-          {/* Election Commission */}
-          <div className="group bg-white/5 backdrop-blur-md border border-white/10 rounded-2xl p-8 hover:bg-white/10 transition-all duration-300 flex flex-col relative overflow-hidden">
-            {/* Glow effect */}
-            <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-orange-500 to-orange-400"></div>
-
-            <div className="h-14 w-14 bg-orange-500/20 text-orange-400 rounded-xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
-              <ClipboardList size={28} />
             </div>
-            <h2 className="text-xl font-bold text-white mb-3">선거관리위원회</h2>
-            <p className="text-slate-400 mb-8 text-sm flex-1 leading-relaxed">
-              투표 결과를 집계하고 입력합니다.<br />결과(Result) 화면을 송출할 수 있습니다.
-            </p>
-            <Link href="/commission" className="w-full mt-auto">
-              <button className="w-full py-3 bg-white/10 hover:bg-orange-500 text-white font-semibold rounded-xl border border-white/10 hover:border-orange-500 transition-all duration-300 shadow-lg hover:shadow-orange-500/20">
-                선관위 패널 접속
-              </button>
-            </Link>
           </div>
+        ) : (
+          /* Admin/Staff View */
+          <div className="grid md:grid-cols-3 gap-6 mb-12">
+            {/* Entrance Staff */}
+            <div className="group bg-white/5 backdrop-blur-md border border-white/10 rounded-2xl p-8 hover:bg-white/10 transition-all duration-300 flex flex-col relative overflow-hidden">
+              {/* Glow effect */}
+              <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-emerald-500 to-emerald-400"></div>
 
-          {/* Admin */}
-          <div className="group bg-white/5 backdrop-blur-md border border-white/10 rounded-2xl p-8 hover:bg-white/10 transition-all duration-300 flex flex-col relative overflow-hidden">
-            {/* Glow effect */}
-            <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-blue-500 to-blue-400"></div>
-
-            <div className="h-14 w-14 bg-blue-500/20 text-blue-400 rounded-xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
-              <Settings size={28} />
+              <div className="h-14 w-14 bg-emerald-500/20 text-emerald-400 rounded-xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
+                <Users size={28} />
+              </div>
+              <h2 className="text-xl font-bold text-white mb-3">입구 안내 요원</h2>
+              <p className="text-slate-400 mb-8 text-sm flex-1 leading-relaxed">
+                조합원 입장을 검색하고 실시간으로 체크인합니다.<br />태블릿 사용을 권장합니다.
+              </p>
+              <Link href="/checkin" className="w-full mt-auto">
+                <button className="w-full py-3 bg-white/10 hover:bg-emerald-500 text-white font-semibold rounded-xl border border-white/10 hover:border-emerald-500 transition-all duration-300 shadow-lg hover:shadow-emerald-500/20">
+                  입장 관리 시작
+                </button>
+              </Link>
             </div>
-            <h2 className="text-xl font-bold text-white mb-3">총회 관리자</h2>
-            <p className="text-slate-400 mb-8 text-sm flex-1 leading-relaxed">
-              안건 설명(PPT) 및 전체 시스템을 총괄합니다.<br />모든 권한을 가집니다.
-            </p>
-            <Link href="/admin" className="w-full mt-auto">
-              <button className="w-full py-3 bg-white/10 hover:bg-blue-500 text-white font-semibold rounded-xl border border-white/10 hover:border-blue-500 transition-all duration-300 shadow-lg hover:shadow-blue-500/20">
-                관리자 패널 접속
-              </button>
-            </Link>
+
+            {/* Election Commission */}
+            <div className="group bg-white/5 backdrop-blur-md border border-white/10 rounded-2xl p-8 hover:bg-white/10 transition-all duration-300 flex flex-col relative overflow-hidden">
+              {/* Glow effect */}
+              <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-orange-500 to-orange-400"></div>
+
+              <div className="h-14 w-14 bg-orange-500/20 text-orange-400 rounded-xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
+                <ClipboardList size={28} />
+              </div>
+              <h2 className="text-xl font-bold text-white mb-3">선거관리위원회</h2>
+              <p className="text-slate-400 mb-8 text-sm flex-1 leading-relaxed">
+                투표 결과를 집계하고 입력합니다.<br />결과(Result) 화면을 송출할 수 있습니다.
+              </p>
+              <Link href="/commission" className="w-full mt-auto">
+                <button className="w-full py-3 bg-white/10 hover:bg-orange-500 text-white font-semibold rounded-xl border border-white/10 hover:border-orange-500 transition-all duration-300 shadow-lg hover:shadow-orange-500/20">
+                  선관위 패널 접속
+                </button>
+              </Link>
+            </div>
+
+            {/* Admin */}
+            <div className="group bg-white/5 backdrop-blur-md border border-white/10 rounded-2xl p-8 hover:bg-white/10 transition-all duration-300 flex flex-col relative overflow-hidden">
+              {/* Glow effect */}
+              <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-blue-500 to-blue-400"></div>
+
+              <div className="h-14 w-14 bg-blue-500/20 text-blue-400 rounded-xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
+                <Settings size={28} />
+              </div>
+              <h2 className="text-xl font-bold text-white mb-3">총회 관리자</h2>
+              <p className="text-slate-400 mb-8 text-sm flex-1 leading-relaxed">
+                안건 설명(PPT) 및 전체 시스템을 총괄합니다.<br />모든 권한을 가집니다.
+              </p>
+              <Link href="/admin" className="w-full mt-auto">
+                <button className="w-full py-3 bg-white/10 hover:bg-blue-500 text-white font-semibold rounded-xl border border-white/10 hover:border-blue-500 transition-all duration-300 shadow-lg hover:shadow-blue-500/20">
+                  관리자 패널 접속
+                </button>
+              </Link>
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Footer Links */}
         <div className="text-center space-y-4">
