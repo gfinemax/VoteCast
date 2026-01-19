@@ -1,9 +1,10 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useStore } from '@/lib/store';
-import { Search, UserCheck, UserX, AlertCircle, Clock, Check, RotateCcw, ChevronDown, ChevronUp, User, FileText } from 'lucide-react';
+import { Search, UserCheck, UserX, AlertCircle, Clock, Check, RotateCcw, ChevronDown, ChevronUp, User, FileText, Maximize, Minimize } from 'lucide-react';
 import FlipNumber from '@/components/ui/FlipNumber';
+import FullscreenToggle from '@/components/ui/FullscreenToggle';
 import Button from '@/components/ui/Button';
 import Card from '@/components/ui/Card';
 import AuthStatus from '@/components/ui/AuthStatus';
@@ -13,7 +14,9 @@ export default function CheckInPage() {
     const { members, attendance, activeMeetingId, agendas } = state; // activeMeetingId is Global
 
     const [searchTerm, setSearchTerm] = useState("");
+
     const [isStatsOpen, setIsStatsOpen] = useState(false);
+
 
     // Identify Folders (General Meetings)
     const folders = useMemo(() => agendas.filter(a => a.type === 'folder'), [agendas]);
@@ -186,7 +189,7 @@ export default function CheckInPage() {
             <header className="bg-white border-b border-slate-200 sticky top-0 z-20 shadow-sm">
                 <div className="max-w-4xl mx-auto">
                     {/* Top Bar: Title + Status */}
-                    <div className="flex justify-start items-center gap-3 px-4 py-1 bg-slate-50 border-b border-slate-100">
+                    <div className="flex justify-start items-center gap-3 px-3 py-1 bg-slate-50 border-b border-slate-100">
                         {currentMeeting ? (
                             <div className="flex items-center gap-1.5">
                                 <span className="relative flex h-2.5 w-2.5">
@@ -198,19 +201,20 @@ export default function CheckInPage() {
                         ) : (
                             <span className="text-xs font-bold text-red-500 flex items-center gap-1"><AlertCircle size={12} /> 입장 중단됨</span>
                         )}
-                        <div className="h-4 w-px bg-slate-300 mx-1"></div>
-                        <h1 className="text-lg font-bold text-slate-800">등록 데스크</h1>
+
                         <div className="flex-grow"></div>
+                        <FullscreenToggle />
+                        <div className="w-px h-4 bg-slate-300 mx-2 hidden md:block"></div>
                         <AuthStatus />
                     </div>
 
                     {/* Compact Stats Bar (Always Visible) */}
                     {activeMeetingId && (
                         <div className="px-4 py-2 bg-white">
-                            <div className="relative flex items-center justify-center py-0.5 md:py-4 px-2" onClick={() => setIsStatsOpen(!isStatsOpen)}>
+                            <div className="relative flex flex-col md:flex-row items-center justify-between md:justify-center py-1 md:py-4 px-2 gap-2" onClick={() => setIsStatsOpen(!isStatsOpen)}>
 
                                 {/* 1. Left: Total Context */}
-                                <div className="absolute left-0 flex flex-col md:block items-start text-base text-slate-500 font-bold tracking-tighter leading-none md:leading-normal">
+                                <div className="md:absolute md:left-0 flex flex-row md:flex-col items-center md:items-start gap-2 md:gap-0 text-sm md:text-base text-slate-500 font-bold tracking-tighter leading-none md:leading-normal">
                                     <span>전체 {stats.total}명</span>
                                     <span className="text-emerald-600">({stats.rate}%)</span>
                                 </div>
@@ -222,7 +226,7 @@ export default function CheckInPage() {
                                 </div>
 
                                 {/* 3. Right: Detail Button */}
-                                <button className="absolute right-0 text-xs font-bold text-white bg-slate-600 hover:bg-slate-700 active:scale-95 transition-all px-2 py-0.5 rounded-full flex items-center gap-1 shadow-md">
+                                <button className="md:absolute md:right-0 text-xs font-bold text-white bg-slate-600 hover:bg-slate-700 active:scale-95 transition-all px-2 py-1 md:py-0.5 rounded-full flex items-center gap-1 shadow-md w-full md:w-auto justify-center">
                                     {isStatsOpen ? (
                                         <>접기 <ChevronUp size={14} /></>
                                     ) : (
@@ -283,7 +287,7 @@ export default function CheckInPage() {
                 <div className="relative mb-2">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
                     <input
-                        className="w-full pl-9 pr-4 py-2.5 rounded-lg border border-slate-300 shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-base bg-white text-slate-900 placeholder:text-slate-400"
+                        className="w-full pl-9 pr-4 py-3 md:py-2.5 rounded-lg border border-slate-300 shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-base bg-white text-slate-900 placeholder:text-slate-400"
                         placeholder="조합원넘버 또는 성명..."
                         value={searchTerm}
                         onChange={e => setSearchTerm(e.target.value)}
@@ -327,48 +331,48 @@ export default function CheckInPage() {
                                                 </>
                                             )}
                                         </div>
-                                        <div className="text-base font-bold text-slate-800 flex items-center">
+                                        <div className="text-base font-bold text-slate-800 flex items-center leading-tight">
                                             {member.name}
-                                            {displayProxyName && (isCheckedIn ? checkInType === 'proxy' : true) && <span className="text-slate-800 ml-0.5">({displayProxyName})</span>}
+                                            {displayProxyName && (isCheckedIn ? checkInType === 'proxy' : true) && <span className="text-slate-800 ml-0.5 text-sm md:text-base">({displayProxyName})</span>}
                                         </div>
                                     </div>
 
                                     {/* Actions (Right) */}
-                                    <div className="flex gap-1.5">
+                                    <div className="flex gap-1.5 shrink-0">
                                         {!isCheckedIn ? (
                                             <>
                                                 <button
                                                     onClick={() => handleCheckIn(member.id, 'direct')}
                                                     disabled={!activeMeetingId}
-                                                    className="flex flex-col items-center justify-center w-12 h-12 rounded-lg bg-emerald-500 active:bg-emerald-600 text-white shadow-sm disabled:opacity-30 disabled:cursor-not-allowed transition-all active:scale-95"
+                                                    className="flex flex-col items-center justify-center w-10 h-10 md:w-12 md:h-12 rounded-lg bg-emerald-500 active:bg-emerald-600 text-white shadow-sm disabled:opacity-30 disabled:cursor-not-allowed transition-all active:scale-95"
                                                 >
-                                                    <UserCheck size={18} className="mb-0.5" />
-                                                    <span className="text-[11px] font-bold leading-none">본인</span>
+                                                    <UserCheck size={16} className="md:w-[18px] md:h-[18px] mb-0.5" />
+                                                    <span className="text-[10px] md:text-[11px] font-bold leading-none">본인</span>
                                                 </button>
                                                 <button
                                                     onClick={() => handleOpenProxyModal(member)}
                                                     disabled={!activeMeetingId}
-                                                    className="flex flex-col items-center justify-center w-12 h-12 rounded-lg bg-blue-500 active:bg-blue-600 text-white shadow-sm disabled:opacity-30 disabled:cursor-not-allowed transition-all active:scale-95"
+                                                    className="flex flex-col items-center justify-center w-10 h-10 md:w-12 md:h-12 rounded-lg bg-blue-500 active:bg-blue-600 text-white shadow-sm disabled:opacity-30 disabled:cursor-not-allowed transition-all active:scale-95"
                                                 >
-                                                    <UserCheck size={18} className="mb-0.5" />
-                                                    <span className="text-[11px] font-bold leading-none">대리</span>
+                                                    <UserCheck size={16} className="md:w-[18px] md:h-[18px] mb-0.5" />
+                                                    <span className="text-[10px] md:text-[11px] font-bold leading-none">대리</span>
                                                 </button>
                                                 <button
                                                     onClick={() => handleOpenWrittenVoteModal(member)}
                                                     disabled={!activeMeetingId}
-                                                    className="flex flex-col items-center justify-center w-12 h-12 rounded-lg bg-orange-400 active:bg-orange-500 text-white shadow-sm disabled:opacity-30 disabled:cursor-not-allowed transition-all active:scale-95"
+                                                    className="flex flex-col items-center justify-center w-10 h-10 md:w-12 md:h-12 rounded-lg bg-orange-400 active:bg-orange-500 text-white shadow-sm disabled:opacity-30 disabled:cursor-not-allowed transition-all active:scale-95"
                                                 >
-                                                    <UserCheck size={18} className="mb-0.5" />
-                                                    <span className="text-[11px] font-bold leading-none">서면</span>
+                                                    <UserCheck size={16} className="md:w-[18px] md:h-[18px] mb-0.5" />
+                                                    <span className="text-[10px] md:text-[11px] font-bold leading-none">서면</span>
                                                 </button>
                                             </>
                                         ) : (
                                             <div className="flex items-center gap-1.5">
                                                 <button
                                                     onClick={() => handleCancelCheckIn(member.id)}
-                                                    className="w-12 h-12 rounded-lg bg-white border border-slate-200 text-slate-400 active:text-red-500 active:bg-red-50 flex items-center justify-center transition-colors shadow-sm"
+                                                    className="w-10 h-10 md:w-12 md:h-12 rounded-lg bg-white border border-slate-200 text-slate-400 active:text-red-500 active:bg-red-50 flex items-center justify-center transition-colors shadow-sm"
                                                 >
-                                                    <RotateCcw size={20} />
+                                                    <RotateCcw size={18} className="md:w-5 md:h-5" />
                                                 </button>
                                             </div>
                                         )}

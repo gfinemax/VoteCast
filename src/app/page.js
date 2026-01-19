@@ -4,6 +4,7 @@ import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Users, Monitor, Settings, MapPin, ClipboardList, ExternalLink, LogOut, User } from 'lucide-react';
+import FullscreenToggle from '@/components/ui/FullscreenToggle';
 import { createClient } from '@/utils/supabase/client';
 
 export default function LandingPage() {
@@ -50,6 +51,7 @@ export default function LandingPage() {
 
           {/* Auth Status */}
           <div className="flex items-center gap-3">
+            <FullscreenToggle className="bg-white/10 text-white-400 hover:bg-white/20 border-white/10" iconOnly />
             {loading ? (
               <div className="w-24 h-8 bg-white/5 rounded-lg animate-pulse"></div>
             ) : user ? (

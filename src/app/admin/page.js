@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { useStore } from '@/lib/store';
 import { supabase } from '@/lib/supabase';
 import { Play, Pause, Monitor, Settings } from 'lucide-react';
+import FullscreenToggle from '@/components/ui/FullscreenToggle';
 import Button from '@/components/ui/Button';
 import DashboardLayout from '@/components/admin/DashboardLayout';
 import AgendaList from '@/components/admin/AgendaList';
@@ -158,14 +159,15 @@ export default function AdminPage() {
                         <button
                             onClick={openProjectorWindow}
                             className={`flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-sm transition-all shadow-lg ${isProjectorOpen
-                                    ? 'bg-emerald-500 text-white shadow-emerald-500/30 hover:bg-emerald-600'
-                                    : 'bg-emerald-600 text-white hover:bg-emerald-700'
+                                ? 'bg-emerald-500 text-white shadow-emerald-500/30 hover:bg-emerald-600'
+                                : 'bg-emerald-600 text-white hover:bg-emerald-700'
                                 }`}
                         >
                             <Monitor size={14} />
                             <span>{isProjectorOpen ? '송출중' : '송출창'}</span>
                             {isProjectorOpen && <span className="w-2 h-2 bg-white rounded-full animate-pulse"></span>}
                         </button>
+                        <FullscreenToggle />
                         <AuthStatus />
                     </div>
                 </>

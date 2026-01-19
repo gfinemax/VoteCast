@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { useStore } from '@/lib/store';
 import { Play, ClipboardList, Monitor, Settings } from 'lucide-react';
+import FullscreenToggle from '@/components/ui/FullscreenToggle';
 import Button from '@/components/ui/Button';
 import DashboardLayout from '@/components/admin/DashboardLayout';
 import AgendaList from '@/components/admin/AgendaList';
@@ -100,6 +101,7 @@ export default function CommissionPage() {
                             <span>{isProjectorOpen ? '송출중' : '송출창'}</span>
                             {isProjectorOpen && <span className="w-2 h-2 bg-white rounded-full animate-pulse"></span>}
                         </button>
+                        <FullscreenToggle />
                         <AuthStatus />
                     </div>
                 </>

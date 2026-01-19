@@ -14,17 +14,17 @@ const FlipDigit = ({ digit, playSound }) => {
     }
 
     return (
-        <div className="relative w-11 h-16 bg-slate-900 rounded-lg overflow-hidden shrink-0 shadow-lg perspective-1000">
+        <div className="relative w-8 h-12 md:w-11 md:h-16 bg-slate-900 rounded-lg overflow-hidden shrink-0 shadow-lg perspective-1000">
             {/* --- Base Layer (Static) --- */}
             {/* Shows the NEW number normally. This acts as the "background" that gets revealed. */}
             <div className="absolute inset-0 z-0">
                 <div className="absolute top-0 left-0 right-0 h-1/2 overflow-hidden bg-slate-800 border-b border-slate-950/50 rounded-t-lg">
-                    <span className="absolute top-0 left-0 right-0 h-full flex items-center justify-center text-5xl font-black text-slate-100 translate-y-1/2">
+                    <span className="absolute top-0 left-0 right-0 h-full flex items-center justify-center text-3xl md:text-5xl font-black text-slate-100 translate-y-1/2">
                         {currentDigit}
                     </span>
                 </div>
                 <div className="absolute bottom-0 left-0 right-0 h-1/2 overflow-hidden bg-slate-800 rounded-b-lg">
-                    <span className="absolute bottom-0 left-0 right-0 h-full flex items-center justify-center text-5xl font-black text-slate-100 -translate-y-1/2">
+                    <span className="absolute bottom-0 left-0 right-0 h-full flex items-center justify-center text-3xl md:text-5xl font-black text-slate-100 -translate-y-1/2">
                         {currentDigit}
                     </span>
                 </div>
@@ -39,7 +39,7 @@ const FlipDigit = ({ digit, playSound }) => {
                     className="absolute top-0 left-0 right-0 h-1/2 overflow-hidden bg-slate-800 border-b border-slate-950/50 rounded-t-lg origin-bottom animate-flip-top backface-hidden"
                     style={{ zIndex: 20 }}
                 >
-                    <span className="absolute top-0 left-0 right-0 h-full flex items-center justify-center text-5xl font-black text-slate-100 translate-y-1/2">
+                    <span className="absolute top-0 left-0 right-0 h-full flex items-center justify-center text-3xl md:text-5xl font-black text-slate-100 translate-y-1/2">
                         {previousDigit}
                     </span>
                     <div className="absolute inset-0 bg-black/0 animate-[shading-top_0.6s_ease-in_forwards]"></div>
@@ -50,7 +50,7 @@ const FlipDigit = ({ digit, playSound }) => {
                     className="absolute bottom-0 left-0 right-0 h-1/2 overflow-hidden bg-slate-800 rounded-b-lg origin-top animate-flip-bottom backface-hidden"
                     style={{ zIndex: 20 }}
                 >
-                    <span className="absolute bottom-0 left-0 right-0 h-full flex items-center justify-center text-5xl font-black text-slate-100 -translate-y-1/2">
+                    <span className="absolute bottom-0 left-0 right-0 h-full flex items-center justify-center text-3xl md:text-5xl font-black text-slate-100 -translate-y-1/2">
                         {currentDigit}
                     </span>
                     <div className="absolute inset-0 bg-black/0 animate-[shading-bottom_0.6s_ease-out_forwards]"></div>
