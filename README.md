@@ -68,5 +68,4 @@ RHA VoteCast는 지역주택조합 총회를 위해 설계된 **실시간 투표
 
 ---
 
-Designed for Professional General Meetings.
-**VoteCast** 하나로 총회의 품격을 높이세요.
+복잡한 엑셀 집계와 수신호, PPT 넘기기는 이제 그만! **VoteCast** 하나로 총회의 품격을 높이세요.
