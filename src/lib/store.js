@@ -20,6 +20,9 @@ const INITIAL_DATA = {
         votesNo: 0,
         votesAbstain: 0,
         customDeclaration: '',
+        inactiveMemberIds: [],
+        agendaTypeLocks: {},
+        agendaOrderLocked: false,
     },
     currentAgendaId: 1,
     projectorMode: 'IDLE',
@@ -30,6 +33,61 @@ const INITIAL_DATA = {
     declarationEditState: {}, // { [agendaId]: { isEditing: bool, isAutoCalc: bool } }
 };
 
+const getKeyboardNavigableAgendaIds = (agendas = []) => {
+    const groups = [];
+    let currentGroup = { folder: null, items: [] };
+
+    agendas.forEach((agenda) => {
+        if (agenda.type === 'folder') {
+            if (currentGroup.folder || currentGroup.items.length > 0) {
+                groups.push(currentGroup);
+            }
+            currentGroup = { folder: agenda, items: [] };
+            return;
+        }
+
+        currentGroup.items.push(agenda);
+    });
+
+    if (currentGroup.folder || currentGroup.items.length > 0) {
+        groups.push(currentGroup);
+    }
+
+    return groups
+        .reverse()
+        .flatMap((group) => group.items.map((item) => item.id));
+};
+
+const normalizeMemberPayload = (member = {}) => ({
+    unit: String(member.unit || '').trim(),
+    name: String(member.name || '').trim(),
+    proxy: String(member.proxy || '').trim()
+});
+
+const getInactiveMemberIds = (voteData = {}) => {
+    if (!Array.isArray(voteData?.inactiveMemberIds)) return [];
+    return voteData.inactiveMemberIds
+        .map((value) => parseInt(value, 10))
+        .filter((value) => !Number.isNaN(value));
+};
+
+const getAgendaTypeLocks = (voteData = {}) => {
+    if (!voteData?.agendaTypeLocks || typeof voteData.agendaTypeLocks !== 'object') return {};
+    return voteData.agendaTypeLocks;
+};
+
+export const getMajorityThreshold = (count) => Math.floor((Number(count) || 0) / 2) + 1;
+export const normalizeAgendaType = (type) => {
+    if (type === 'general') return 'majority';
+    if (type === 'special') return 'twoThirds';
+    return type || 'majority';
+};
+export const getAttendanceQuorumTarget = (type, totalMembers) => {
+    return normalizeAgendaType(type) === 'twoThirds'
+        ? Math.ceil((Number(totalMembers) || 0) * (2 / 3))
+        : getMajorityThreshold(totalMembers);
+};
+
 // Create Context
 const StoreContext = createContext(null);
 
@@ -37,6 +95,7 @@ const StoreContext = createContext(null);
 export function StoreProvider({ children }) {
     const [state, setState] = useState(INITIAL_DATA);
     const [isInitialized, setIsInitialized] = useState(false);
+    const isReorderingAgendasRef = useRef(false);
 
     // Initial Fetch
     useEffect(() => {
@@ -94,6 +153,7 @@ export function StoreProvider({ children }) {
                 }
             })
             .on('postgres_changes', { event: '*', schema: 'public', table: 'agendas' }, async () => {
+                if (isReorderingAgendasRef.current) return;
                 const { data } = await supabase.from('agendas').select('*').order('order_index');
                 if (data) {
                     setState(prev => {
@@ -184,6 +244,53 @@ export function StoreProvider({ children }) {
     // Ref for latest state in async actions
     const stateRef = useRef(state);
     useEffect(() => { stateRef.current = state; }, [state]);
+
+    const setAgendaById = async (id) => {
+        console.log('[setAgenda] Called with ID:', id);
+
+        const targetAgenda = stateRef.current.agendas.find(a => a.id === id);
+        if (!targetAgenda) {
+            console.log('[setAgenda] ERROR: targetAgenda not found!');
+            return;
+        }
+
+        let newType = targetAgenda.type || 'majority';
+        if (newType === 'general') newType = 'majority';
+        if (newType === 'special') newType = 'twoThirds';
+
+        const vData = stateRef.current.voteData || {};
+        const total = (vData.writtenAttendance || 0) + (vData.directAttendance || 0) + (vData.proxyAttendance || 0);
+        const criterion = newType === 'twoThirds' ? "3분의 2 이상" : "과반수 이상";
+        const votesYes = vData.votesYes || 0;
+        const votesNo = vData.votesNo || 0;
+        const votesAbstain = vData.votesAbstain || 0;
+
+        const defaultDecl = total > 0 ? `"${targetAgenda.title}" 서면결의 포함 찬성(${votesYes})표, 반대(${votesNo})표, 기권(${votesAbstain})표로
+전체 참석자(${total.toLocaleString()})명중 ${criterion} 찬성으로
+"${targetAgenda.title}"은 가결되었음을 선포합니다.` : "";
+
+        const newVoteData = {
+            ...vData,
+            voteType: newType,
+            customDeclaration: defaultDecl,
+            presentationPage: targetAgenda.start_page || 1
+        };
+
+        console.log('[setAgenda] Setting currentAgendaId to:', id);
+
+        setState(prev => ({
+            ...prev,
+            currentAgendaId: id,
+            voteData: newVoteData
+        }));
+
+        const { error } = await supabase.from('system_settings').update({
+            current_agenda_id: id,
+            vote_data: newVoteData
+        }).eq('id', 1);
+
+        if (error) console.error("Set Agenda Error:", error);
+    };
 
     // Actions
     const actions = React.useMemo(() => ({
@@ -394,51 +501,255 @@ export function StoreProvider({ children }) {
         },
 
         setAgenda: async (id) => {
-            console.log('[setAgenda] Called with ID:', id);
+            await setAgendaById(id);
+        },
 
-            const targetAgenda = stateRef.current.agendas.find(a => a.id === id);
-            if (!targetAgenda) {
-                console.log('[setAgenda] ERROR: targetAgenda not found!');
-                return;
+        moveAgendaSelection: async (delta) => {
+            const navigableAgendaIds = getKeyboardNavigableAgendaIds(stateRef.current.agendas);
+            if (!navigableAgendaIds.length || !delta) return;
+
+            const currentIndex = navigableAgendaIds.indexOf(stateRef.current.currentAgendaId);
+            const normalizedDelta = delta > 0 ? 1 : -1;
+            const nextIndex = currentIndex === -1
+                ? (normalizedDelta > 0 ? 0 : navigableAgendaIds.length - 1)
+                : Math.min(
+                    navigableAgendaIds.length - 1,
+                    Math.max(0, currentIndex + normalizedDelta)
+                );
+
+            if (currentIndex === nextIndex) return;
+
+            await setAgendaById(navigableAgendaIds[nextIndex]);
+        },
+
+        reorderAgendas: async (nextAgendaIds) => {
+            if (!Array.isArray(nextAgendaIds) || !nextAgendaIds.length) {
+                throw new Error('정렬할 안건 순서가 비어 있습니다.');
             }
 
-            let newType = targetAgenda.type || 'majority';
-            if (newType === 'general') newType = 'majority';
-            if (newType === 'special') newType = 'twoThirds';
+            const currentAgendas = [...stateRef.current.agendas].sort((a, b) => a.order_index - b.order_index);
+            if (currentAgendas.length !== nextAgendaIds.length) {
+                throw new Error('안건 순서 정보가 현재 목록과 일치하지 않습니다.');
+            }
 
-            const vData = stateRef.current.voteData || {};
-            const total = (vData.writtenAttendance || 0) + (vData.directAttendance || 0) + (vData.proxyAttendance || 0);
-            const criterion = newType === 'twoThirds' ? "3분의 2 이상" : "과반수 이상";
-            const votesYes = vData.votesYes || 0;
-            const votesNo = vData.votesNo || 0;
-            const votesAbstain = vData.votesAbstain || 0;
+            const agendaMap = new Map(currentAgendas.map((agenda) => [agenda.id, agenda]));
+            const nextAgendas = nextAgendaIds.map((id, index) => {
+                const agenda = agendaMap.get(id);
+                if (!agenda) {
+                    throw new Error(`존재하지 않는 안건 ID입니다: ${id}`);
+                }
 
-            const defaultDecl = total > 0 ? `"${targetAgenda.title}" 서면결의 포함 찬성(${votesYes})표, 반대(${votesNo})표, 기권(${votesAbstain})표로
-전체 참석자(${total.toLocaleString()})명중 ${criterion} 찬성으로
-"${targetAgenda.title}"은 가결되었음을 선포합니다.` : "";
+                return {
+                    ...agenda,
+                    order_index: index + 1
+                };
+            });
 
-            const newVoteData = {
-                ...vData,
-                voteType: newType,
-                customDeclaration: defaultDecl,
-                presentationPage: targetAgenda.start_page || 1
-            };
+            const unchanged = nextAgendas.every((agenda) => {
+                const currentAgenda = agendaMap.get(agenda.id);
+                return currentAgenda?.order_index === agenda.order_index;
+            });
 
-            console.log('[setAgenda] Setting currentAgendaId to:', id);
+            if (unchanged) return;
 
-            // Optimistic Update - THIS NOW UPDATES THE SHARED STATE
             setState(prev => ({
                 ...prev,
-                currentAgendaId: id,
-                voteData: newVoteData
+                agendas: nextAgendas
             }));
 
-            const { error } = await supabase.from('system_settings').update({
-                current_agenda_id: id,
-                vote_data: newVoteData
-            }).eq('id', 1);
+            isReorderingAgendasRef.current = true;
 
-            if (error) console.error("Set Agenda Error:", error);
+            try {
+                const tempOffset = nextAgendas.length + 1000;
+                const changedAgendas = nextAgendas.filter((agenda) => {
+                    const currentAgenda = agendaMap.get(agenda.id);
+                    return currentAgenda?.order_index !== agenda.order_index;
+                });
+
+                for (const agenda of changedAgendas) {
+                    const { error } = await supabase
+                        .from('agendas')
+                        .update({ order_index: agenda.order_index + tempOffset })
+                        .eq('id', agenda.id);
+
+                    if (error) throw error;
+                }
+
+                for (const agenda of changedAgendas) {
+                    const { error } = await supabase
+                        .from('agendas')
+                        .update({ order_index: agenda.order_index })
+                        .eq('id', agenda.id);
+
+                    if (error) throw error;
+                }
+            } catch (error) {
+                const { data } = await supabase.from('agendas').select('*').order('order_index');
+                if (data) {
+                    setState(prev => ({ ...prev, agendas: data }));
+                }
+                throw error;
+            } finally {
+                isReorderingAgendasRef.current = false;
+                const { data } = await supabase.from('agendas').select('*').order('order_index');
+                if (data) {
+                    setState(prev => ({ ...prev, agendas: data }));
+                }
+            }
+        },
+
+        addMember: async (member) => {
+            const payload = normalizeMemberPayload(member);
+
+            if (!payload.unit || !payload.name) {
+                throw new Error('동/호수와 성명은 필수입니다.');
+            }
+
+            const { data: maxIdResult, error: maxIdError } = await supabase
+                .from('members')
+                .select('id')
+                .order('id', { ascending: false })
+                .limit(1);
+
+            if (maxIdError) throw maxIdError;
+
+            const nextId = (maxIdResult?.[0]?.id || 0) + 1;
+            const nextMember = { id: nextId, ...payload };
+
+            const hasActiveField = Object.prototype.hasOwnProperty.call(stateRef.current.members?.[0] || {}, 'is_active');
+            if (hasActiveField) {
+                nextMember.is_active = member?.is_active !== false;
+            }
+
+            const { data, error } = await supabase
+                .from('members')
+                .insert(nextMember)
+                .select()
+                .single();
+
+            if (error) throw error;
+            return data;
+        },
+
+        setMemberActive: async (memberId, isActive) => {
+            if (!memberId) {
+                throw new Error('대상 조합원이 올바르지 않습니다.');
+            }
+
+            const currentVoteData = stateRef.current.voteData || {};
+            const inactiveMemberIds = new Set(getInactiveMemberIds(currentVoteData));
+
+            if (isActive) {
+                inactiveMemberIds.delete(memberId);
+            } else {
+                inactiveMemberIds.add(memberId);
+            }
+
+            const newVoteData = {
+                ...currentVoteData,
+                inactiveMemberIds: Array.from(inactiveMemberIds).sort((a, b) => a - b)
+            };
+
+            setState(prev => ({ ...prev, voteData: newVoteData }));
+
+            const { error } = await supabase.from('system_settings')
+                .update({ vote_data: newVoteData })
+                .eq('id', 1);
+
+            if (error) throw error;
+        },
+
+        setAgendaTypeLock: async (agendaId, isLocked) => {
+            if (!agendaId) {
+                throw new Error('잠금 대상 안건이 올바르지 않습니다.');
+            }
+
+            const currentVoteData = stateRef.current.voteData || {};
+            const currentLocks = getAgendaTypeLocks(currentVoteData);
+            const nextLocks = { ...currentLocks };
+
+            if (isLocked) {
+                nextLocks[agendaId] = true;
+            } else {
+                delete nextLocks[agendaId];
+            }
+
+            const newVoteData = {
+                ...currentVoteData,
+                agendaTypeLocks: nextLocks
+            };
+
+            setState(prev => ({ ...prev, voteData: newVoteData }));
+
+            const { error } = await supabase.from('system_settings')
+                .update({ vote_data: newVoteData })
+                .eq('id', 1);
+
+            if (error) throw error;
+        },
+
+        setAgendaOrderLock: async (isLocked) => {
+            const currentVoteData = stateRef.current.voteData || {};
+            const newVoteData = {
+                ...currentVoteData,
+                agendaOrderLocked: !!isLocked
+            };
+
+            setState(prev => ({ ...prev, voteData: newVoteData }));
+
+            const { error } = await supabase.from('system_settings')
+                .update({ vote_data: newVoteData })
+                .eq('id', 1);
+
+            if (error) throw error;
+        },
+
+        updateMember: async (member) => {
+            if (!member?.id) {
+                throw new Error('수정할 조합원 정보가 올바르지 않습니다.');
+            }
+
+            const updates = normalizeMemberPayload(member);
+
+            if (!updates.unit || !updates.name) {
+                throw new Error('동/호수와 성명은 비워둘 수 없습니다.');
+            }
+
+            if (Object.prototype.hasOwnProperty.call(member, 'is_active')) {
+                updates.is_active = member.is_active;
+            }
+
+            const { error } = await supabase
+                .from('members')
+                .update(updates)
+                .eq('id', member.id);
+
+            if (error) throw error;
+        },
+
+        deleteMember: async (id) => {
+            if (!id) {
+                throw new Error('삭제할 조합원이 선택되지 않았습니다.');
+            }
+
+            const currentVoteData = stateRef.current.voteData || {};
+            const nextVoteData = {
+                ...currentVoteData,
+                inactiveMemberIds: getInactiveMemberIds(currentVoteData).filter((memberId) => memberId !== id)
+            };
+
+            const { error } = await supabase
+                .from('members')
+                .delete()
+                .eq('id', id);
+
+            if (error) throw error;
+
+            const { error: settingsError } = await supabase.from('system_settings')
+                .update({ vote_data: nextVoteData })
+                .eq('id', 1);
+
+            if (settingsError) throw settingsError;
         },
 
         updateVoteData: async (field, value) => {

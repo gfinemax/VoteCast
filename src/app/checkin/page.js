@@ -2,6 +2,7 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import { useStore } from '@/lib/store';
+import { getMajorityThreshold } from '@/lib/store';
 import { Search, UserCheck, UserX, AlertCircle, Clock, Check, RotateCcw, ChevronDown, ChevronUp, User, FileText, Maximize, Minimize } from 'lucide-react';
 import FlipNumber from '@/components/ui/FlipNumber';
 import FullscreenToggle from '@/components/ui/FullscreenToggle';
@@ -9,9 +10,23 @@ import Button from '@/components/ui/Button';
 import Card from '@/components/ui/Card';
 import AuthStatus from '@/components/ui/AuthStatus';
 
+const EMPTY_INACTIVE_MEMBER_IDS = [];
+
 export default function CheckInPage() {
     const { state, actions } = useStore();
-    const { members, attendance, activeMeetingId, agendas } = state; // activeMeetingId is Global
+    const { members, attendance, activeMeetingId, agendas, voteData } = state; // activeMeetingId is Global
+    const inactiveMemberIds = Array.isArray(voteData?.inactiveMemberIds) ? voteData.inactiveMemberIds : EMPTY_INACTIVE_MEMBER_IDS;
+    const activeMemberIdSet = useMemo(() => {
+        const inactiveMemberIdSet = new Set(inactiveMemberIds);
+        return new Set(
+            members
+                .filter(member => member.is_active !== false && !inactiveMemberIdSet.has(member.id))
+                .map(member => member.id)
+        );
+    }, [inactiveMemberIds, members]);
+    const activeMembers = useMemo(() => {
+        return members.filter(member => activeMemberIdSet.has(member.id));
+    }, [activeMemberIdSet, members]);
 
     const [searchTerm, setSearchTerm] = useState("");
 
@@ -30,33 +45,35 @@ export default function CheckInPage() {
     const stats = useMemo(() => {
         // If no active meeting, stats are 0
         if (!activeMeetingId) return {
-            total: state.members.length, // Show total anyway
+            total: activeMembers.length, // Show total anyway
             checkedIn: 0,
             directCount: 0,
             proxyCount: 0,
             writtenCount: 0,
             rate: 0,
-            directTarget: Math.ceil(state.members.length * 0.2),
-            majorityTarget: Math.ceil(state.members.length / 2),
-            twoThirdsTarget: Math.ceil(state.members.length * (2 / 3)),
+            directTarget: Math.ceil(activeMembers.length * 0.2),
+            majorityTarget: getMajorityThreshold(activeMembers.length),
+            twoThirdsTarget: Math.ceil(activeMembers.length * (2 / 3)),
             isDirectMet: false,
             isMajorityMet: false,
             isTwoThirdsMet: false
         };
 
-        const currentAttendance = attendance.filter(a => a.meeting_id === activeMeetingId);
+        const currentAttendance = attendance.filter(
+            (a) => a.meeting_id === activeMeetingId && activeMemberIdSet.has(a.member_id)
+        );
         const directCount = currentAttendance.filter(a => a.type === 'direct').length;
         const proxyCount = currentAttendance.filter(a => a.type === 'proxy').length;
         const writtenCount = currentAttendance.filter(a => a.type === 'written').length;
         const checkedInCount = currentAttendance.length;
 
         // Total Members in DB
-        const total = state.members.length;
+        const total = activeMembers.length;
         const rate = total > 0 ? ((checkedInCount / total) * 100).toFixed(1) : 0;
 
         // Targets
         const directTarget = Math.ceil(total * 0.2);
-        const majorityTarget = Math.ceil(total / 2);
+        const majorityTarget = getMajorityThreshold(total);
         const twoThirdsTarget = Math.ceil(total * (2 / 3));
 
         return {
@@ -73,16 +90,16 @@ export default function CheckInPage() {
             isMajorityMet: checkedInCount >= majorityTarget,
             isTwoThirdsMet: checkedInCount >= twoThirdsTarget
         };
-    }, [attendance, activeMeetingId, members]);
+    }, [activeMeetingId, activeMemberIdSet, activeMembers.length, attendance]);
 
     const filteredMembers = useMemo(() => {
-        if (!searchTerm) return members;
-        return members.filter(m =>
+        if (!searchTerm) return activeMembers;
+        return activeMembers.filter(m =>
             String(m.name || '').includes(searchTerm) ||
             String(m.unit || '').includes(searchTerm) ||
             String(m.proxy || '').includes(searchTerm)
         );
-    }, [members, searchTerm]);
+    }, [activeMembers, searchTerm]);
 
 
     const handleCheckIn = (memberId, type, proxyName = null) => {

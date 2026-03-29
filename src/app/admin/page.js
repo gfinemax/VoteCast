@@ -1,11 +1,10 @@
 'use client';
 
-import React, { useState } from 'react';
+import React from 'react';
+import Link from 'next/link';
 import { useStore } from '@/lib/store';
-import { supabase } from '@/lib/supabase';
-import { Play, Pause, Monitor, Settings } from 'lucide-react';
+import { Settings, Users } from 'lucide-react';
 import FullscreenToggle from '@/components/ui/FullscreenToggle';
-import Button from '@/components/ui/Button';
 import DashboardLayout from '@/components/admin/DashboardLayout';
 import AgendaList from '@/components/admin/AgendaList';
 import LiveMonitor from '@/components/admin/LiveMonitor';
@@ -16,23 +15,46 @@ import AuthStatus from '@/components/ui/AuthStatus';
 export default function AdminPage() {
     const { state, actions } = useStore();
     const { voteData, currentAgendaId, agendas, projectorMode, attendance, members } = state;
+    const inactiveMemberIds = React.useMemo(
+        () => Array.isArray(voteData?.inactiveMemberIds) ? voteData.inactiveMemberIds : [],
+        [voteData?.inactiveMemberIds]
+    );
+    const activeMemberIdSet = React.useMemo(() => {
+        const inactiveMemberIdLookup = new Set(inactiveMemberIds);
+        return new Set(
+            members
+                .filter((member) => member.is_active !== false && !inactiveMemberIdLookup.has(member.id))
+                .map((member) => member.id)
+        );
+    }, [inactiveMemberIds, members]);
     const currentAgenda = agendas.find(a => a.id === currentAgendaId);
-    const projectorModeRef = React.useRef(projectorMode);
-    projectorModeRef.current = projectorMode;
 
-    // Remote PPT Keyboard Control
+    // Remote keyboard control for agenda selection and PPT paging
     React.useEffect(() => {
         const handleKeyDown = (e) => {
             // Allow control in both IDLE and PPT mode as both show the PDF base layer
-            if (projectorModeRef.current !== 'PPT' && projectorModeRef.current !== 'IDLE') return;
+            if (projectorMode !== 'PPT' && projectorMode !== 'IDLE') return;
 
-            // Only trigger if focus is not in an input/textarea
-            if (['INPUT', 'TEXTAREA'].includes(document.activeElement?.tagName)) return;
+            if (e.isComposing || e.altKey || e.ctrlKey || e.metaKey) return;
 
-            if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+            const activeElement = document.activeElement;
+            if (
+                ['INPUT', 'TEXTAREA', 'SELECT'].includes(activeElement?.tagName) ||
+                activeElement?.isContentEditable
+            ) {
+                return;
+            }
+
+            if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                actions.moveAgendaSelection(1);
+            } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                actions.moveAgendaSelection(-1);
+            } else if (e.key === 'ArrowRight') {
                 e.preventDefault();
                 actions.updatePresentationPage(1);
-            } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+            } else if (e.key === 'ArrowLeft') {
                 e.preventDefault();
                 actions.updatePresentationPage(-1);
             }
@@ -40,7 +62,7 @@ export default function AdminPage() {
 
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [actions]);
+    }, [actions, projectorMode]);
 
 
     // 1. Identify Context (Meeting/Folder) for stats
@@ -57,14 +79,16 @@ export default function AdminPage() {
     // 2. Derive LIVE stats (Instead of relying on voteData)
     const meetingStats = React.useMemo(() => {
         if (!meetingId) return { direct: 0, proxy: 0, written: 0, total: 0 };
-        const relevantRecords = attendance.filter(a => a.meeting_id === meetingId);
+        const relevantRecords = attendance.filter(
+            (a) => a.meeting_id === meetingId && activeMemberIdSet.has(a.member_id)
+        );
         return {
             direct: relevantRecords.filter(a => a.type === 'direct').length,
             proxy: relevantRecords.filter(a => a.type === 'proxy').length,
             written: relevantRecords.filter(a => a.type === 'written').length,
             total: relevantRecords.length
         };
-    }, [attendance, meetingId]);
+    }, [activeMemberIdSet, attendance, meetingId]);
 
     // Pass Logic based on Vote Type
     const normalizeType = (type) => {
@@ -123,7 +147,13 @@ export default function AdminPage() {
                     </h2>
                     <div className="flex gap-2 items-center flex-grow">
                         <div className="flex-grow"></div>
-
+                        <Link
+                            href="/admin/members"
+                            className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 transition-colors hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700"
+                        >
+                            <Users size={14} />
+                            조합원 관리
+                        </Link>
 
                         <FullscreenToggle />
                         <AuthStatus />

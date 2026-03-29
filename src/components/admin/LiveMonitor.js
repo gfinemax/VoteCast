@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useStore } from '@/lib/store';
+import { getAttendanceQuorumTarget, normalizeAgendaType } from '@/lib/store';
 import { Monitor, CheckCircle2, Play, Settings } from 'lucide-react';
 import AlertModal from '@/components/ui/AlertModal';
 import { useProjector } from '@/components/admin/ProjectorContext';
@@ -9,10 +10,23 @@ import { useProjector } from '@/components/admin/ProjectorContext';
 import dynamic from 'next/dynamic';
 
 const PDFViewer = dynamic(() => import('@/components/PDFViewer'), { ssr: false });
+const EMPTY_INACTIVE_MEMBER_IDS = [];
 
 export default function LiveMonitor({ mode = 'admin' }) {
     const { state, actions } = useStore();
     const { projectorMode, projectorData, agendas, currentAgendaId, voteData, attendance, members, projectorConnected } = state;
+    const inactiveMemberIds = Array.isArray(voteData?.inactiveMemberIds) ? voteData.inactiveMemberIds : EMPTY_INACTIVE_MEMBER_IDS;
+    const activeMemberIdSet = useMemo(() => {
+        const inactiveMemberIdSet = new Set(inactiveMemberIds);
+        return new Set(
+            members
+                .filter(member => member.is_active !== false && !inactiveMemberIdSet.has(member.id))
+                .map(member => member.id)
+        );
+    }, [inactiveMemberIds, members]);
+    const activeMembers = useMemo(() => {
+        return members.filter(member => activeMemberIdSet.has(member.id));
+    }, [activeMemberIdSet, members]);
     const [showProjectorAlert, setShowProjectorAlert] = useState(false);
     const [showRestrictionAlert, setShowRestrictionAlert] = useState(false);
 
@@ -62,7 +76,9 @@ export default function LiveMonitor({ mode = 'admin' }) {
     // 2. Derive Attendance Data (Scoped to Meeting) - LIVE from table
     const meetingStats = useMemo(() => {
         if (!meetingId) return { direct: 0, proxy: 0, written: 0, total: 0 };
-        const relevantRecords = attendance.filter(a => a.meeting_id === meetingId);
+        const relevantRecords = attendance.filter(
+            (a) => a.meeting_id === meetingId && activeMemberIdSet.has(a.member_id)
+        );
         const direct = relevantRecords.filter(a => a.type === 'direct').length;
         const proxy = relevantRecords.filter(a => a.type === 'proxy').length;
         const written = relevantRecords.filter(a => a.type === 'written').length;
@@ -72,7 +88,7 @@ export default function LiveMonitor({ mode = 'admin' }) {
             written,
             total: direct + proxy + written
         };
-    }, [attendance, meetingId]);
+    }, [activeMemberIdSet, attendance, meetingId]);
 
     // Simple source calculation (no double buffer needed)
     const { finalSource, currentPage } = useMemo(() => {
@@ -108,12 +124,7 @@ export default function LiveMonitor({ mode = 'admin' }) {
 
     // Pass Logic based on Vote Type
     const currentAgendaType = currentAgenda?.type || 'majority';
-    const normalizeType = (type) => {
-        if (type === 'general') return 'majority';
-        if (type === 'special') return 'twoThirds';
-        return type || 'majority';
-    };
-    const normalizedType = normalizeType(currentAgendaType);
+    const normalizedType = normalizeAgendaType(currentAgendaType);
     const isSpecialVote = normalizedType === 'twoThirds';
 
     let isPassed = false;
@@ -129,14 +140,16 @@ export default function LiveMonitor({ mode = 'admin' }) {
     }
 
     // [WAITING SCREEN LOGIC]
-    const liveTotalMembers = members.length;
-    const quorumCount = Math.ceil(liveTotalMembers / 2);
+    const liveTotalMembers = activeMembers.length;
+    const quorumCount = getAttendanceQuorumTarget(normalizedType, liveTotalMembers);
     const isTotalQuorumReached = totalAttendance >= quorumCount;
-    const isElection = currentAgenda?.type === 'election';
+    const isElection = normalizedType === 'election';
     const directTarget = Math.ceil(liveTotalMembers * 0.2);
     const directAttendance = meetingStats.direct;
     const isDirectSatisfied = !isElection || (directAttendance >= directTarget);
     const isReadyToOpen = isTotalQuorumReached && isDirectSatisfied;
+    const quorumLabel = isSpecialVote ? '3분의 2' : '과반수';
+    const quorumLinePosition = isSpecialVote ? '66.66%' : '50%';
 
     return (
         <div className="bg-slate-900 rounded-xl overflow-hidden shadow-2xl border-4 border-slate-800">
@@ -346,11 +359,11 @@ export default function LiveMonitor({ mode = 'admin' }) {
 
                             <div className="w-full bg-slate-800/50 rounded p-1 px-3 border border-white/5 flex flex-col gap-0.5 mb-0.5">
                                 <div className="flex justify-between items-end text-[4px] text-slate-400 mb-[1px]">
-                                    <span><span className="font-bold text-white">전체 성원</span> (과반수)</span>
+                                    <span><span className="font-bold text-white">전체 성원</span> ({quorumLabel})</span>
                                     <div><span className="font-bold text-white">{totalAttendance}</span><span className="mx-0.5">/</span>{quorumCount}명</div>
                                 </div>
                                 <div className="w-full h-[2px] bg-slate-700 rounded-full overflow-hidden relative shadow-inner">
-                                    <div className="absolute top-0 bottom-0 left-1/2 w-[0.5px] bg-white/30 z-20 border-r border-black/20"></div>
+                                    <div className="absolute top-0 bottom-0 w-[0.5px] bg-white/30 z-20 border-r border-black/20" style={{ left: quorumLinePosition }}></div>
                                     <div className={`h-full transition-all duration-1000 ease-out ${isTotalQuorumReached ? 'bg-gradient-to-r from-emerald-600 to-emerald-400' : 'bg-gradient-to-r from-blue-900 to-blue-500'}`} style={{ width: `${Math.min(100, (totalAttendance / (liveTotalMembers || 1)) * 100)}%` }}></div>
                                 </div>
 

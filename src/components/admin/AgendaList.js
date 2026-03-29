@@ -3,12 +3,42 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useStore } from '@/lib/store';
-import { Plus, Trash2, Edit2, FolderOpen, ChevronDown, ChevronRight, FolderPlus, CheckCircle2, Play, Link2, FileText, Upload, Loader2, AlertTriangle } from 'lucide-react';
+import { Plus, Trash2, Edit2, FolderOpen, ChevronDown, ChevronRight, FolderPlus, CheckCircle2, Play, Link2, FileText, Upload, Loader2, AlertTriangle, GripVertical, Lock, Unlock } from 'lucide-react';
 import Button from '@/components/ui/Button';
+
+const GHOST_GROUP_ID = 'ghost';
+
+const buildAgendaGroups = (agendas = []) => {
+    const groups = [];
+    let currentGroup = { folder: null, items: [] };
+
+    agendas.forEach((agenda) => {
+        if (agenda.type === 'folder') {
+            if (currentGroup.folder || currentGroup.items.length > 0) {
+                groups.push(currentGroup);
+            }
+            currentGroup = { folder: agenda, items: [] };
+            return;
+        }
+
+        currentGroup.items.push(agenda);
+    });
+
+    if (currentGroup.folder || currentGroup.items.length > 0) {
+        groups.push(currentGroup);
+    }
+
+    return groups;
+};
+
+const getAgendaRowDropPosition = (element, clientY) => {
+    const rect = element.getBoundingClientRect();
+    return clientY < rect.top + (rect.height / 2) ? 'before' : 'after';
+};
 
 export default function AgendaList() {
     const { state, actions } = useStore();
-    const { agendas, currentAgendaId } = state;
+    const { agendas, currentAgendaId, voteData } = state;
 
     const [isAddingFolder, setIsAddingFolder] = useState(false);
     const [newFolderTitle, setNewFolderTitle] = useState("");
@@ -26,31 +56,20 @@ export default function AgendaList() {
     const [deleteTarget, setDeleteTarget] = useState(null);
     const [deletePopoverStyle, setDeletePopoverStyle] = useState(null);
     const [isDeleting, setIsDeleting] = useState(false);
+    const [draggedAgendaId, setDraggedAgendaId] = useState(null);
+    const [dropTarget, setDropTarget] = useState(null);
+    const [isReordering, setIsReordering] = useState(false);
 
     const rowRefs = useRef(new Map());
     const deletePopoverRef = useRef(null);
 
-    const groupedAgendas = useMemo(() => {
-        const groups = [];
-        let currentGroup = { folder: null, items: [] };
-
-        agendas.forEach((agenda) => {
-            if (agenda.type === 'folder') {
-                if (currentGroup.folder || currentGroup.items.length > 0) {
-                    groups.push(currentGroup);
-                }
-                currentGroup = { folder: agenda, items: [] };
-            } else {
-                currentGroup.items.push(agenda);
-            }
-        });
-
-        if (currentGroup.folder || currentGroup.items.length > 0) {
-            groups.push(currentGroup);
-        }
-
-        return groups.reverse();
-    }, [agendas]);
+    const groupedAgendas = useMemo(() => buildAgendaGroups(agendas).reverse(), [agendas]);
+    const flatAgendaIds = useMemo(
+        () => [...agendas].sort((a, b) => a.order_index - b.order_index).map((agenda) => agenda.id),
+        [agendas]
+    );
+    const isAgendaOrderLocked = !!voteData?.agendaOrderLocked;
+    const canDragAgendas = editingId === null && !isSubmitting && !isDeleting && !isUploading && !deleteTarget && !isReordering && !isAgendaOrderLocked;
 
     const setRowRef = (id, node) => {
         if (node) {
@@ -65,6 +84,20 @@ export default function AgendaList() {
         if (isDeleting) return;
         setDeleteTarget(null);
         setDeletePopoverStyle(null);
+    };
+
+    const toggleAgendaOrderLock = async () => {
+        try {
+            await actions.setAgendaOrderLock(!isAgendaOrderLocked);
+        } catch (error) {
+            console.error('Failed to persist agenda order lock:', error);
+            alert(error.message || '안건 정렬 잠금 저장에 실패했습니다.');
+        }
+    };
+
+    const resetDragState = () => {
+        setDraggedAgendaId(null);
+        setDropTarget(null);
     };
 
     const toggleFolder = (folderId) => {
@@ -208,6 +241,129 @@ export default function AgendaList() {
         }
     };
 
+    const buildNextAgendaOrder = (target) => {
+        if (!draggedAgendaId || !target) return null;
+
+        const nextIds = flatAgendaIds.filter((id) => id !== draggedAgendaId);
+        let insertIndex = -1;
+
+        if (target.type === 'before' || target.type === 'after') {
+            if (target.agendaId === draggedAgendaId) return null;
+
+            const targetIndex = nextIds.indexOf(target.agendaId);
+            if (targetIndex === -1) return null;
+            insertIndex = target.type === 'before' ? targetIndex : targetIndex + 1;
+        }
+
+        if (target.type === 'group-start' || target.type === 'group-end') {
+            const group = groupedAgendas.find((candidate) => (candidate.folder ? candidate.folder.id : GHOST_GROUP_ID) === target.folderId);
+            if (!group) return null;
+
+            if (target.type === 'group-start') {
+                if (target.folderId === GHOST_GROUP_ID) {
+                    insertIndex = 0;
+                } else {
+                    const folderIndex = nextIds.indexOf(target.folderId);
+                    if (folderIndex === -1) return null;
+                    insertIndex = folderIndex + 1;
+                }
+            } else {
+                const remainingItemIds = group.items
+                    .map((item) => item.id)
+                    .filter((id) => id !== draggedAgendaId && nextIds.includes(id));
+                const anchorId = remainingItemIds[remainingItemIds.length - 1] ?? group.folder?.id ?? null;
+
+                if (anchorId === null) {
+                    insertIndex = 0;
+                } else {
+                    const anchorIndex = nextIds.indexOf(anchorId);
+                    if (anchorIndex === -1) return null;
+                    insertIndex = anchorIndex + 1;
+                }
+            }
+        }
+
+        if (insertIndex < 0) return null;
+
+        nextIds.splice(insertIndex, 0, draggedAgendaId);
+        const unchanged = flatAgendaIds.every((id, index) => id === nextIds[index]);
+
+        return unchanged ? null : nextIds;
+    };
+
+    const handleAgendaDragStart = (agendaId) => (e) => {
+        if (!canDragAgendas) {
+            e.preventDefault();
+            return;
+        }
+
+        setDeleteTarget(null);
+        setDraggedAgendaId(agendaId);
+        setDropTarget(null);
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', String(agendaId));
+    };
+
+    const handleAgendaDragEnd = () => {
+        resetDragState();
+    };
+
+    const handleAgendaDragOver = (agendaId) => (e) => {
+        if (!draggedAgendaId || draggedAgendaId === agendaId) return;
+
+        e.preventDefault();
+        const position = getAgendaRowDropPosition(e.currentTarget, e.clientY);
+        setDropTarget((prev) => (
+            prev?.type === position && prev?.agendaId === agendaId
+                ? prev
+                : { type: position, agendaId }
+        ));
+    };
+
+    const handleGroupDragOver = (type, folderId) => (e) => {
+        if (!draggedAgendaId) return;
+
+        e.preventDefault();
+        setDropTarget((prev) => (
+            prev?.type === type && prev?.folderId === folderId
+                ? prev
+                : { type, folderId }
+        ));
+    };
+
+    const commitAgendaReorder = async (target) => {
+        const nextAgendaOrder = buildNextAgendaOrder(target);
+        resetDragState();
+
+        if (!nextAgendaOrder) return;
+
+        setIsReordering(true);
+
+        try {
+            await actions.reorderAgendas(nextAgendaOrder);
+        } catch (error) {
+            console.error('Failed to reorder agendas:', error);
+            alert(error.message || '안건 순서 변경에 실패했습니다.');
+        } finally {
+            setIsReordering(false);
+        }
+    };
+
+    const handleAgendaDrop = (agendaId) => async (e) => {
+        if (!draggedAgendaId || draggedAgendaId === agendaId) return;
+
+        e.preventDefault();
+        const position = getAgendaRowDropPosition(e.currentTarget, e.clientY);
+        await commitAgendaReorder({ type: position, agendaId });
+    };
+
+    const handleGroupDrop = (type, folderId) => async (e) => {
+        if (!draggedAgendaId) return;
+
+        e.preventDefault();
+        await commitAgendaReorder({ type, folderId });
+    };
+
     useEffect(() => {
         if (!deleteTarget) return;
 
@@ -273,18 +429,68 @@ export default function AgendaList() {
         };
     }, [deleteTarget, isDeleting]);
 
+    useEffect(() => {
+        const currentIndex = agendas.findIndex((agenda) => agenda.id === currentAgendaId);
+        if (currentIndex < 0) return;
+
+        for (let i = currentIndex; i >= 0; i--) {
+            const candidate = agendas[i];
+            if (candidate.type !== 'folder') continue;
+
+            setExpandedFolders((prev) => {
+                if (prev[candidate.id] !== false) return prev;
+                return { ...prev, [candidate.id]: true };
+            });
+            break;
+        }
+    }, [agendas, currentAgendaId]);
+
+    useEffect(() => {
+        const frame = window.requestAnimationFrame(() => {
+            const currentRow = rowRefs.current.get(String(currentAgendaId));
+            currentRow?.scrollIntoView({
+                block: 'nearest',
+                behavior: 'smooth'
+            });
+        });
+
+        return () => window.cancelAnimationFrame(frame);
+    }, [currentAgendaId, expandedFolders]);
+
+    useEffect(() => {
+        if (canDragAgendas) return;
+        resetDragState();
+    }, [canDragAgendas]);
+
     return (
         <>
             <div className="flex-1 overflow-y-auto p-4 space-y-0.5">
                 <div className="flex justify-between items-center mb-1.5 px-1">
                     <div className="text-xs font-bold text-slate-500 uppercase tracking-wider">총회 및 안건 목록</div>
-                    <button
-                        onClick={() => setIsAddingFolder(true)}
-                        className="flex items-center gap-1 text-blue-600 hover:text-blue-800 text-xs font-medium px-2 py-0.5 bg-blue-50 hover:bg-blue-100 rounded transition-colors"
-                    >
-                        <FolderPlus size={14} /> 총회 추가
-                    </button>
+                    <div className="flex items-center gap-1.5">
+                        <button
+                            type="button"
+                            onClick={toggleAgendaOrderLock}
+                            className={`flex items-center gap-1 rounded px-2 py-0.5 text-xs font-medium transition-colors ${isAgendaOrderLocked ? 'bg-amber-100 text-amber-800 hover:bg-amber-200' : 'bg-slate-100 text-slate-600 hover:bg-slate-200 hover:text-slate-800'}`}
+                            title={isAgendaOrderLocked ? '안건 순서 잠금 해제' : '안건 순서 잠금'}
+                        >
+                            {isAgendaOrderLocked ? <Lock size={13} /> : <Unlock size={13} />}
+                            {isAgendaOrderLocked ? '정렬 잠금' : '정렬 열림'}
+                        </button>
+                        <button
+                            onClick={() => setIsAddingFolder(true)}
+                            className="flex items-center gap-1 text-blue-600 hover:text-blue-800 text-xs font-medium px-2 py-0.5 bg-blue-50 hover:bg-blue-100 rounded transition-colors"
+                        >
+                            <FolderPlus size={14} /> 총회 추가
+                        </button>
+                    </div>
                 </div>
+
+                {isAgendaOrderLocked && (
+                    <div className="mb-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] font-medium text-amber-800">
+                        안건 순서가 잠겨 있습니다. 헤더의 잠금 버튼을 눌러야 드래그 정렬을 할 수 있습니다.
+                    </div>
+                )}
 
                 {isAddingFolder && (
                     <div className="mb-2 p-2 bg-blue-50/50 rounded-lg border border-blue-100 animate-in fade-in slide-in-from-top-2">
@@ -344,6 +550,16 @@ export default function AgendaList() {
                         handleFileUpload={handleFileUpload}
                         openDeleteConfirm={openDeleteConfirm}
                         getDisplayFileName={getDisplayFileName}
+                        draggedAgendaId={draggedAgendaId}
+                        dropTarget={dropTarget}
+                        canDragAgendas={canDragAgendas}
+                        isReordering={isReordering}
+                        handleAgendaDragStart={handleAgendaDragStart}
+                        handleAgendaDragEnd={handleAgendaDragEnd}
+                        handleAgendaDragOver={handleAgendaDragOver}
+                        handleAgendaDrop={handleAgendaDrop}
+                        handleGroupDragOver={handleGroupDragOver}
+                        handleGroupDrop={handleGroupDrop}
                     />
                 ))}
             </div>
@@ -461,20 +677,34 @@ function AgendaGroup({
     handleAddAgenda,
     handleFileUpload,
     openDeleteConfirm,
-    getDisplayFileName
+    getDisplayFileName,
+    draggedAgendaId,
+    dropTarget,
+    canDragAgendas,
+    isReordering,
+    handleAgendaDragStart,
+    handleAgendaDragEnd,
+    handleAgendaDragOver,
+    handleAgendaDrop,
+    handleGroupDragOver,
+    handleGroupDrop
 }) {
     const isGhost = !group.folder;
-    const folderId = group.folder ? group.folder.id : 'ghost';
+    const folderId = group.folder ? group.folder.id : GHOST_GROUP_ID;
     const expanded = isFolderExpanded(folderId);
     const isFolderDeleteTarget = deleteTarget?.id === group.folder?.id;
+    const isGroupStartDropTarget = dropTarget?.type === 'group-start' && dropTarget.folderId === folderId;
+    const isGroupEndDropTarget = dropTarget?.type === 'group-end' && dropTarget.folderId === folderId;
 
     return (
         <div className="relative">
             {!isGhost && (
                 <div
                     ref={(node) => setRowRef(group.folder.id, node)}
-                    className={`group flex items-center gap-2 mb-0 px-2 py-0.5 rounded-sm border cursor-pointer transition-colors select-none ${state.activeMeetingId === group.folder.id ? 'bg-emerald-50 border-emerald-200' : 'bg-slate-50 hover:bg-slate-100 border-slate-200'} ${isFolderDeleteTarget ? 'bg-red-50 border-red-200 ring-2 ring-red-200 shadow-sm' : ''}`}
+                    className={`group flex items-center gap-2 mb-0 px-2 py-0.5 rounded-sm border cursor-pointer transition-colors select-none ${state.activeMeetingId === group.folder.id ? 'bg-emerald-50 border-emerald-200' : 'bg-slate-50 hover:bg-slate-100 border-slate-200'} ${isFolderDeleteTarget ? 'bg-red-50 border-red-200 ring-2 ring-red-200 shadow-sm' : ''} ${isGroupStartDropTarget ? 'border-blue-400 bg-blue-50 ring-2 ring-blue-200 shadow-sm' : ''}`}
                     onClick={() => toggleFolder(folderId)}
+                    onDragOver={canDragAgendas ? handleGroupDragOver('group-start', folderId) : undefined}
+                    onDrop={canDragAgendas ? handleGroupDrop('group-start', folderId) : undefined}
                 >
                     {expanded ? <ChevronDown size={14} className="text-slate-400" /> : <ChevronRight size={14} className="text-slate-400" />}
                     <FolderOpen size={16} className={isFolderDeleteTarget ? "text-red-500" : state.activeMeetingId === group.folder.id ? "text-emerald-500" : "text-blue-500"} />
@@ -605,10 +835,22 @@ function AgendaGroup({
                             handleFileUpload={handleFileUpload}
                             openDeleteConfirm={openDeleteConfirm}
                             getDisplayFileName={getDisplayFileName}
+                            draggedAgendaId={draggedAgendaId}
+                            dropTarget={dropTarget}
+                            canDragAgendas={canDragAgendas}
+                            isReordering={isReordering}
+                            handleAgendaDragStart={handleAgendaDragStart}
+                            handleAgendaDragEnd={handleAgendaDragEnd}
+                            handleAgendaDragOver={handleAgendaDragOver}
+                            handleAgendaDrop={handleAgendaDrop}
                         />
                     ))}
 
-                    <div className="pt-0.5">
+                    <div
+                        className={`pt-0.5 rounded-lg transition-colors ${isGroupEndDropTarget ? 'bg-blue-50/80 ring-2 ring-blue-200 ring-inset' : ''}`}
+                        onDragOver={canDragAgendas ? handleGroupDragOver('group-end', folderId) : undefined}
+                        onDrop={canDragAgendas ? handleGroupDrop('group-end', folderId) : undefined}
+                    >
                         {addingAgendaFolderId === folderId ? (
                             <div className="mb-1 p-2 bg-slate-50 rounded border border-slate-200 animate-in fade-in slide-in-from-top-1">
                                 <input
@@ -636,10 +878,11 @@ function AgendaGroup({
                                     setAddingAgendaFolderId(folderId);
                                     setNewAgendaTitle("");
                                 }}
+                                disabled={isReordering}
                                 className="w-full py-1.5 text-xs text-slate-400 hover:text-slate-600 hover:bg-slate-50 border border-dashed border-slate-300 rounded-md flex items-center justify-center gap-1 transition-colors group/btn"
                                 title="이 총회에 안건 추가"
                             >
-                                <Plus size={12} className="group-hover/btn:scale-110 transition-transform" /> 안건 추가
+                                <Plus size={12} className="group-hover/btn:scale-110 transition-transform" /> {isGroupEndDropTarget ? '여기에 놓아 마지막 순서로 이동' : '안건 추가'}
                             </button>
                         )}
                     </div>
@@ -674,21 +917,36 @@ function AgendaItem({
     handleEdit,
     handleFileUpload,
     openDeleteConfirm,
-    getDisplayFileName
+    getDisplayFileName,
+    draggedAgendaId,
+    dropTarget,
+    canDragAgendas,
+    isReordering,
+    handleAgendaDragStart,
+    handleAgendaDragEnd,
+    handleAgendaDragOver,
+    handleAgendaDrop
 }) {
     const isAgendaDeleteTarget = deleteTarget?.id === agenda.id;
+    const isDragged = draggedAgendaId === agenda.id;
+    const isDropBefore = dropTarget?.type === 'before' && dropTarget.agendaId === agenda.id;
+    const isDropAfter = dropTarget?.type === 'after' && dropTarget.agendaId === agenda.id;
 
     return (
         <div
             ref={(node) => setRowRef(agenda.id, node)}
-            className={`group w-full text-left p-1.5 text-sm font-medium transition-all relative flex items-center gap-2 ${currentAgendaId === agenda.id ? "bg-slate-900 text-white border border-slate-900 rounded-md z-10 shadow-md my-1 scale-[1.02]" : "bg-white text-slate-600 hover:bg-slate-50 border-b border-x border-slate-100 first:border-t rounded-none first:rounded-t-md last:rounded-b-md"} ${isAgendaDeleteTarget ? 'ring-2 ring-red-300 ring-offset-1 border-red-200 shadow-lg' : ''}`}
+            className={`group w-full text-left p-1.5 text-sm font-medium transition-all relative flex items-center gap-2 ${currentAgendaId === agenda.id ? "bg-slate-900 text-white border border-slate-900 rounded-md z-10 shadow-md my-1 scale-[1.02]" : "bg-white text-slate-600 hover:bg-slate-50 border-b border-x border-slate-100 first:border-t rounded-none first:rounded-t-md last:rounded-b-md"} ${isAgendaDeleteTarget ? 'ring-2 ring-red-300 ring-offset-1 border-red-200 shadow-lg' : ''} ${isDragged ? 'opacity-45' : ''}`}
             onClick={() => {
                 if (editingId !== agenda.id) {
                     setDeleteTarget(null);
                     actions.setAgenda(agenda.id);
                 }
             }}
+            onDragOver={canDragAgendas ? handleAgendaDragOver(agenda.id) : undefined}
+            onDrop={canDragAgendas ? handleAgendaDrop(agenda.id) : undefined}
         >
+            {isDropBefore && <div className="pointer-events-none absolute -top-1 left-3 right-3 h-0.5 rounded-full bg-blue-500 shadow-[0_0_0_3px_rgba(59,130,246,0.16)]" />}
+            {isDropAfter && <div className="pointer-events-none absolute -bottom-1 left-3 right-3 h-0.5 rounded-full bg-blue-500 shadow-[0_0_0_3px_rgba(59,130,246,0.16)]" />}
             {editingId === agenda.id ? (
                 <div className="w-full bg-slate-50 border border-blue-200 rounded p-3 space-y-3 shadow-md my-1 z-20 cursor-default" onClick={(e) => e.stopPropagation()}>
                     <div>
@@ -804,6 +1062,18 @@ function AgendaItem({
                 </div>
             ) : (
                 <>
+                    <button
+                        type="button"
+                        draggable={canDragAgendas}
+                        disabled={!canDragAgendas || isReordering}
+                        onDragStart={handleAgendaDragStart(agenda.id)}
+                        onDragEnd={handleAgendaDragEnd}
+                        onClick={(e) => e.stopPropagation()}
+                        className={`flex h-6 w-5 flex-shrink-0 cursor-grab items-center justify-center rounded transition-colors active:cursor-grabbing ${currentAgendaId === agenda.id ? 'text-slate-400 hover:bg-slate-800 hover:text-slate-200' : 'text-slate-300 hover:bg-slate-100 hover:text-slate-500'} ${!canDragAgendas || isReordering ? 'cursor-not-allowed opacity-40' : ''}`}
+                        title={canDragAgendas ? '드래그해서 순서 변경' : '편집 중에는 순서를 변경할 수 없습니다.'}
+                    >
+                        <GripVertical size={12} />
+                    </button>
                     {agenda.declaration ? (
                         <CheckCircle2 size={14} className={`${isAgendaDeleteTarget ? 'text-red-500' : 'text-emerald-500'} flex-shrink-0`} />
                     ) : (

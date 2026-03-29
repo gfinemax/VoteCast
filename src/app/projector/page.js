@@ -2,15 +2,29 @@
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useStore } from '@/lib/store';
+import { getAttendanceQuorumTarget, normalizeAgendaType } from '@/lib/store';
 import { supabase } from '@/lib/supabase';
 import { CheckCircle2, Settings } from 'lucide-react';
 import dynamic from 'next/dynamic';
 
 const PDFViewer = dynamic(() => import('@/components/PDFViewer'), { ssr: false });
+const EMPTY_INACTIVE_MEMBER_IDS = [];
 
 export default function ProjectorPage() {
     const { state } = useStore();
     const { projectorMode, agendas, currentAgendaId, voteData, attendance, members } = state;
+    const inactiveMemberIds = Array.isArray(voteData?.inactiveMemberIds) ? voteData.inactiveMemberIds : EMPTY_INACTIVE_MEMBER_IDS;
+    const activeMemberIdSet = useMemo(() => {
+        const inactiveMemberIdSet = new Set(inactiveMemberIds);
+        return new Set(
+            members
+                .filter(member => member.is_active !== false && !inactiveMemberIdSet.has(member.id))
+                .map(member => member.id)
+        );
+    }, [inactiveMemberIds, members]);
+    const activeMembers = useMemo(() => {
+        return members.filter(member => activeMemberIdSet.has(member.id));
+    }, [activeMemberIdSet, members]);
     const [resultTimestamp, setResultTimestamp] = useState(null);
 
     // Update timestamp when mode changes to RESULT
@@ -82,7 +96,9 @@ export default function ProjectorPage() {
     // 2. Derive Attendance Data
     const meetingStats = useMemo(() => {
         if (!meetingId) return { direct: 0, proxy: 0, written: 0, total: 0 };
-        const relevantRecords = attendance.filter(a => a.meeting_id === meetingId);
+        const relevantRecords = attendance.filter(
+            (a) => a.meeting_id === meetingId && activeMemberIdSet.has(a.member_id)
+        );
         const direct = relevantRecords.filter(a => a.type === 'direct').length;
         const proxy = relevantRecords.filter(a => a.type === 'proxy').length;
         const written = relevantRecords.filter(a => a.type === 'written').length;
@@ -92,22 +108,16 @@ export default function ProjectorPage() {
             written,
             total: direct + proxy + written
         };
-    }, [attendance, meetingId]);
+    }, [activeMemberIdSet, attendance, meetingId]);
 
     // Stats for WAITING layer
     const waitingStats = useMemo(() => {
-        const liveTotalMembers = members.length;
+        const liveTotalMembers = activeMembers.length;
         const liveTotalAttendance = meetingStats.total;
-        const quorumCount = Math.ceil(liveTotalMembers / 2);
+        const normalizedAgendaType = normalizeAgendaType(currentAgenda?.type);
+        const quorumCount = getAttendanceQuorumTarget(normalizedAgendaType, liveTotalMembers);
         const isTotalQuorumReached = liveTotalAttendance >= quorumCount;
-
-        const normalizeType = (type) => {
-            if (type === 'general') return 'majority';
-            if (type === 'special') return 'twoThirds';
-            return type || 'majority';
-        };
-        const currentAgendaType = normalizeType(currentAgenda?.type);
-        const isElection = currentAgendaType === 'election';
+        const isElection = normalizedAgendaType === 'election';
         const directTarget = Math.ceil(liveTotalMembers * 0.2);
         const isDirectSatisfied = !isElection || (meetingStats.direct >= directTarget);
         const directPercent = liveTotalMembers > 0 ? (meetingStats.direct / liveTotalMembers) * 100 : 0;
@@ -118,13 +128,14 @@ export default function ProjectorPage() {
             liveTotalAttendance,
             quorumCount,
             isTotalQuorumReached,
+            normalizedAgendaType,
             isElection,
             directTarget,
             isDirectSatisfied,
             directPercent,
             isReadyToOpen
         };
-    }, [members.length, meetingStats, currentAgenda]);
+    }, [activeMembers.length, meetingStats, currentAgenda]);
 
     // Stats for RESULT layer
     const resultStats = useMemo(() => {
@@ -138,12 +149,7 @@ export default function ProjectorPage() {
         const votesAbstain = isConfirmed ? snapshot.votes.abstain : (currentAgenda?.votes_abstain || 0);
         const customDeclaration = isConfirmed ? snapshot.declaration : (currentAgenda?.declaration || '');
 
-        const normalizeType = (type) => {
-            if (type === 'general') return 'majority';
-            if (type === 'special') return 'twoThirds';
-            return type || 'majority';
-        };
-        const currentAgendaType = normalizeType(currentAgenda?.type);
+        const currentAgendaType = normalizeAgendaType(currentAgenda?.type);
         const isSpecialVote = currentAgendaType === 'twoThirds';
 
         const agendaTitle = currentAgenda?.title || '안건';
@@ -296,7 +302,7 @@ export default function ProjectorPage() {
                         <div className="w-[70%] bg-slate-800/50 rounded-3xl p-[2.5vh] backdrop-blur-sm border border-white/10 shadow-2xl space-y-[2.5vh]">
                             <div>
                                 <div className="flex justify-between items-end mb-[1vh]">
-                                    <div className="text-[min(1.5vw,2vh)] text-slate-400"><span className="font-bold text-white">전체 성원</span> (과반수 기준)</div>
+                                    <div className="text-[min(1.5vw,2vh)] text-slate-400"><span className="font-bold text-white">전체 성원</span> ({waitingStats.normalizedAgendaType === 'twoThirds' ? '3분의 2 기준' : '과반수 기준'})</div>
                                     <div className="text-right">
                                         <span className="text-[min(1.8vw,2.5vh)] font-bold text-white tabular-nums">{waitingStats.liveTotalAttendance}</span>
                                         <span className="text-slate-500 mx-[0.5vw]">/</span>
@@ -304,7 +310,7 @@ export default function ProjectorPage() {
                                     </div>
                                 </div>
                                 <div className="w-full h-[2vh] bg-slate-700 rounded-full overflow-hidden relative shadow-inner">
-                                    <div className="absolute top-0 bottom-0 left-1/2 w-0.5 bg-white/30 z-20 border-r border-black/20"></div>
+                                    <div className="absolute top-0 bottom-0 w-0.5 bg-white/30 z-20 border-r border-black/20" style={{ left: waitingStats.normalizedAgendaType === 'twoThirds' ? '66.66%' : '50%' }}></div>
                                     <div className={`h-full transition-all duration-1000 ease-out ${waitingStats.isTotalQuorumReached ? 'bg-gradient-to-r from-emerald-600 to-emerald-400' : 'bg-gradient-to-r from-blue-900 to-blue-500'}`} style={{ width: `${Math.min(100, (waitingStats.liveTotalAttendance / (waitingStats.liveTotalMembers || 1)) * 100)}%` }}></div>
                                 </div>
                             </div>

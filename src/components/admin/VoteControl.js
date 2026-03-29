@@ -2,12 +2,27 @@
 
 import React, { useMemo, useEffect, useState, useRef, useCallback } from 'react';
 import { useStore } from '@/lib/store';
+import { getAttendanceQuorumTarget, normalizeAgendaType } from '@/lib/store';
 import { CheckCircle2, AlertTriangle, Trash2, Lock, Unlock, RotateCcw, Save, Wand2 } from 'lucide-react';
 import Card from '@/components/ui/Card';
 
+const EMPTY_INACTIVE_MEMBER_IDS = [];
+
 export default function VoteControl() {
     const { state, actions } = useStore();
-    const { members, attendance, agendas, currentAgendaId } = state;
+    const { members, attendance, agendas, currentAgendaId, voteData } = state;
+    const inactiveMemberIds = Array.isArray(voteData?.inactiveMemberIds) ? voteData.inactiveMemberIds : EMPTY_INACTIVE_MEMBER_IDS;
+    const activeMemberIdSet = useMemo(() => {
+        const inactiveMemberIdSet = new Set(inactiveMemberIds);
+        return new Set(
+            members
+                .filter(member => member.is_active !== false && !inactiveMemberIdSet.has(member.id))
+                .map(member => member.id)
+        );
+    }, [inactiveMemberIds, members]);
+    const activeMembers = useMemo(() => {
+        return members.filter(member => activeMemberIdSet.has(member.id));
+    }, [activeMemberIdSet, members]);
 
     // 1. Identify Context (Current Agenda & Meeting/Folder)
     const currentAgenda = agendas.find(a => a.id === currentAgendaId);
@@ -29,7 +44,9 @@ export default function VoteControl() {
     const realtimeStats = useMemo(() => {
         if (!meetingId) return { direct: 0, proxy: 0, written: 0, total: 0 };
 
-        const relevantRecords = attendance.filter(a => a.meeting_id === meetingId);
+        const relevantRecords = attendance.filter(
+            (a) => a.meeting_id === meetingId && activeMemberIdSet.has(a.member_id)
+        );
         const direct = relevantRecords.filter(a => a.type === 'direct').length;
         const proxy = relevantRecords.filter(a => a.type === 'proxy').length;
         const written = relevantRecords.filter(a => a.type === 'written').length;
@@ -40,7 +57,7 @@ export default function VoteControl() {
             written,
             total: direct + proxy + written
         };
-    }, [attendance, meetingId]);
+    }, [activeMemberIdSet, attendance, meetingId]);
 
     // SNAPSHOT HANDLING
     const snapshot = currentAgenda?.vote_snapshot;
@@ -56,12 +73,7 @@ export default function VoteControl() {
     const declaration = isConfirmed ? snapshot.declaration : (currentAgenda?.declaration || '');
 
     // Vote Type Map
-    const normalizeType = (type) => {
-        if (type === 'general') return 'majority';
-        if (type === 'special') return 'twoThirds';
-        return type || 'majority';
-    };
-    const currentAgendaType = normalizeType(currentAgenda?.type);
+    const currentAgendaType = normalizeAgendaType(currentAgenda?.type);
     const isSpecialVote = currentAgendaType === 'twoThirds';
     const isElection = currentAgendaType === 'election';
 
@@ -69,12 +81,10 @@ export default function VoteControl() {
     // Note: If total members changed (removed from DB), snapshot should logically preserve it? 
     // Usually total members is stable, but let's assume Members list is realtime reference OR snapshot if we saved it.
     // For now, using realtime totalMembers is likely acceptable unless members were deleted.
-    const totalMembers = members.length;
+    const totalMembers = activeMembers.length;
 
     // Recalculate Logic based on DISPLAY stats
-    const quorumTarget = isSpecialVote
-        ? Math.ceil(totalMembers * (2 / 3))
-        : Math.ceil(totalMembers / 2);
+    const quorumTarget = getAttendanceQuorumTarget(currentAgendaType, totalMembers);
 
     const directTarget = Math.ceil(totalMembers * 0.2);
     const isDirectSatisfied = !isElection || (displayStats.direct >= directTarget);
@@ -105,9 +115,13 @@ export default function VoteControl() {
     const declarationEditState = state.declarationEditState?.[currentAgendaId] || { isEditing: false, isAutoCalc: true };
     const isEditingDeclaration = declarationEditState.isEditing;
     const isAutoCalc = declarationEditState.isAutoCalc;
+    const agendaTypeLocks = (voteData?.agendaTypeLocks && typeof voteData.agendaTypeLocks === 'object')
+        ? voteData.agendaTypeLocks
+        : {};
 
     // LOCAL declaration state for editing (doesn't trigger realtime sync)
     const [localDeclaration, setLocalDeclaration] = useState(declaration || '');
+    const isTypeLocked = !!agendaTypeLocks[currentAgendaId];
 
     // Sync localDeclaration with server when NOT editing
     useEffect(() => {
@@ -144,8 +158,18 @@ export default function VoteControl() {
 
     // Handlers
     const handleTypeChange = (newType) => {
-        if (currentAgenda && !isConfirmed) { // Cannot change type if confirmed
+        if (currentAgenda && !isConfirmed && !isTypeLocked) { // Cannot change type if confirmed or locked
             actions.updateAgenda({ id: currentAgenda.id, type: newType });
+        }
+    };
+
+    const toggleTypeLock = async () => {
+        if (!currentAgendaId) return;
+        try {
+            await actions.setAgendaTypeLock(currentAgendaId, !isTypeLocked);
+        } catch (error) {
+            console.error('Failed to persist agenda type lock:', error);
+            alert(error.message || '잠금 상태 저장에 실패했습니다.');
         }
     };
 
@@ -209,6 +233,35 @@ export default function VoteControl() {
     // Helper for Total Votes Cast
     const totalVotesCast = votesYes + votesNo + votesAbstain;
     const isVoteCountValid = totalVotesCast === displayStats.total;
+    const voteTypeOptions = [
+        {
+            value: 'majority',
+            label: '일반',
+            activeClass: 'border-blue-200 bg-blue-50 text-blue-700 shadow-sm',
+            tooltipLines: [
+                '정족수: 전체 조합원 과반수 출석',
+                '의결: 출석자 과반수 찬성'
+            ]
+        },
+        {
+            value: 'election',
+            label: '선거',
+            activeClass: 'border-emerald-200 bg-emerald-50 text-emerald-700 shadow-sm',
+            tooltipLines: [
+                '정족수: 전체 조합원 과반수 출석(직접참석20%)',
+                '의결: 출석자 과반수 찬성'
+            ]
+        },
+        {
+            value: 'twoThirds',
+            label: '해산/규약',
+            activeClass: 'border-violet-200 bg-violet-50 text-violet-700 shadow-sm',
+            tooltipLines: [
+                '정족수: 전체 조합원 3분의 2 출석',
+                '의결: 출석자 3분의 2 이상 찬성'
+            ]
+        }
+    ];
 
 
     return (
@@ -266,28 +319,44 @@ export default function VoteControl() {
                     </h3>
 
                     {/* Vote Type Selector */}
-                    <div className="flex bg-slate-100 p-1 rounded-lg border border-slate-200">
+                    <div className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white p-1.5 shadow-sm">
                         <button
-                            onClick={() => handleTypeChange('majority')}
+                            type="button"
+                            onClick={toggleTypeLock}
                             disabled={isConfirmed}
-                            className={`px - 3 py - 1 text - xs font - bold rounded transition - all ${currentAgendaType === 'majority' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'} disabled: opacity - 50 disabled: cursor - not - allowed`}
+                            title={isTypeLocked ? '투표 유형 잠금 해제' : '투표 유형 잠금'}
+                            className={`flex h-11 w-11 items-center justify-center rounded-xl border transition-all ${
+                                isTypeLocked
+                                    ? 'border-slate-800 bg-slate-900 text-white shadow-sm'
+                                    : 'border-slate-200 bg-slate-50 text-slate-500 hover:border-slate-300 hover:bg-slate-100 hover:text-slate-700'
+                            } disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-400`}
                         >
-                            일반
+                            {isTypeLocked ? <Lock size={15} /> : <Unlock size={15} />}
                         </button>
-                        <button
-                            onClick={() => handleTypeChange('election')}
-                            disabled={isConfirmed}
-                            className={`px - 3 py - 1 text - xs font - bold rounded transition - all ${currentAgendaType === 'election' ? 'bg-white text-emerald-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'} disabled: opacity - 50 disabled: cursor - not - allowed`}
-                        >
-                            선거
-                        </button>
-                        <button
-                            onClick={() => handleTypeChange('twoThirds')}
-                            disabled={isConfirmed}
-                            className={`px - 3 py - 1 text - xs font - bold rounded transition - all ${currentAgendaType === 'twoThirds' ? 'bg-white text-purple-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'} disabled: opacity - 50 disabled: cursor - not - allowed`}
-                        >
-                            해산/규약
-                        </button>
+
+                        <div className="grid grid-cols-3 gap-1.5 rounded-xl bg-slate-50 p-1">
+                            {voteTypeOptions.map((option) => (
+                                <div key={option.value} className="group relative">
+                                    <button
+                                        onClick={() => handleTypeChange(option.value)}
+                                        disabled={isConfirmed || isTypeLocked}
+                                        className={`min-w-[92px] rounded-lg border px-4 py-2 text-sm font-semibold whitespace-nowrap transition-all ${
+                                            currentAgendaType === option.value
+                                                ? option.activeClass
+                                                : 'border-transparent bg-transparent text-slate-500 hover:border-slate-200 hover:bg-white hover:text-slate-700'
+                                        } disabled:cursor-not-allowed disabled:opacity-45`}
+                                    >
+                                        {option.label}
+                                    </button>
+                                    <div className="pointer-events-none absolute bottom-full left-1/2 z-20 mb-2 hidden w-56 -translate-x-1/2 rounded-xl border border-slate-200 bg-slate-950 px-3 py-2 text-center text-[11px] font-medium leading-relaxed text-white shadow-2xl group-hover:block group-focus-within:block">
+                                        {option.tooltipLines.map((line) => (
+                                            <div key={line}>{line}</div>
+                                        ))}
+                                        <div className="absolute left-1/2 top-full h-2 w-2 -translate-x-1/2 -translate-y-1 rotate-45 border-b border-r border-slate-200 bg-slate-950" />
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
                     </div>
                 </div>
 

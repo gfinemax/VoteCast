@@ -2,11 +2,26 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { useStore } from '@/lib/store';
+import { getAttendanceQuorumTarget, normalizeAgendaType } from '@/lib/store';
 import { CheckCircle2 } from 'lucide-react';
+
+const EMPTY_INACTIVE_MEMBER_IDS = [];
 
 export default function QuorumProjectorPage() {
     const { state } = useStore();
-    const { agendas, currentAgendaId, attendance, members } = state;
+    const { agendas, currentAgendaId, attendance, members, voteData } = state;
+    const inactiveMemberIds = Array.isArray(voteData?.inactiveMemberIds) ? voteData.inactiveMemberIds : EMPTY_INACTIVE_MEMBER_IDS;
+    const activeMemberIdSet = useMemo(() => {
+        const inactiveMemberIdSet = new Set(inactiveMemberIds);
+        return new Set(
+            members
+                .filter(member => member.is_active !== false && !inactiveMemberIdSet.has(member.id))
+                .map(member => member.id)
+        );
+    }, [inactiveMemberIds, members]);
+    const activeMembers = useMemo(() => {
+        return members.filter(member => activeMemberIdSet.has(member.id));
+    }, [activeMemberIdSet, members]);
     const [scale, setScale] = useState(1);
 
     const currentAgenda = useMemo(() => agendas.find(a => a.id === currentAgendaId), [agendas, currentAgendaId]);
@@ -23,7 +38,9 @@ export default function QuorumProjectorPage() {
 
     const meetingStats = useMemo(() => {
         if (!meetingId) return { direct: 0, proxy: 0, written: 0, total: 0 };
-        const relevantRecords = attendance.filter(a => a.meeting_id === meetingId);
+        const relevantRecords = attendance.filter(
+            (a) => a.meeting_id === meetingId && activeMemberIdSet.has(a.member_id)
+        );
         const direct = relevantRecords.filter(a => a.type === 'direct').length;
         const proxy = relevantRecords.filter(a => a.type === 'proxy').length;
         const written = relevantRecords.filter(a => a.type === 'written').length;
@@ -33,7 +50,7 @@ export default function QuorumProjectorPage() {
             written,
             total: direct + proxy + written
         };
-    }, [attendance, meetingId]);
+    }, [activeMemberIdSet, attendance, meetingId]);
 
     useEffect(() => {
         const handleResize = () => {
@@ -56,11 +73,12 @@ export default function QuorumProjectorPage() {
     const direct = meetingStats.direct;
     const written = meetingStats.written;
     const proxy = meetingStats.proxy;
-    const liveTotalMembers = members.length;
+    const liveTotalMembers = activeMembers.length;
     const liveTotalAttendance = meetingStats.total;
-    const quorumCount = Math.ceil(liveTotalMembers / 2);
+    const normalizedAgendaType = normalizeAgendaType(currentAgenda?.type);
+    const quorumCount = getAttendanceQuorumTarget(normalizedAgendaType, liveTotalMembers);
     const isTotalQuorumReached = liveTotalAttendance >= quorumCount;
-    const isElection = currentAgenda?.type === 'election';
+    const isElection = normalizedAgendaType === 'election';
     const directTarget = Math.ceil(liveTotalMembers * 0.2);
     const isDirectSatisfied = !isElection || (direct >= directTarget);
     const directPercent = liveTotalMembers > 0 ? (direct / liveTotalMembers) * 100 : 0;
@@ -99,11 +117,11 @@ export default function QuorumProjectorPage() {
                     <div className="w-full bg-slate-800/50 rounded-3xl p-10 backdrop-blur-sm border border-white/10 shadow-2xl space-y-8">
                         <div>
                             <div className="flex justify-between items-end mb-4">
-                                <div className="text-xl text-slate-400"><span className="font-bold text-white">전체 성원</span> (과반수 기준)</div>
+                                <div className="text-xl text-slate-400"><span className="font-bold text-white">전체 성원</span> ({normalizedAgendaType === 'twoThirds' ? '3분의 2 기준' : '과반수 기준'})</div>
                                 <div className="text-right"><span className="text-2xl font-bold text-white tabular-nums">{liveTotalAttendance}</span><span className="text-slate-500 mx-2">/</span><span className="text-xl text-slate-400">{quorumCount}명</span></div>
                             </div>
                             <div className="w-full h-8 bg-slate-700 rounded-full overflow-hidden relative shadow-inner">
-                                <div className="absolute top-0 bottom-0 left-1/2 w-0.5 bg-white/30 z-20 border-r border-black/20"></div>
+                                <div className="absolute top-0 bottom-0 w-0.5 bg-white/30 z-20 border-r border-black/20" style={{ left: normalizedAgendaType === 'twoThirds' ? '66.66%' : '50%' }}></div>
                                 <div className={`h-full transition-all duration-1000 ease-out ${isTotalQuorumReached ? 'bg-gradient-to-r from-emerald-600 to-emerald-400' : 'bg-gradient-to-r from-blue-900 to-blue-500'}`} style={{ width: `${Math.min(100, (liveTotalAttendance / (liveTotalMembers || 1)) * 100)}%` }}></div>
                             </div>
                         </div>
