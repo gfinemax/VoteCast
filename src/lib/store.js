@@ -29,11 +29,12 @@ const INITIAL_DATA = {
     projectorData: null,
     masterPresentationSource: null, // Global Master PPT
     projectorConnected: false, // New: Projector Online Status
+    projectorConnectedCount: 0,
     // UI State for Declaration Editing (per-agenda map)
     declarationEditState: {}, // { [agendaId]: { isEditing: bool, isAutoCalc: bool } }
 };
 
-const getKeyboardNavigableAgendaIds = (agendas = []) => {
+export const getKeyboardNavigableAgendaIds = (agendas = []) => {
     const groups = [];
     let currentGroup = { folder: null, items: [] };
 
@@ -223,14 +224,25 @@ export function StoreProvider({ children }) {
         presenceChannel
             .on('presence', { event: 'sync' }, () => {
                 const newState = presenceChannel.presenceState();
-                // Check if any presence entry has type: 'projector'
-                const isConnected = Object.values(newState).some(users =>
-                    users.some(user => user.type === 'projector')
-                );
+                const projectorUsers = Object.values(newState)
+                    .flat()
+                    .filter((user) => user?.type === 'projector');
+                const projectorConnectedCount = projectorUsers.length;
+                const isConnected = projectorConnectedCount > 0;
 
                 setState(prev => {
-                    if (prev.projectorConnected === isConnected) return prev;
-                    return { ...prev, projectorConnected: isConnected };
+                    if (
+                        prev.projectorConnected === isConnected
+                        && prev.projectorConnectedCount === projectorConnectedCount
+                    ) {
+                        return prev;
+                    }
+
+                    return {
+                        ...prev,
+                        projectorConnected: isConnected,
+                        projectorConnectedCount
+                    };
                 });
             })
             .subscribe();
@@ -773,6 +785,20 @@ export function StoreProvider({ children }) {
             if (currentPage === newPage) return;
 
             const newVoteData = { ...currentVoteData, presentationPage: newPage };
+            setState(prev => ({ ...prev, voteData: newVoteData }));
+
+            await supabase.from('system_settings')
+                .update({ vote_data: newVoteData })
+                .eq('id', 1);
+        },
+
+        setPresentationPage: async (page) => {
+            const normalizedPage = Math.max(1, parseInt(page, 10) || 1);
+            const currentVoteData = stateRef.current.voteData;
+
+            if ((parseInt(currentVoteData.presentationPage, 10) || 1) === normalizedPage) return;
+
+            const newVoteData = { ...currentVoteData, presentationPage: normalizedPage };
             setState(prev => ({ ...prev, voteData: newVoteData }));
 
             await supabase.from('system_settings')

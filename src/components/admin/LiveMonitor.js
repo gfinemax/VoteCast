@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useStore } from '@/lib/store';
-import { getAttendanceQuorumTarget, normalizeAgendaType } from '@/lib/store';
+import { getAttendanceQuorumTarget, getKeyboardNavigableAgendaIds, normalizeAgendaType } from '@/lib/store';
 import { Monitor, CheckCircle2, Play, Settings } from 'lucide-react';
 import AlertModal from '@/components/ui/AlertModal';
 import { useProjector } from '@/components/admin/ProjectorContext';
@@ -12,9 +12,31 @@ import dynamic from 'next/dynamic';
 const PDFViewer = dynamic(() => import('@/components/PDFViewer'), { ssr: false });
 const EMPTY_INACTIVE_MEMBER_IDS = [];
 
+const getAgendaPresentation = (agenda, agendas, pageOverride) => {
+    if (!agenda) return { finalSource: null, currentPage: 1 };
+
+    const individualSource = agenda.presentation_source;
+    let masterSource = null;
+
+    const agendaIndex = agendas.findIndex((item) => item.id === agenda.id);
+    if (agendaIndex >= 0) {
+        for (let i = agendaIndex; i >= 0; i -= 1) {
+            if (agendas[i].type === 'folder') {
+                masterSource = agendas[i].presentation_source;
+                break;
+            }
+        }
+    }
+
+    return {
+        finalSource: individualSource || masterSource,
+        currentPage: Math.max(1, parseInt(pageOverride, 10) || agenda.start_page || 1)
+    };
+};
+
 export default function LiveMonitor({ mode = 'admin' }) {
     const { state, actions } = useStore();
-    const { projectorMode, projectorData, agendas, currentAgendaId, voteData, attendance, members, projectorConnected } = state;
+    const { projectorMode, agendas, currentAgendaId, voteData, attendance, members, projectorConnectedCount } = state;
     const inactiveMemberIds = Array.isArray(voteData?.inactiveMemberIds) ? voteData.inactiveMemberIds : EMPTY_INACTIVE_MEMBER_IDS;
     const activeMemberIdSet = useMemo(() => {
         const inactiveMemberIdSet = new Set(inactiveMemberIds);
@@ -29,22 +51,29 @@ export default function LiveMonitor({ mode = 'admin' }) {
     }, [activeMemberIdSet, members]);
     const [showProjectorAlert, setShowProjectorAlert] = useState(false);
     const [showRestrictionAlert, setShowRestrictionAlert] = useState(false);
+    const [previewAgendaId, setPreviewAgendaId] = useState(null);
+    const [previewPage, setPreviewPage] = useState(null);
+    const [isPreviewFocused, setIsPreviewFocused] = useState(false);
+    const previewScreenRef = useRef(null);
 
     // Projector Window Logic (Global)
-    const { isProjectorOpen, openProjectorWindow, closeProjectorWindow } = useProjector();
+    const {
+        isProjectorOpen,
+        projectorWindowCount,
+        openProjectorWindow,
+        closeProjectorWindows
+    } = useProjector();
+    const projectorOpenCount = Math.max(projectorConnectedCount || 0, projectorWindowCount || 0);
+    const hasProjectorWindow = isProjectorOpen || projectorOpenCount > 0;
 
     // Help Message Logic
-    const handleProjectorAction = (actionFn) => {
-        if (!projectorConnected) {
+    const handleProjectorAction = React.useCallback((actionFn) => {
+        if (!hasProjectorWindow) {
             setShowProjectorAlert(true);
             return;
         }
         actionFn();
-    };
-
-    const handleRestrictedAction = () => {
-        setShowRestrictionAlert(true);
-    };
+    }, [hasProjectorWindow]);
 
     const handleCommissionCheck = (callback) => {
         // Explicitly check mode string
@@ -90,28 +119,173 @@ export default function LiveMonitor({ mode = 'admin' }) {
         };
     }, [activeMemberIdSet, attendance, meetingId]);
 
-    // Simple source calculation (no double buffer needed)
-    const { finalSource, currentPage } = useMemo(() => {
-        if (!currentAgenda) return { finalSource: null, currentPage: 1 };
+    const { currentPage } = useMemo(
+        () => getAgendaPresentation(currentAgenda, agendas, voteData?.presentationPage),
+        [agendas, currentAgenda, voteData?.presentationPage]
+    );
 
-        const individualSource = currentAgenda.presentation_source;
-        let masterSource = null;
-        if (agendas && currentAgenda) {
-            const idx = agendas.findIndex(a => a.id === currentAgenda.id);
-            if (idx >= 0) {
-                for (let i = idx; i >= 0; i--) {
-                    if (agendas[i].type === 'folder') {
-                        masterSource = agendas[i].presentation_source;
-                        break;
-                    }
-                }
-            }
+    const navigableAgendaIds = useMemo(() => getKeyboardNavigableAgendaIds(agendas), [agendas]);
+    const hasPreparedPreview = previewAgendaId !== null
+        && ((previewAgendaId !== currentAgendaId) || ((parseInt(previewPage, 10) || currentPage || 1) !== currentPage));
+    const previewSelectionActive = isPreviewFocused || hasPreparedPreview;
+    const effectivePreviewAgendaId = previewSelectionActive ? (previewAgendaId ?? currentAgendaId) : currentAgendaId;
+    const effectivePreviewPage = previewSelectionActive
+        ? Math.max(1, parseInt(previewPage, 10) || currentPage || 1)
+        : currentPage;
+
+    useEffect(() => {
+        const handlePointerDown = (event) => {
+            if (previewScreenRef.current?.contains(event.target)) return;
+            setIsPreviewFocused(false);
+        };
+
+        document.addEventListener('pointerdown', handlePointerDown);
+        return () => document.removeEventListener('pointerdown', handlePointerDown);
+    }, []);
+
+    const previewAgenda = useMemo(() => {
+        return agendas.find((agenda) => agenda.id === effectivePreviewAgendaId) || currentAgenda;
+    }, [agendas, currentAgenda, effectivePreviewAgendaId]);
+
+    const previewPresentation = useMemo(
+        () => getAgendaPresentation(previewAgenda, agendas, effectivePreviewPage),
+        [agendas, effectivePreviewPage, previewAgenda]
+    );
+
+    const focusPreviewScreen = React.useCallback(() => {
+        if (!hasPreparedPreview) {
+            setPreviewAgendaId(currentAgendaId || null);
+            setPreviewPage(currentPage || 1);
         }
-        const startPage = voteData?.presentationPage || currentAgenda.start_page || 1;
-        let source = individualSource || masterSource;
+        setIsPreviewFocused(true);
+    }, [currentAgendaId, currentPage, hasPreparedPreview]);
 
-        return { finalSource: source, currentPage: parseInt(startPage) };
-    }, [currentAgenda, voteData?.presentationPage, agendas]);
+    const resetPreviewToLive = React.useCallback(() => {
+        setPreviewAgendaId(null);
+        setPreviewPage(null);
+        setIsPreviewFocused(false);
+    }, []);
+
+    const movePreviewAgenda = React.useCallback((delta) => {
+        if (!navigableAgendaIds.length || !delta) return;
+
+        const baseAgendaId = previewAgendaId ?? currentAgendaId;
+        const currentIndex = navigableAgendaIds.indexOf(baseAgendaId);
+        const normalizedDelta = delta > 0 ? 1 : -1;
+        const nextIndex = currentIndex === -1
+            ? (normalizedDelta > 0 ? 0 : navigableAgendaIds.length - 1)
+            : Math.min(
+                navigableAgendaIds.length - 1,
+                Math.max(0, currentIndex + normalizedDelta)
+            );
+
+        const nextAgendaId = navigableAgendaIds[nextIndex];
+        if (!nextAgendaId || nextAgendaId === baseAgendaId) return;
+
+        const nextAgenda = agendas.find((agenda) => agenda.id === nextAgendaId);
+        setPreviewAgendaId(nextAgendaId);
+        setPreviewPage(nextAgenda?.start_page || 1);
+        setIsPreviewFocused(true);
+    }, [agendas, currentAgendaId, navigableAgendaIds, previewAgendaId]);
+
+    const movePreviewPage = React.useCallback((delta) => {
+        if (!delta) return;
+
+        const basePage = parseInt(previewPage, 10) || currentPage || 1;
+        setPreviewPage(Math.max(1, basePage + delta));
+        setPreviewAgendaId(previewAgendaId ?? currentAgendaId ?? null);
+        setIsPreviewFocused(true);
+    }, [currentAgendaId, currentPage, previewAgendaId, previewPage]);
+
+    const applyPreviewToProjector = React.useCallback(async () => {
+        const targetAgendaId = previewAgenda?.id ?? currentAgendaId;
+        const targetPage = previewPresentation.currentPage;
+
+        if (!targetAgendaId) return;
+
+        if (targetAgendaId !== currentAgendaId) {
+            await actions.setAgenda(targetAgendaId);
+        }
+
+        await actions.setPresentationPage(targetPage);
+        await actions.setProjectorMode('PPT', { agendaTitle: previewAgenda?.title });
+        resetPreviewToLive();
+    }, [actions, currentAgendaId, previewAgenda, previewPresentation.currentPage, resetPreviewToLive]);
+
+    useEffect(() => {
+        const handleKeyDown = (e) => {
+            if (e.isComposing || e.altKey || e.ctrlKey || e.metaKey) return;
+
+            const activeElement = document.activeElement;
+            if (
+                ['INPUT', 'TEXTAREA', 'SELECT'].includes(activeElement?.tagName) ||
+                activeElement?.isContentEditable
+            ) {
+                return;
+            }
+
+            if (isPreviewFocused) {
+                if (e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    movePreviewAgenda(1);
+                } else if (e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    movePreviewAgenda(-1);
+                } else if (e.key === 'ArrowRight') {
+                    e.preventDefault();
+                    movePreviewPage(1);
+                } else if (e.key === 'ArrowLeft') {
+                    e.preventDefault();
+                    movePreviewPage(-1);
+                } else if (e.key === 'Escape') {
+                    e.preventDefault();
+                    resetPreviewToLive();
+                } else if (e.key === 'Enter') {
+                    e.preventDefault();
+                    if (mode === 'commission') {
+                        setShowRestrictionAlert(true);
+                        return;
+                    }
+                    handleProjectorAction(applyPreviewToProjector);
+                }
+                return;
+            }
+
+            if (projectorMode !== 'PPT' && projectorMode !== 'IDLE') return;
+
+            if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                actions.moveAgendaSelection(1);
+            } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                actions.moveAgendaSelection(-1);
+            } else if (e.key === 'ArrowRight') {
+                e.preventDefault();
+                actions.updatePresentationPage(1);
+            } else if (e.key === 'ArrowLeft') {
+                e.preventDefault();
+                actions.updatePresentationPage(-1);
+            }
+        };
+
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [
+        actions,
+        applyPreviewToProjector,
+        currentAgendaId,
+        currentPage,
+        handleProjectorAction,
+        isPreviewFocused,
+        mode,
+        previewAgenda,
+        previewAgendaId,
+        previewPage,
+        projectorMode,
+        movePreviewAgenda,
+        movePreviewPage,
+        resetPreviewToLive
+    ]);
 
     // Calculate result stats (Snapshot support)
     const snapshot = currentAgenda?.vote_snapshot;
@@ -150,6 +324,21 @@ export default function LiveMonitor({ mode = 'admin' }) {
     const isReadyToOpen = isTotalQuorumReached && isDirectSatisfied;
     const quorumLabel = isSpecialVote ? '3분의 2' : '과반수';
     const quorumLinePosition = isSpecialVote ? '66.66%' : '50%';
+    const isPptOnAir = projectorMode === 'PPT' || projectorMode === 'IDLE';
+    const centerScreenBorder = isPreviewFocused
+        ? 'border-amber-400'
+        : hasPreparedPreview
+            ? 'border-amber-500'
+            : isPptOnAir
+                ? 'border-emerald-500'
+                : 'border-slate-800';
+    const projectorStatusLabel = {
+        RESULT: `투표 결과 송출 중${currentAgenda?.title ? ` · ${currentAgenda.title}` : ''}`,
+        WAITING: '성원 현황 송출 중',
+        ADJUSTING: '결과 정정 안내 송출 중',
+        PPT: `안건 설명 송출 중${currentAgenda?.title ? ` · ${currentAgenda.title}` : ''}`,
+        IDLE: `자료 대기 화면${currentAgenda?.title ? ` · ${currentAgenda.title}` : ''}`
+    }[projectorMode] || '송출 대기';
 
     return (
         <div className="bg-slate-900 rounded-xl overflow-hidden shadow-2xl border-4 border-slate-800">
@@ -161,23 +350,25 @@ export default function LiveMonitor({ mode = 'admin' }) {
                 </div>
                 <div className="flex items-center gap-3">
                     <button
-                        onClick={() => {
-                            if (isProjectorOpen || projectorConnected) {
-                                closeProjectorWindow();
-                            } else {
-                                openProjectorWindow();
-                            }
-                        }}
-                        className={`flex items-center gap-2 px-3 py-1 rounded font-semibold text-xs transition-all border ${(isProjectorOpen || projectorConnected)
-                            ? 'bg-emerald-900/50 text-emerald-400 border-emerald-500/50 hover:bg-red-900/50 hover:text-red-400 hover:border-red-500/50'
+                        onClick={openProjectorWindow}
+                        className={`flex items-center gap-2 px-3 py-1 rounded font-semibold text-xs transition-all border ${hasProjectorWindow
+                            ? 'bg-emerald-900/50 text-emerald-400 border-emerald-500/50 hover:bg-emerald-800/60 hover:text-emerald-300'
                             : 'bg-slate-800 text-slate-400 border-slate-700 hover:bg-slate-700 hover:text-white'
                             }`}
                     >
                         <Monitor size={12} />
-                        <span>{(isProjectorOpen || projectorConnected) ? '송출중 (닫기)' : '송출창 열기'}</span>
-                        {(isProjectorOpen || projectorConnected) && <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse"></span>}
+                        <span>{hasProjectorWindow ? `송출창 추가 열기 (${projectorOpenCount})` : '송출창 열기'}</span>
+                        {hasProjectorWindow && <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse"></span>}
                     </button>
-
+                    {hasProjectorWindow && (
+                        <button
+                            onClick={closeProjectorWindows}
+                            className="flex items-center gap-2 px-3 py-1 rounded font-semibold text-xs transition-all border bg-red-950/50 text-red-300 border-red-500/40 hover:bg-red-900/60 hover:text-red-200 hover:border-red-400/60"
+                        >
+                            <Monitor size={12} />
+                            <span>송출창 전체 닫기</span>
+                        </button>
+                    )}
                 </div>
             </div>
 
@@ -284,43 +475,90 @@ export default function LiveMonitor({ mode = 'admin' }) {
 
                 {/* 2. PPT SCREEN (Center) */}
                 <div className="flex flex-col gap-2">
-                    <div className={`relative aspect-video bg-black rounded overflow-hidden group border-2 transition-colors ${projectorMode === 'PPT' || projectorMode === 'IDLE' ? 'border-emerald-500' : 'border-slate-800'}`}>
-                        {finalSource ? (
+                    <div
+                        ref={previewScreenRef}
+                        onClick={focusPreviewScreen}
+                        className={`relative aspect-video bg-black rounded overflow-hidden group border-2 transition-colors cursor-pointer ${centerScreenBorder}`}
+                    >
+                        {previewPresentation.finalSource ? (
                             <div className="w-full h-full bg-white relative overflow-hidden">
-                                {/* PDFViewer for reliable display */}
                                 <PDFViewer
-                                    url={finalSource}
-                                    pageNumber={currentPage}
+                                    url={previewPresentation.finalSource}
+                                    pageNumber={previewPresentation.currentPage}
                                 />
-                                {/* Clickblocker */}
-                                <div className="absolute inset-0 bg-transparent z-20"></div>
+                                <div className="absolute inset-0 bg-transparent z-20" />
                             </div>
                         ) : (
                             <div className="w-full h-full flex flex-col items-center justify-center text-center p-2 bg-slate-900 text-white">
                                 <div className="text-[8px] text-slate-500 mb-1 tracking-widest uppercase">PPT VIEW</div>
-                                <h1 className="text-[10px] font-bold line-clamp-2 px-2 leading-tight text-slate-100">{currentAgenda?.title || '정기 총회'}</h1>
+                                <h1 className="text-[10px] font-bold line-clamp-2 px-2 leading-tight text-slate-100">{previewAgenda?.title || '정기 총회'}</h1>
                                 <div className="text-[6px] text-slate-600 mt-1">No PPT URL Linked</div>
                             </div>
                         )}
                         <div className="absolute top-1 left-1 px-1 py-0.5 bg-black/60 text-[8px] text-slate-300 font-mono rounded z-10">SCREEN 2</div>
-                        {(projectorMode === 'PPT' || projectorMode === 'IDLE') && <div className="absolute top-1 right-1 px-1.5 py-0.5 bg-emerald-600/90 text-white text-[8px] font-bold rounded z-10">ON AIR</div>}
+                        {hasPreparedPreview || isPreviewFocused ? (
+                            <div className="absolute top-1 right-1 px-1.5 py-0.5 bg-amber-500/90 text-slate-950 text-[8px] font-bold rounded z-10">
+                                PREVIEW
+                            </div>
+                        ) : isPptOnAir ? (
+                            <div className="absolute top-1 right-1 px-1.5 py-0.5 bg-emerald-600/90 text-white text-[8px] font-bold rounded z-10">
+                                ON AIR
+                            </div>
+                        ) : null}
+                        <div className="absolute inset-x-0 bottom-0 z-20 bg-gradient-to-t from-black/80 via-black/25 to-transparent px-2 py-2">
+                            <div className="flex items-center justify-between gap-2 text-[8px] font-semibold">
+                                <span className={hasPreparedPreview || isPreviewFocused ? 'text-amber-300' : 'text-slate-300'}>
+                                    {hasPreparedPreview
+                                        ? `준비 화면 · ${previewAgenda?.title || '안건'} · ${previewPresentation.currentPage}p`
+                                        : isPreviewFocused
+                                            ? `탐색 준비 · ${previewAgenda?.title || '안건'} · ${previewPresentation.currentPage}p`
+                                            : `현재 자료 · ${currentAgenda?.title || '안건'} · ${currentPage}p`}
+                                </span>
+                                <span className={isPreviewFocused ? 'text-amber-200' : 'text-slate-400'}>
+                                    {isPreviewFocused ? 'CONTROL READY' : 'CLICK TO CONTROL'}
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                    <div className="rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-[10px] text-slate-400">
+                        <div className="flex items-center justify-between gap-3">
+                            <span className="truncate">실제 송출: {projectorStatusLabel}</span>
+                            <span className={`font-semibold ${hasPreparedPreview ? 'text-amber-300' : isPreviewFocused ? 'text-amber-200' : 'text-slate-500'}`}>
+                                {hasPreparedPreview ? 'PREVIEW READY' : isPreviewFocused ? 'PREVIEW ACTIVE' : 'LIVE SYNC'}
+                            </span>
+                        </div>
+                        <div className="mt-1 text-slate-500">
+                            클릭 후 `↑↓` 안건, `←→` 페이지, `Enter` 송출, `Esc` 동기화
+                        </div>
                     </div>
                     {/* Button */}
                     <button
                         onClick={() => handleCommissionCheck(() =>
-                            actions.setProjectorMode('PPT', { agendaTitle: currentAgenda?.title })
+                            hasPreparedPreview ? applyPreviewToProjector() : actions.setProjectorMode('PPT', { agendaTitle: currentAgenda?.title })
                         )}
                         className={`w-full py-2 px-3 rounded-lg font-semibold text-xs flex items-center justify-center gap-2 transition-all ${mode === 'commission'
                             ? 'bg-slate-800/50 text-slate-600 cursor-not-allowed border border-slate-800' // Restricted Style
-                            : (projectorMode === 'PPT' || projectorMode === 'IDLE'
-                                ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/30'
-                                : 'bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white')
+                            : (hasPreparedPreview
+                                ? 'bg-amber-500 text-slate-950 shadow-lg shadow-amber-500/20 hover:bg-amber-400'
+                                : (projectorMode === 'PPT' || projectorMode === 'IDLE'
+                                    ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/30'
+                                    : 'bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white'))
                             }`}
                     >
                         <Monitor size={14} />
-                        <span>안건 설명</span>
-                        {mode !== 'commission' && (projectorMode === 'PPT' || projectorMode === 'IDLE') && <span className="w-2 h-2 bg-white rounded-full animate-pulse"></span>}
+                        <span>{hasPreparedPreview ? '준비 화면 송출' : '안건 설명'}</span>
+                        {mode !== 'commission' && hasPreparedPreview && <span className="w-2 h-2 bg-slate-950 rounded-full animate-pulse"></span>}
+                        {mode !== 'commission' && !hasPreparedPreview && (projectorMode === 'PPT' || projectorMode === 'IDLE') && <span className="w-2 h-2 bg-white rounded-full animate-pulse"></span>}
                     </button>
+                    {hasPreparedPreview && (
+                        <button
+                            onClick={resetPreviewToLive}
+                            className="w-full py-2 px-3 rounded-lg font-semibold text-xs flex items-center justify-center gap-2 transition-all bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white"
+                        >
+                            <Settings size={14} />
+                            <span>현재 송출과 동기화</span>
+                        </button>
+                    )}
                 </div>
 
 

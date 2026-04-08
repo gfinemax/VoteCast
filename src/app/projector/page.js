@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import { useStore } from '@/lib/store';
 import { getAttendanceQuorumTarget, normalizeAgendaType } from '@/lib/store';
 import { supabase } from '@/lib/supabase';
@@ -25,37 +25,40 @@ export default function ProjectorPage() {
     const activeMembers = useMemo(() => {
         return members.filter(member => activeMemberIdSet.has(member.id));
     }, [activeMemberIdSet, members]);
-    const [resultTimestamp, setResultTimestamp] = useState(null);
+    const resultTimestamp = useMemo(() => {
+        if (projectorMode !== 'RESULT') return null;
 
-    // Update timestamp when mode changes to RESULT
-    useEffect(() => {
-        if (projectorMode === 'RESULT') {
-            const now = new Date();
-            const timeStr = now.toLocaleTimeString('ko-KR', {
-                hour: '2-digit',
-                minute: '2-digit',
-                second: '2-digit',
-                hour12: false
-            });
-            setResultTimestamp(`${timeStr}:00`);
-        } else {
-            setResultTimestamp(null);
-        }
+        const now = new Date();
+        const timeStr = now.toLocaleTimeString('ko-KR', {
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+            hour12: false
+        });
+
+        return `${timeStr}:00`;
     }, [projectorMode]);
 
     // Broadcast Presence
     useEffect(() => {
+        const searchParams = new URLSearchParams(window.location.search);
+        const windowId = searchParams.get('windowId') || `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+        const presenceKey = `projector-${windowId}`;
         const channel = supabase.channel('room_presence', {
             config: {
                 presence: {
-                    key: 'projector',
+                    key: presenceKey,
                 },
             },
         });
 
         channel.subscribe(async (status) => {
             if (status === 'SUBSCRIBED') {
-                await channel.track({ type: 'projector', online_at: new Date().toISOString() });
+                await channel.track({
+                    type: 'projector',
+                    windowId,
+                    online_at: new Date().toISOString()
+                });
             }
         });
 
