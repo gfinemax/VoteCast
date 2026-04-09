@@ -45,14 +45,20 @@ CREATE TABLE public.attendance (
     }
 
     // 2. Check 'agendas' columns
-    const { data: agendaData, error: agendaError } = await supabase.from('agendas').select('votes_yes').limit(1);
+    const { data: agendaData, error: agendaError } = await supabase.from('agendas').select('votes_yes, written_yes, onsite_yes').limit(1);
     if (agendaError || !agendaData) {
-        console.log("Column 'votes_yes' might be missing in 'agendas'. SQL to add:");
+        console.log("Vote columns might be missing in 'agendas'. SQL to add:");
         console.log(`
 ALTER TABLE public.agendas 
 ADD COLUMN votes_yes integer default 0,
 ADD COLUMN votes_no integer default 0,
-ADD COLUMN votes_abstain integer default 0;
+ADD COLUMN votes_abstain integer default 0,
+ADD COLUMN written_yes integer default 0,
+ADD COLUMN written_no integer default 0,
+ADD COLUMN written_abstain integer default 0,
+ADD COLUMN onsite_yes integer default 0,
+ADD COLUMN onsite_no integer default 0,
+ADD COLUMN onsite_abstain integer default 0;
         `);
     } else {
         console.log("'agendas' table has vote columns.");

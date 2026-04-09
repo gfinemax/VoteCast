@@ -2,7 +2,7 @@
 
 import React, { useEffect, useMemo } from 'react';
 import { useStore } from '@/lib/store';
-import { getAttendanceQuorumTarget, normalizeAgendaType } from '@/lib/store';
+import { getAgendaVoteBuckets, getAttendanceQuorumTarget, normalizeAgendaType } from '@/lib/store';
 import { supabase } from '@/lib/supabase';
 import { CheckCircle2, Settings } from 'lucide-react';
 import dynamic from 'next/dynamic';
@@ -145,11 +145,12 @@ export default function ProjectorPage() {
         // CHECK SNAPSHOT
         const snapshot = currentAgenda?.vote_snapshot;
         const isConfirmed = !!snapshot;
+        const liveVoteBuckets = getAgendaVoteBuckets(currentAgenda);
 
         const totalAttendance = isConfirmed ? snapshot.stats.total : meetingStats.total;
-        const votesYes = isConfirmed ? snapshot.votes.yes : (currentAgenda?.votes_yes || 0);
-        const votesNo = isConfirmed ? snapshot.votes.no : (currentAgenda?.votes_no || 0);
-        const votesAbstain = isConfirmed ? snapshot.votes.abstain : (currentAgenda?.votes_abstain || 0);
+        const votesYes = isConfirmed ? snapshot.votes.yes : liveVoteBuckets.final.yes;
+        const votesNo = isConfirmed ? snapshot.votes.no : liveVoteBuckets.final.no;
+        const votesAbstain = isConfirmed ? snapshot.votes.abstain : liveVoteBuckets.final.abstain;
         const customDeclaration = isConfirmed ? snapshot.declaration : (currentAgenda?.declaration || '');
 
         const currentAgendaType = normalizeAgendaType(currentAgenda?.type);

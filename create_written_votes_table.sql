@@ -11,3 +11,5 @@ CREATE TABLE IF NOT EXISTS written_votes (
 -- Index for faster lookups
 CREATE INDEX IF NOT EXISTS idx_written_votes_member ON written_votes(member_id);
 CREATE INDEX IF NOT EXISTS idx_written_votes_agenda ON written_votes(agenda_id);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_written_votes_member_meeting_agenda
+ON written_votes(member_id, meeting_id, agenda_id);

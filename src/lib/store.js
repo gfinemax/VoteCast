@@ -77,6 +77,65 @@ const getAgendaTypeLocks = (voteData = {}) => {
     return voteData.agendaTypeLocks;
 };
 
+const toVoteNumber = (value) => {
+    const parsed = parseInt(value, 10);
+    return Number.isNaN(parsed) ? 0 : parsed;
+};
+
+export const getAgendaVoteBuckets = (agenda = {}) => {
+    const hasSplitVoteColumns = [
+        'written_yes',
+        'written_no',
+        'written_abstain',
+        'onsite_yes',
+        'onsite_no',
+        'onsite_abstain'
+    ].some((field) => Object.prototype.hasOwnProperty.call(agenda, field));
+
+    const written = hasSplitVoteColumns
+        ? {
+            yes: toVoteNumber(agenda?.written_yes),
+            no: toVoteNumber(agenda?.written_no),
+            abstain: toVoteNumber(agenda?.written_abstain)
+        }
+        : { yes: 0, no: 0, abstain: 0 };
+
+    const onsite = hasSplitVoteColumns
+        ? {
+            yes: toVoteNumber(agenda?.onsite_yes),
+            no: toVoteNumber(agenda?.onsite_no),
+            abstain: toVoteNumber(agenda?.onsite_abstain)
+        }
+        : {
+            yes: toVoteNumber(agenda?.votes_yes),
+            no: toVoteNumber(agenda?.votes_no),
+            abstain: toVoteNumber(agenda?.votes_abstain)
+        };
+
+    return {
+        hasSplitVoteColumns,
+        written,
+        onsite,
+        final: {
+            yes: written.yes + onsite.yes,
+            no: written.no + onsite.no,
+            abstain: written.abstain + onsite.abstain
+        }
+    };
+};
+
+export const withLegacyVoteTotals = (agenda = {}) => {
+    const voteBuckets = getAgendaVoteBuckets(agenda);
+    if (!voteBuckets.hasSplitVoteColumns) return agenda;
+
+    return {
+        ...agenda,
+        votes_yes: voteBuckets.final.yes,
+        votes_no: voteBuckets.final.no,
+        votes_abstain: voteBuckets.final.abstain
+    };
+};
+
 export const getMajorityThreshold = (count) => Math.floor((Number(count) || 0) / 2) + 1;
 export const normalizeAgendaType = (type) => {
     if (type === 'general') return 'majority';
@@ -273,9 +332,10 @@ export function StoreProvider({ children }) {
         const vData = stateRef.current.voteData || {};
         const total = (vData.writtenAttendance || 0) + (vData.directAttendance || 0) + (vData.proxyAttendance || 0);
         const criterion = newType === 'twoThirds' ? "3분의 2 이상" : "과반수 이상";
-        const votesYes = vData.votesYes || 0;
-        const votesNo = vData.votesNo || 0;
-        const votesAbstain = vData.votesAbstain || 0;
+        const voteBuckets = getAgendaVoteBuckets(targetAgenda);
+        const votesYes = voteBuckets.final.yes;
+        const votesNo = voteBuckets.final.no;
+        const votesAbstain = voteBuckets.final.abstain;
 
         const defaultDecl = total > 0 ? `"${targetAgenda.title}" 서면결의 포함 찬성(${votesYes})표, 반대(${votesNo})표, 기권(${votesAbstain})표로
 전체 참석자(${total.toLocaleString()})명중 ${criterion} 찬성으로
@@ -495,12 +555,15 @@ export function StoreProvider({ children }) {
         },
 
         updateAgenda: async (updatedAgenda) => {
+            const currentAgenda = stateRef.current.agendas.find(a => a.id === updatedAgenda.id) || {};
+            const normalizedAgenda = withLegacyVoteTotals({ ...currentAgenda, ...updatedAgenda });
+
             setState(prev => ({
                 ...prev,
-                agendas: prev.agendas.map(a => a.id === updatedAgenda.id ? { ...a, ...updatedAgenda } : a)
+                agendas: prev.agendas.map(a => a.id === updatedAgenda.id ? { ...a, ...normalizedAgenda } : a)
             }));
 
-            const { id, ...fields } = updatedAgenda;
+            const { id, ...fields } = normalizedAgenda;
             const { error } = await supabase.from('agendas').update(fields).eq('id', id);
             if (error) {
                 console.error("FAILED to update Agenda:", error);

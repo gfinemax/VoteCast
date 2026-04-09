@@ -1,19 +1,3 @@
--- 1. Create written_votes table
-CREATE TABLE IF NOT EXISTS written_votes (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    member_id INTEGER REFERENCES members(id) ON DELETE CASCADE,
-    meeting_id INTEGER REFERENCES agendas(id) ON DELETE CASCADE, 
-    agenda_id INTEGER REFERENCES agendas(id) ON DELETE CASCADE,
-    choice TEXT CHECK (choice IN ('yes', 'no', 'abstain')),
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
-);
-
-CREATE INDEX IF NOT EXISTS idx_written_votes_member ON written_votes(member_id);
-CREATE INDEX IF NOT EXISTS idx_written_votes_agenda ON written_votes(agenda_id);
-CREATE UNIQUE INDEX IF NOT EXISTS uq_written_votes_member_meeting_agenda
-ON written_votes(member_id, meeting_id, agenda_id);
-
--- 1.5 Split fixed written votes and editable onsite votes
 ALTER TABLE agendas
 ADD COLUMN IF NOT EXISTS written_yes INTEGER NOT NULL DEFAULT 0,
 ADD COLUMN IF NOT EXISTS written_no INTEGER NOT NULL DEFAULT 0,
@@ -22,7 +6,60 @@ ADD COLUMN IF NOT EXISTS onsite_yes INTEGER NOT NULL DEFAULT 0,
 ADD COLUMN IF NOT EXISTS onsite_no INTEGER NOT NULL DEFAULT 0,
 ADD COLUMN IF NOT EXISTS onsite_abstain INTEGER NOT NULL DEFAULT 0;
 
--- 2. Create RPC function for transactional check-in
+WITH ranked_written_votes AS (
+    SELECT
+        id,
+        ROW_NUMBER() OVER (
+            PARTITION BY member_id, meeting_id, agenda_id
+            ORDER BY created_at DESC, id DESC
+        ) AS duplicate_rank
+    FROM written_votes
+)
+DELETE FROM written_votes
+WHERE id IN (
+    SELECT id
+    FROM ranked_written_votes
+    WHERE duplicate_rank > 1
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_written_votes_member_meeting_agenda
+ON written_votes(member_id, meeting_id, agenda_id);
+
+UPDATE agendas
+SET
+    written_yes = 0,
+    written_no = 0,
+    written_abstain = 0;
+
+WITH written_totals AS (
+    SELECT
+        agenda_id,
+        COUNT(*) FILTER (WHERE choice = 'yes') AS yes_count,
+        COUNT(*) FILTER (WHERE choice = 'no') AS no_count,
+        COUNT(*) FILTER (WHERE choice = 'abstain') AS abstain_count
+    FROM written_votes
+    GROUP BY agenda_id
+)
+UPDATE agendas AS agenda
+SET
+    written_yes = COALESCE(written_totals.yes_count, 0),
+    written_no = COALESCE(written_totals.no_count, 0),
+    written_abstain = COALESCE(written_totals.abstain_count, 0)
+FROM written_totals
+WHERE agenda.id = written_totals.agenda_id;
+
+UPDATE agendas
+SET
+    onsite_yes = GREATEST(0, COALESCE(votes_yes, 0) - COALESCE(written_yes, 0)),
+    onsite_no = GREATEST(0, COALESCE(votes_no, 0) - COALESCE(written_no, 0)),
+    onsite_abstain = GREATEST(0, COALESCE(votes_abstain, 0) - COALESCE(written_abstain, 0));
+
+UPDATE agendas
+SET
+    votes_yes = COALESCE(written_yes, 0) + COALESCE(onsite_yes, 0),
+    votes_no = COALESCE(written_no, 0) + COALESCE(onsite_no, 0),
+    votes_abstain = COALESCE(written_abstain, 0) + COALESCE(onsite_abstain, 0);
+
 CREATE OR REPLACE FUNCTION check_in_member(
     p_member_id INTEGER,
     p_meeting_id INTEGER,
@@ -36,22 +73,18 @@ DECLARE
     v_agenda_id INTEGER;
     v_choice TEXT;
 BEGIN
-    -- Insert Attendance
     INSERT INTO attendance (member_id, meeting_id, type, proxy_name)
     VALUES (p_member_id, p_meeting_id, p_type, p_proxy_name);
 
-    -- Process Votes if provided
     IF p_votes IS NOT NULL THEN
         FOR v_vote IN SELECT * FROM jsonb_array_elements(p_votes)
         LOOP
             v_agenda_id := (v_vote->>'agenda_id')::INTEGER;
             v_choice := v_vote->>'choice';
-            
-            -- Insert Written Vote
+
             INSERT INTO written_votes (member_id, meeting_id, agenda_id, choice)
             VALUES (p_member_id, p_meeting_id, v_agenda_id, v_choice);
-            
-            -- Update Fixed Written Vote Counts
+
             IF v_choice = 'yes' THEN
                 UPDATE agendas
                 SET
@@ -76,7 +109,6 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- 3. Create RPC function to Cancel Check-in (and reverse votes)
 CREATE OR REPLACE FUNCTION cancel_check_in_member(
     p_member_id INTEGER,
     p_meeting_id INTEGER
@@ -85,9 +117,8 @@ RETURNS VOID AS $$
 DECLARE
     r_vote RECORD;
 BEGIN
-    -- 1. Reverse Votes (if any)
-    FOR r_vote IN 
-        SELECT agenda_id, choice FROM written_votes 
+    FOR r_vote IN
+        SELECT agenda_id, choice FROM written_votes
         WHERE member_id = p_member_id AND meeting_id = p_meeting_id
     LOOP
         IF r_vote.choice = 'yes' THEN
@@ -111,10 +142,7 @@ BEGIN
         END IF;
     END LOOP;
 
-    -- 2. Delete Written Votes
     DELETE FROM written_votes WHERE member_id = p_member_id AND meeting_id = p_meeting_id;
-
-    -- 3. Delete Attendance
     DELETE FROM attendance WHERE member_id = p_member_id AND meeting_id = p_meeting_id;
 END;
 $$ LANGUAGE plpgsql;

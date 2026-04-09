@@ -2,7 +2,7 @@
 
 import React, { useMemo, useEffect, useState, useCallback } from 'react';
 import { useStore } from '@/lib/store';
-import { getAttendanceQuorumTarget, normalizeAgendaType } from '@/lib/store';
+import { getAgendaVoteBuckets, getAttendanceQuorumTarget, normalizeAgendaType } from '@/lib/store';
 import { CheckCircle2, AlertTriangle, Trash2, Lock, Unlock, RotateCcw, Save, Wand2 } from 'lucide-react';
 import Card from '@/components/ui/Card';
 
@@ -63,15 +63,27 @@ export default function VoteControl() {
     // SNAPSHOT HANDLING
     const snapshot = currentAgenda?.vote_snapshot;
     const isConfirmed = !!snapshot;
+    const liveVoteBuckets = useMemo(() => getAgendaVoteBuckets(currentAgenda), [currentAgenda]);
+    const hasSplitVoteColumns = liveVoteBuckets.hasSplitVoteColumns;
+    const writtenVoteTotals = liveVoteBuckets.written;
+    const onsiteVoteTotals = hasSplitVoteColumns ? liveVoteBuckets.onsite : liveVoteBuckets.final;
+    const finalVoteTotals = liveVoteBuckets.final;
 
     // Use Snapshot if confirmed, otherwise Realtime
     const displayStats = isConfirmed ? snapshot.stats : realtimeStats;
 
     // Vote Data Sources
-    const votesYes = isConfirmed ? snapshot.votes.yes : (currentAgenda?.votes_yes || 0);
-    const votesNo = isConfirmed ? snapshot.votes.no : (currentAgenda?.votes_no || 0);
-    const votesAbstain = isConfirmed ? snapshot.votes.abstain : (currentAgenda?.votes_abstain || 0);
+    const votesYes = isConfirmed ? snapshot.votes.yes : finalVoteTotals.yes;
+    const votesNo = isConfirmed ? snapshot.votes.no : finalVoteTotals.no;
+    const votesAbstain = isConfirmed ? snapshot.votes.abstain : finalVoteTotals.abstain;
     const declaration = isConfirmed ? snapshot.declaration : (currentAgenda?.declaration || '');
+    const editableVoteFieldMap = hasSplitVoteColumns
+        ? { yes: 'onsite_yes', no: 'onsite_no', abstain: 'onsite_abstain' }
+        : { yes: 'votes_yes', no: 'votes_no', abstain: 'votes_abstain' };
+    const totalWrittenVotes = writtenVoteTotals.yes + writtenVoteTotals.no + writtenVoteTotals.abstain;
+    const editableVotesYes = onsiteVoteTotals.yes;
+    const editableVotesNo = onsiteVoteTotals.no;
+    const editableVotesAbstain = onsiteVoteTotals.abstain;
 
     // Vote Type Map
     const currentAgendaType = normalizeAgendaType(currentAgenda?.type);
@@ -184,18 +196,32 @@ export default function VoteControl() {
 
         // Auto-Calc Logic
         if (isAutoCalc) {
-            if (field === 'votes_yes') {
+            if (hasSplitVoteColumns) {
+                if (field === 'onsite_yes') {
+                    const currentAbstain = editableVotesAbstain;
+                    const nextNo = Math.max(0, displayStats.total - totalWrittenVotes - value - currentAbstain);
+                    updates.onsite_no = nextNo;
+                } else if (field === 'onsite_no') {
+                    const currentAbstain = editableVotesAbstain;
+                    const nextYes = Math.max(0, displayStats.total - totalWrittenVotes - value - currentAbstain);
+                    updates.onsite_yes = nextYes;
+                } else if (field === 'onsite_abstain') {
+                    const currentYes = editableVotesYes;
+                    const nextNo = Math.max(0, displayStats.total - totalWrittenVotes - currentYes - value);
+                    updates.onsite_no = nextNo;
+                }
+            } else if (field === 'votes_yes') {
                 const currentAbstain = votesAbstain;
-                const textNo = Math.max(0, displayStats.total - value - currentAbstain);
-                updates.votes_no = textNo;
+                const nextNo = Math.max(0, displayStats.total - value - currentAbstain);
+                updates.votes_no = nextNo;
             } else if (field === 'votes_no') {
                 const currentAbstain = votesAbstain;
-                const testYes = Math.max(0, displayStats.total - value - currentAbstain);
-                updates.votes_yes = testYes;
+                const nextYes = Math.max(0, displayStats.total - value - currentAbstain);
+                updates.votes_yes = nextYes;
             } else if (field === 'votes_abstain') {
                 const currentYes = votesYes;
-                const testNo = Math.max(0, displayStats.total - currentYes - value);
-                updates.votes_no = testNo;
+                const nextNo = Math.max(0, displayStats.total - currentYes - value);
+                updates.votes_no = nextNo;
             }
         }
 
@@ -204,9 +230,10 @@ export default function VoteControl() {
 
     const handleAutoSum = () => {
         if (isConfirmed || !currentAgenda) return;
-        // Calculate remaining for 'Yes' based on 'No' and 'Abstain'
-        const remainder = Math.max(0, displayStats.total - votesNo - votesAbstain);
-        handleVoteUpdate('votes_yes', remainder);
+        const remainder = hasSplitVoteColumns
+            ? Math.max(0, displayStats.total - totalWrittenVotes - editableVotesNo - editableVotesAbstain)
+            : Math.max(0, displayStats.total - votesNo - votesAbstain);
+        handleVoteUpdate(editableVoteFieldMap.yes, remainder);
     };
 
     const handleConfirmDecision = () => {
@@ -445,22 +472,34 @@ export default function VoteControl() {
                         </button>
                         <button
                             onClick={() => {
-                                handleVoteUpdate('votes_yes', 0);
-                                handleVoteUpdate('votes_no', 0);
-                                handleVoteUpdate('votes_abstain', 0);
+                                handleVoteUpdate(editableVoteFieldMap.yes, 0);
+                                handleVoteUpdate(editableVoteFieldMap.no, 0);
+                                handleVoteUpdate(editableVoteFieldMap.abstain, 0);
                             }}
                             disabled={isConfirmed}
                             className="text-xs text-slate-400 hover:text-red-500 flex items-center gap-1 ml-2 disabled:opacity-50 disabled:cursor-not-allowed"
                         >
-                            <Trash2 size={12} /> 초기화
+                            <Trash2 size={12} /> {hasSplitVoteColumns ? '현장 초기화' : '초기화'}
                         </button>
                     </div>
                 </div>
                 <Card className={`p-6 ${isConfirmed ? 'bg-slate-50' : 'bg-white'}`}>
+                    {hasSplitVoteColumns && (
+                        <div className="mb-4 flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm">
+                            <div className="font-medium text-slate-600">
+                                서면 고정 <span className="font-mono font-bold text-slate-800">{totalWrittenVotes}</span>표
+                                <span className="mx-2 text-slate-300">+</span>
+                                현장 입력 <span className="font-mono font-bold text-slate-800">{editableVotesYes + editableVotesNo + editableVotesAbstain}</span>표
+                                <span className="mx-2 text-slate-300">=</span>
+                                총 <span className="font-mono font-bold text-blue-700">{totalVotesCast}</span>표
+                            </div>
+                            {!isConfirmed && <div className="text-xs text-slate-500">서면결의 반영분은 초기화되지 않습니다.</div>}
+                        </div>
+                    )}
                     <div className="grid grid-cols-3 gap-4 mb-6">
                         <div className="flex flex-col items-center gap-2 relative">
                             <label className="block text-sm font-bold text-emerald-700 text-center flex items-center gap-1">
-                                찬성
+                                {hasSplitVoteColumns ? '찬성(현장)' : '찬성'}
                                 {!isConfirmed && (
                                     <button
                                         onClick={handleAutoSum}
@@ -474,45 +513,63 @@ export default function VoteControl() {
                             <input
                                 type="text"
                                 inputMode="numeric"
-                                value={votesYes === 0 && isEditingDeclaration ? '' : votesYes}
+                                value={editableVotesYes === 0 && isEditingDeclaration ? '' : editableVotesYes}
                                 onChange={(e) => {
                                     const val = e.target.value.replace(/[^0-9]/g, '');
-                                    handleVoteUpdate('votes_yes', val);
+                                    handleVoteUpdate(editableVoteFieldMap.yes, val);
                                 }}
                                 onFocus={(e) => e.target.select()}
                                 disabled={isConfirmed}
                                 className="w-full p-3 border-2 border-emerald-100 rounded-lg focus:border-emerald-500 outline-none text-center text-3xl font-black text-emerald-700 shadow-sm disabled:bg-slate-100 disabled:text-slate-500"
                             />
+                            {hasSplitVoteColumns && (
+                                <div className="w-full rounded-lg bg-emerald-50 px-3 py-2 text-xs text-emerald-900">
+                                    <div className="flex justify-between"><span>서면</span><span className="font-mono font-semibold">{writtenVoteTotals.yes}</span></div>
+                                    <div className="mt-1 flex justify-between"><span>합계</span><span className="font-mono font-bold">{votesYes}</span></div>
+                                </div>
+                            )}
                         </div>
                         <div className="flex flex-col items-center gap-2">
-                            <label className="block text-sm font-bold text-red-700 text-center">반대</label>
+                            <label className="block text-sm font-bold text-red-700 text-center">{hasSplitVoteColumns ? '반대(현장)' : '반대'}</label>
                             <input
                                 type="text"
                                 inputMode="numeric"
-                                value={votesNo === 0 && isEditingDeclaration ? '' : votesNo}
+                                value={editableVotesNo === 0 && isEditingDeclaration ? '' : editableVotesNo}
                                 onChange={(e) => {
                                     const val = e.target.value.replace(/[^0-9]/g, '');
-                                    handleVoteUpdate('votes_no', val);
+                                    handleVoteUpdate(editableVoteFieldMap.no, val);
                                 }}
                                 onFocus={(e) => e.target.select()}
                                 disabled={isConfirmed}
                                 className="w-full p-3 border-2 border-red-100 rounded-lg focus:border-red-500 outline-none text-center text-3xl font-black text-red-700 shadow-sm disabled:bg-slate-100 disabled:text-slate-500"
                             />
+                            {hasSplitVoteColumns && (
+                                <div className="w-full rounded-lg bg-red-50 px-3 py-2 text-xs text-red-900">
+                                    <div className="flex justify-between"><span>서면</span><span className="font-mono font-semibold">{writtenVoteTotals.no}</span></div>
+                                    <div className="mt-1 flex justify-between"><span>합계</span><span className="font-mono font-bold">{votesNo}</span></div>
+                                </div>
+                            )}
                         </div>
                         <div className="flex flex-col items-center gap-2">
-                            <label className="block text-sm font-bold text-slate-500 text-center">기권/무효</label>
+                            <label className="block text-sm font-bold text-slate-500 text-center">{hasSplitVoteColumns ? '기권/무효(현장)' : '기권/무효'}</label>
                             <input
                                 type="text"
                                 inputMode="numeric"
-                                value={votesAbstain === 0 && isEditingDeclaration ? '' : votesAbstain}
+                                value={editableVotesAbstain === 0 && isEditingDeclaration ? '' : editableVotesAbstain}
                                 onChange={(e) => {
                                     const val = e.target.value.replace(/[^0-9]/g, '');
-                                    handleVoteUpdate('votes_abstain', val);
+                                    handleVoteUpdate(editableVoteFieldMap.abstain, val);
                                 }}
                                 onFocus={(e) => e.target.select()}
                                 disabled={isConfirmed}
                                 className="w-full p-3 border-2 border-slate-200 rounded-lg focus:border-slate-400 outline-none text-center text-3xl font-black text-slate-500 shadow-sm disabled:bg-slate-100 disabled:text-slate-400"
                             />
+                            {hasSplitVoteColumns && (
+                                <div className="w-full rounded-lg bg-slate-100 px-3 py-2 text-xs text-slate-700">
+                                    <div className="flex justify-between"><span>서면</span><span className="font-mono font-semibold">{writtenVoteTotals.abstain}</span></div>
+                                    <div className="mt-1 flex justify-between"><span>합계</span><span className="font-mono font-bold">{votesAbstain}</span></div>
+                                </div>
+                            )}
                         </div>
                     </div>
 
@@ -520,7 +577,7 @@ export default function VoteControl() {
                         {isVoteCountValid ? (
                             <>
                                 <CheckCircle2 size={16} className="text-emerald-500" />
-                                합계 일치 확인완료
+                                {hasSplitVoteColumns ? '총 투표수(서면+현장) 일치 확인완료' : '합계 일치 확인완료'}
                             </>
                         ) : (
                             <>

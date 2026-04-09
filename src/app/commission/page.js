@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import { useStore } from '@/lib/store';
+import { getAgendaVoteBuckets } from '@/lib/store';
 import { Play, ClipboardList, Monitor, Settings } from 'lucide-react';
 import FullscreenToggle from '@/components/ui/FullscreenToggle';
 import Button from '@/components/ui/Button';
@@ -15,11 +16,12 @@ export default function CommissionPage() {
     const { state, actions } = useStore();
     const { voteData, currentAgendaId, agendas } = state;
     const currentAgenda = agendas.find(a => a.id === currentAgendaId);
+    const voteBuckets = getAgendaVoteBuckets(currentAgenda);
 
     const totalAttendance = (parseInt(voteData.writtenAttendance) || 0) + (parseInt(voteData.directAttendance) || 0);
-    const totalVotesCast = (parseInt(voteData.votesYes) || 0) + (parseInt(voteData.votesNo) || 0) + (parseInt(voteData.votesAbstain) || 0);
+    const totalVotesCast = voteBuckets.final.yes + voteBuckets.final.no + voteBuckets.final.abstain;
     const isVoteCountValid = totalAttendance === totalVotesCast;
-    const isPassed = voteData.votesYes >= (totalAttendance / 2);
+    const isPassed = voteBuckets.final.yes >= (totalAttendance / 2);
 
     const handlePublish = () => {
         if (!isVoteCountValid) {

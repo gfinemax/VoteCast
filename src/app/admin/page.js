@@ -3,6 +3,7 @@
 import React from 'react';
 import Link from 'next/link';
 import { useStore } from '@/lib/store';
+import { getAgendaVoteBuckets } from '@/lib/store';
 import { Settings, Users } from 'lucide-react';
 import FullscreenToggle from '@/components/ui/FullscreenToggle';
 import DashboardLayout from '@/components/admin/DashboardLayout';
@@ -64,10 +65,11 @@ export default function AdminPage() {
     const isSpecialVote = currentAgendaType === 'twoThirds';
     const totalAttendance = meetingStats.total;
     const passThreshold = isSpecialVote ? Math.ceil(totalAttendance * (2 / 3)) : (totalAttendance / 2);
-    const votesYes = currentAgenda?.votes_yes || 0;
+    const voteBuckets = getAgendaVoteBuckets(currentAgenda);
+    const votesYes = voteBuckets.final.yes;
     const isPassed = votesYes >= passThreshold;
 
-    const totalVotesCast = (currentAgenda?.votes_yes || 0) + (currentAgenda?.votes_no || 0) + (currentAgenda?.votes_abstain || 0);
+    const totalVotesCast = voteBuckets.final.yes + voteBuckets.final.no + voteBuckets.final.abstain;
     const isVoteCountValid = totalAttendance === totalVotesCast;
 
     const handlePublish = () => {

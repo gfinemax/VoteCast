@@ -165,24 +165,16 @@ export default function CheckInPage() {
 
     const handleConfirmWrittenVote = () => {
         if (!writtenVoteMemberId) return;
+        if (!activeMeetingId) {
+            alert("⚠️ 현재 입장 접수 중인 총회가 없습니다.\n관리자에게 문의하세요.");
+            return;
+        }
 
         // Convert Map to Array for API
         const votesArray = Object.entries(writtenVotes).map(([agendaId, choice]) => ({
             agenda_id: parseInt(agendaId),
             choice: choice
         }));
-
-        handleCheckIn(writtenVoteMemberId, 'written', null); // Pass votes via specialized call if needed, but here handleCheckIn is generic wrapper
-        // Wait, handleCheckIn uses actions.checkInMember. 
-        // We need to pass votes to actions.checkInMember.
-        // Let's modify handleCheckIn or call action directly.
-        // Actually handleCheckIn wrapper has alert logic. Let's reuse it or bypass.
-        // It calls actions.checkInMember(memberId, type, proxyName).
-        // I need to update handleCheckIn or call action directly.
-        // Let's update handleCheckIn signature OR call action directly here.
-        // Calling action directly is cleaner here since we already checked activeMeetingId via activeAgendas logic?
-        // But handleCheckIn has the check.
-        // Let's call checkInMember directly.
 
         actions.checkInMember(writtenVoteMemberId, 'written', null, votesArray);
 

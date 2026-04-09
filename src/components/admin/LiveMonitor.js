@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useStore } from '@/lib/store';
-import { getAttendanceQuorumTarget, getKeyboardNavigableAgendaIds, normalizeAgendaType } from '@/lib/store';
+import { getAgendaVoteBuckets, getAttendanceQuorumTarget, getKeyboardNavigableAgendaIds, normalizeAgendaType } from '@/lib/store';
 import { Monitor, CheckCircle2, Play, Settings } from 'lucide-react';
 import AlertModal from '@/components/ui/AlertModal';
 import { useProjector } from '@/components/admin/ProjectorContext';
@@ -159,11 +159,12 @@ export default function LiveMonitor({ mode = 'admin' }) {
     // Calculate result stats (Snapshot support)
     const snapshot = currentAgenda?.vote_snapshot;
     const isConfirmed = !!snapshot;
+    const liveVoteBuckets = getAgendaVoteBuckets(currentAgenda);
 
     const totalAttendance = isConfirmed ? snapshot.stats.total : meetingStats.total;
-    const votesYes = isConfirmed ? snapshot.votes.yes : (currentAgenda?.votes_yes || 0);
-    const votesNo = isConfirmed ? snapshot.votes.no : (currentAgenda?.votes_no || 0);
-    const votesAbstain = isConfirmed ? snapshot.votes.abstain : (currentAgenda?.votes_abstain || 0);
+    const votesYes = isConfirmed ? snapshot.votes.yes : liveVoteBuckets.final.yes;
+    const votesNo = isConfirmed ? snapshot.votes.no : liveVoteBuckets.final.no;
+    const votesAbstain = isConfirmed ? snapshot.votes.abstain : liveVoteBuckets.final.abstain;
 
     // Pass Logic based on Vote Type
     const currentAgendaType = currentAgenda?.type || 'majority';
