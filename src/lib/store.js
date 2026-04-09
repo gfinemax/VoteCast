@@ -370,6 +370,18 @@ export function StoreProvider({ children }) {
         return true;
     }, []);
 
+    const syncAgendaForWrittenVote = React.useCallback(async (agendaId) => {
+        if (!agendaId) return;
+
+        const targetAgenda = stateRef.current.agendas.find((agenda) => agenda.id === agendaId);
+        if (!targetAgenda) return;
+
+        const didReconcile = await reconcileAgendaVoteCountsFromWrittenVotes([targetAgenda]);
+        if (didReconcile) {
+            await refreshAgendasFromDb();
+        }
+    }, [reconcileAgendaVoteCountsFromWrittenVotes, refreshAgendasFromDb]);
+
     // Initial Fetch
     useEffect(() => {
         const fetchData = async () => {
@@ -471,6 +483,11 @@ export function StoreProvider({ children }) {
                     attendance: prev.attendance.map(a => a.id === payload.new.id ? payload.new : a)
                 }));
             })
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'written_votes' }, async (payload) => {
+                const agendaId = payload.new?.agenda_id || payload.old?.agenda_id;
+                if (!agendaId) return;
+                await syncAgendaForWrittenVote(agendaId);
+            })
             .subscribe((status) => {
                 console.log('[Realtime] Subscription Status:', status);
             });
@@ -514,7 +531,7 @@ export function StoreProvider({ children }) {
             supabase.removeChannel(channel);
             supabase.removeChannel(presenceChannel);
         };
-    }, [refreshAgendasFromDb]);
+    }, [refreshAgendasFromDb, syncAgendaForWrittenVote]);
 
     const setAgendaById = async (id) => {
         console.log('[setAgenda] Called with ID:', id);
