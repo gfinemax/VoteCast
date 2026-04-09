@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { useStore } from '@/lib/store';
-import { getAttendanceQuorumTarget, normalizeAgendaType } from '@/lib/store';
+import { getAttendanceQuorumTarget, getMeetingAttendanceStats, normalizeAgendaType } from '@/lib/store';
 import { CheckCircle2 } from 'lucide-react';
 
 const EMPTY_INACTIVE_MEMBER_IDS = [];
@@ -37,19 +37,7 @@ export default function QuorumProjectorPage() {
     }, [agendas, currentAgendaId, currentAgenda]);
 
     const meetingStats = useMemo(() => {
-        if (!meetingId) return { direct: 0, proxy: 0, written: 0, total: 0 };
-        const relevantRecords = attendance.filter(
-            (a) => a.meeting_id === meetingId && activeMemberIdSet.has(a.member_id)
-        );
-        const direct = relevantRecords.filter(a => a.type === 'direct').length;
-        const proxy = relevantRecords.filter(a => a.type === 'proxy').length;
-        const written = relevantRecords.filter(a => a.type === 'written').length;
-        return {
-            direct,
-            proxy,
-            written,
-            total: direct + proxy + written
-        };
+        return getMeetingAttendanceStats(attendance, meetingId, activeMemberIdSet);
     }, [activeMemberIdSet, attendance, meetingId]);
 
     useEffect(() => {

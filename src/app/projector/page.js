@@ -2,7 +2,7 @@
 
 import React, { useEffect, useMemo } from 'react';
 import { useStore } from '@/lib/store';
-import { getAgendaVoteBuckets, getAttendanceQuorumTarget, normalizeAgendaType } from '@/lib/store';
+import { getAgendaVoteBuckets, getAttendanceQuorumTarget, getMeetingAttendanceStats, normalizeAgendaType } from '@/lib/store';
 import { supabase } from '@/lib/supabase';
 import { CheckCircle2, Settings } from 'lucide-react';
 import dynamic from 'next/dynamic';
@@ -98,19 +98,7 @@ export default function ProjectorPage() {
 
     // 2. Derive Attendance Data
     const meetingStats = useMemo(() => {
-        if (!meetingId) return { direct: 0, proxy: 0, written: 0, total: 0 };
-        const relevantRecords = attendance.filter(
-            (a) => a.meeting_id === meetingId && activeMemberIdSet.has(a.member_id)
-        );
-        const direct = relevantRecords.filter(a => a.type === 'direct').length;
-        const proxy = relevantRecords.filter(a => a.type === 'proxy').length;
-        const written = relevantRecords.filter(a => a.type === 'written').length;
-        return {
-            direct,
-            proxy,
-            written,
-            total: direct + proxy + written
-        };
+        return getMeetingAttendanceStats(attendance, meetingId, activeMemberIdSet);
     }, [activeMemberIdSet, attendance, meetingId]);
 
     // Stats for WAITING layer

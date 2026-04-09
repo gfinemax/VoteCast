@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useStore } from '@/lib/store';
-import { getAgendaVoteBuckets, getAttendanceQuorumTarget, getKeyboardNavigableAgendaIds, normalizeAgendaType } from '@/lib/store';
+import { getAgendaVoteBuckets, getAttendanceQuorumTarget, getKeyboardNavigableAgendaIds, getMeetingAttendanceStats, normalizeAgendaType } from '@/lib/store';
 import { Monitor, CheckCircle2, Play, Settings } from 'lucide-react';
 import AlertModal from '@/components/ui/AlertModal';
 import { useProjector } from '@/components/admin/ProjectorContext';
@@ -100,19 +100,7 @@ export default function LiveMonitor({ mode = 'admin' }) {
 
     // 2. Derive Attendance Data (Scoped to Meeting) - LIVE from table
     const meetingStats = useMemo(() => {
-        if (!meetingId) return { direct: 0, proxy: 0, written: 0, total: 0 };
-        const relevantRecords = attendance.filter(
-            (a) => a.meeting_id === meetingId && activeMemberIdSet.has(a.member_id)
-        );
-        const direct = relevantRecords.filter(a => a.type === 'direct').length;
-        const proxy = relevantRecords.filter(a => a.type === 'proxy').length;
-        const written = relevantRecords.filter(a => a.type === 'written').length;
-        return {
-            direct,
-            proxy,
-            written,
-            total: direct + proxy + written
-        };
+        return getMeetingAttendanceStats(attendance, meetingId, activeMemberIdSet);
     }, [activeMemberIdSet, attendance, meetingId]);
 
     const { currentPage } = useMemo(

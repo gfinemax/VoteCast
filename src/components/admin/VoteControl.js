@@ -2,7 +2,7 @@
 
 import React, { useMemo, useEffect, useState, useCallback } from 'react';
 import { useStore } from '@/lib/store';
-import { getAgendaVoteBuckets, getAttendanceQuorumTarget, normalizeAgendaType } from '@/lib/store';
+import { getAgendaVoteBuckets, getAttendanceQuorumTarget, getMeetingAttendanceStats, normalizeAgendaType } from '@/lib/store';
 import { CheckCircle2, AlertTriangle, Trash2, Lock, Unlock, RotateCcw, Save, Wand2 } from 'lucide-react';
 import Card from '@/components/ui/Card';
 
@@ -43,21 +43,7 @@ export default function VoteControl() {
 
     // 2. Derive Attendance Data (Real-time)
     const realtimeStats = useMemo(() => {
-        if (!meetingId) return { direct: 0, proxy: 0, written: 0, total: 0 };
-
-        const relevantRecords = attendance.filter(
-            (a) => a.meeting_id === meetingId && activeMemberIdSet.has(a.member_id)
-        );
-        const direct = relevantRecords.filter(a => a.type === 'direct').length;
-        const proxy = relevantRecords.filter(a => a.type === 'proxy').length;
-        const written = relevantRecords.filter(a => a.type === 'written').length;
-
-        return {
-            direct,
-            proxy,
-            written,
-            total: direct + proxy + written
-        };
+        return getMeetingAttendanceStats(attendance, meetingId, activeMemberIdSet);
     }, [activeMemberIdSet, attendance, meetingId]);
 
     // SNAPSHOT HANDLING

@@ -2,7 +2,7 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import { useStore } from '@/lib/store';
-import { getMajorityThreshold } from '@/lib/store';
+import { getMajorityThreshold, getMeetingAttendanceStats, getUniqueAttendanceRecords } from '@/lib/store';
 import { Search, UserCheck, UserX, AlertCircle, Clock, Check, RotateCcw, ChevronDown, ChevronUp, User, FileText, Maximize, Minimize } from 'lucide-react';
 import FlipNumber from '@/components/ui/FlipNumber';
 import FullscreenToggle from '@/components/ui/FullscreenToggle';
@@ -41,6 +41,15 @@ export default function CheckInPage() {
         return folders.find(f => f.id === activeMeetingId);
     }, [folders, activeMeetingId]);
 
+    const meetingAttendanceRecords = useMemo(
+        () => getUniqueAttendanceRecords(attendance, activeMeetingId, activeMemberIdSet),
+        [activeMeetingId, activeMemberIdSet, attendance]
+    );
+    const attendanceRecordByMemberId = useMemo(
+        () => new Map(meetingAttendanceRecords.map((record) => [record.member_id, record])),
+        [meetingAttendanceRecords]
+    );
+
     // Filter Stats by Active Meeting
     const stats = useMemo(() => {
         // If no active meeting, stats are 0
@@ -59,13 +68,11 @@ export default function CheckInPage() {
             isTwoThirdsMet: false
         };
 
-        const currentAttendance = attendance.filter(
-            (a) => a.meeting_id === activeMeetingId && activeMemberIdSet.has(a.member_id)
-        );
-        const directCount = currentAttendance.filter(a => a.type === 'direct').length;
-        const proxyCount = currentAttendance.filter(a => a.type === 'proxy').length;
-        const writtenCount = currentAttendance.filter(a => a.type === 'written').length;
-        const checkedInCount = currentAttendance.length;
+        const meetingStats = getMeetingAttendanceStats(attendance, activeMeetingId, activeMemberIdSet);
+        const directCount = meetingStats.direct;
+        const proxyCount = meetingStats.proxy;
+        const writtenCount = meetingStats.written;
+        const checkedInCount = meetingStats.total;
 
         // Total Members in DB
         const total = activeMembers.length;
@@ -306,7 +313,7 @@ export default function CheckInPage() {
 
                 <div className="flex-1 overflow-y-auto space-y-2 pb-40">
                     {filteredMembers.map(member => {
-                        const record = activeMeetingId ? attendance.find(a => a.member_id === member.id && a.meeting_id === activeMeetingId) : null;
+                        const record = activeMeetingId ? attendanceRecordByMemberId.get(member.id) : null;
                         const isCheckedIn = !!record;
                         const checkInType = record?.type;
                         const displayProxyName = record?.proxy_name || member.proxy;

@@ -3,7 +3,7 @@
 import React from 'react';
 import Link from 'next/link';
 import { useStore } from '@/lib/store';
-import { getAgendaVoteBuckets } from '@/lib/store';
+import { getAgendaVoteBuckets, getMeetingAttendanceStats } from '@/lib/store';
 import { Settings, Users } from 'lucide-react';
 import FullscreenToggle from '@/components/ui/FullscreenToggle';
 import DashboardLayout from '@/components/admin/DashboardLayout';
@@ -43,16 +43,7 @@ export default function AdminPage() {
 
     // 2. Derive LIVE stats (Instead of relying on voteData)
     const meetingStats = React.useMemo(() => {
-        if (!meetingId) return { direct: 0, proxy: 0, written: 0, total: 0 };
-        const relevantRecords = attendance.filter(
-            (a) => a.meeting_id === meetingId && activeMemberIdSet.has(a.member_id)
-        );
-        return {
-            direct: relevantRecords.filter(a => a.type === 'direct').length,
-            proxy: relevantRecords.filter(a => a.type === 'proxy').length,
-            written: relevantRecords.filter(a => a.type === 'written').length,
-            total: relevantRecords.length
-        };
+        return getMeetingAttendanceStats(attendance, meetingId, activeMemberIdSet);
     }, [activeMemberIdSet, attendance, meetingId]);
 
     // Pass Logic based on Vote Type

@@ -172,6 +172,65 @@ export const getAttendanceQuorumTarget = (type, totalMembers) => {
         : getMajorityThreshold(totalMembers);
 };
 
+const getAttendanceRecordRank = (record = {}) => {
+    const timestamp = Date.parse(record.created_at || '');
+    if (!Number.isNaN(timestamp)) {
+        return timestamp;
+    }
+
+    return Number(record.id) || 0;
+};
+
+export const getUniqueAttendanceRecords = (attendance = [], meetingId = null, activeMemberIdSet = null) => {
+    const uniqueRecords = new Map();
+
+    attendance.forEach((record) => {
+        if (meetingId !== null && record.meeting_id !== meetingId) return;
+        if (activeMemberIdSet && !activeMemberIdSet.has(record.member_id)) return;
+
+        const existing = uniqueRecords.get(record.member_id);
+        if (!existing || getAttendanceRecordRank(record) >= getAttendanceRecordRank(existing)) {
+            uniqueRecords.set(record.member_id, record);
+        }
+    });
+
+    return Array.from(uniqueRecords.values());
+};
+
+export const getMeetingAttendanceStats = (attendance = [], meetingId = null, activeMemberIdSet = null) => {
+    if (!meetingId) {
+        return { direct: 0, proxy: 0, written: 0, total: 0 };
+    }
+
+    const uniqueRecords = getUniqueAttendanceRecords(attendance, meetingId, activeMemberIdSet);
+    const direct = uniqueRecords.filter((record) => record.type === 'direct').length;
+    const proxy = uniqueRecords.filter((record) => record.type === 'proxy').length;
+    const written = uniqueRecords.filter((record) => record.type === 'written').length;
+
+    return {
+        direct,
+        proxy,
+        written,
+        total: uniqueRecords.length
+    };
+};
+
+const getAgendaIdsForMeeting = (agendas = [], meetingId) => {
+    if (!meetingId) return [];
+
+    const meetingIndex = agendas.findIndex((agenda) => agenda.id === meetingId);
+    if (meetingIndex === -1) return [];
+
+    const agendaIds = [];
+    for (let index = meetingIndex + 1; index < agendas.length; index += 1) {
+        const agenda = agendas[index];
+        if (agenda.type === 'folder') break;
+        agendaIds.push(agenda.id);
+    }
+
+    return agendaIds;
+};
+
 // Create Context
 const StoreContext = createContext(null);
 
@@ -181,6 +240,135 @@ export function StoreProvider({ children }) {
     const [isInitialized, setIsInitialized] = useState(false);
     const isReorderingAgendasRef = useRef(false);
     const suppressAgendaRealtimeUntilRef = useRef(0);
+    const stateRef = useRef(state);
+    const pendingAttendanceOpsRef = useRef(new Set());
+
+    useEffect(() => {
+        stateRef.current = state;
+    }, [state]);
+
+    const applyAgendaRowsToState = React.useCallback((rows) => {
+        if (!rows) return;
+
+        setState((prev) => {
+            const editingAgendaIds = Object.keys(prev.declarationEditState || {})
+                .filter((id) => prev.declarationEditState[id]?.isEditing);
+
+            const mergedAgendas = rows.map((agenda) => {
+                if (editingAgendaIds.includes(String(agenda.id))) {
+                    const existingAgenda = prev.agendas.find((item) => item.id === agenda.id);
+                    if (existingAgenda) {
+                        return { ...agenda, declaration: existingAgenda.declaration };
+                    }
+                }
+
+                return agenda;
+            });
+
+            if (areAgendaListsEqual(prev.agendas, mergedAgendas)) {
+                return prev;
+            }
+
+            return { ...prev, agendas: mergedAgendas };
+        });
+    }, []);
+
+    const refreshAgendasFromDb = React.useCallback(async () => {
+        const { data, error } = await supabase
+            .from('agendas')
+            .select('*')
+            .order('order_index', { ascending: true });
+
+        if (error) {
+            console.error('Failed to refresh agendas:', error);
+            return null;
+        }
+
+        applyAgendaRowsToState(data || []);
+        return data;
+    }, [applyAgendaRowsToState]);
+
+    const reconcileAgendaVoteCountsFromWrittenVotes = React.useCallback(async (agendaRows = null) => {
+        const agendasToCheck = Array.isArray(agendaRows) ? agendaRows : stateRef.current.agendas;
+        const targetAgendas = agendasToCheck.filter((agenda) =>
+            agenda.type !== 'folder' && [
+                'written_yes',
+                'written_no',
+                'written_abstain',
+                'onsite_yes',
+                'onsite_no',
+                'onsite_abstain'
+            ].every((field) => Object.prototype.hasOwnProperty.call(agenda, field))
+        );
+
+        if (!targetAgendas.length) {
+            return false;
+        }
+
+        const targetAgendaIds = targetAgendas.map((agenda) => agenda.id);
+        const { data: writtenVotes, error } = await supabase
+            .from('written_votes')
+            .select('agenda_id, choice')
+            .in('agenda_id', targetAgendaIds);
+
+        if (error) {
+            console.error('Failed to reconcile written vote counts:', error);
+            return false;
+        }
+
+        const countsByAgendaId = new Map();
+        (writtenVotes || []).forEach((vote) => {
+            const currentCounts = countsByAgendaId.get(vote.agenda_id) || { yes: 0, no: 0, abstain: 0 };
+            if (vote.choice === 'yes' || vote.choice === 'no' || vote.choice === 'abstain') {
+                currentCounts[vote.choice] += 1;
+            }
+            countsByAgendaId.set(vote.agenda_id, currentCounts);
+        });
+
+        const updates = targetAgendas
+            .map((agenda) => {
+                const writtenCounts = countsByAgendaId.get(agenda.id) || { yes: 0, no: 0, abstain: 0 };
+                const nextFields = {
+                    written_yes: writtenCounts.yes,
+                    written_no: writtenCounts.no,
+                    written_abstain: writtenCounts.abstain,
+                    votes_yes: writtenCounts.yes + toVoteNumber(agenda.onsite_yes),
+                    votes_no: writtenCounts.no + toVoteNumber(agenda.onsite_no),
+                    votes_abstain: writtenCounts.abstain + toVoteNumber(agenda.onsite_abstain)
+                };
+
+                const hasMismatch = (
+                    toVoteNumber(agenda.written_yes) !== nextFields.written_yes ||
+                    toVoteNumber(agenda.written_no) !== nextFields.written_no ||
+                    toVoteNumber(agenda.written_abstain) !== nextFields.written_abstain ||
+                    toVoteNumber(agenda.votes_yes) !== nextFields.votes_yes ||
+                    toVoteNumber(agenda.votes_no) !== nextFields.votes_no ||
+                    toVoteNumber(agenda.votes_abstain) !== nextFields.votes_abstain
+                );
+
+                return hasMismatch ? { id: agenda.id, fields: nextFields } : null;
+            })
+            .filter(Boolean);
+
+        if (!updates.length) {
+            return false;
+        }
+
+        suppressAgendaRealtimeUntilRef.current = Date.now() + 1500;
+
+        for (const update of updates) {
+            const { error: updateError } = await supabase
+                .from('agendas')
+                .update(update.fields)
+                .eq('id', update.id);
+
+            if (updateError) {
+                console.error('Failed to sync agenda written vote totals:', update.id, updateError);
+            }
+        }
+
+        return true;
+    }, []);
 
     // Initial Fetch
     useEffect(() => {
@@ -190,18 +378,28 @@ export function StoreProvider({ children }) {
                 const { data: agendas } = await supabase.from('agendas').select('*').order('order_index', { ascending: true });
                 const { data: members } = await supabase.from('members').select('*').order('id', { ascending: true });
                 const { data: attendance } = await supabase.from('attendance').select('*');
+                let nextAgendas = agendas || [];
+
+                const didReconcile = await reconcileAgendaVoteCountsFromWrittenVotes(nextAgendas);
+                if (didReconcile) {
+                    const { data: refreshedAgendas } = await supabase
+                        .from('agendas')
+                        .select('*')
+                        .order('order_index', { ascending: true });
+                    nextAgendas = refreshedAgendas || nextAgendas;
+                }
 
                 // Determine default meeting ID (First folder or first agenda)
                 let defaultMeetingId = null;
-                if (agendas && agendas.length > 0) {
-                    const firstFolder = agendas.find(a => a.type === 'folder');
+                if (nextAgendas.length > 0) {
+                    const firstFolder = nextAgendas.find(a => a.type === 'folder');
                     defaultMeetingId = firstFolder ? firstFolder.id : null;
                 }
 
                 if (settings) {
                     setState(prev => ({
                         ...prev,
-                        agendas: agendas || [],
+                        agendas: nextAgendas,
                         members: members || [],
                         attendance: attendance || [],
                         voteData: { ...INITIAL_DATA.voteData, ...(settings.vote_data || {}) },
@@ -220,7 +418,7 @@ export function StoreProvider({ children }) {
         };
 
         fetchData();
-    }, []);
+    }, [reconcileAgendaVoteCountsFromWrittenVotes]);
 
     // Realtime Subscriptions
     useEffect(() => {
@@ -240,31 +438,7 @@ export function StoreProvider({ children }) {
             .on('postgres_changes', { event: '*', schema: 'public', table: 'agendas' }, async () => {
                 if (isReorderingAgendasRef.current) return;
                 if (Date.now() < suppressAgendaRealtimeUntilRef.current) return;
-                const { data } = await supabase.from('agendas').select('*').order('order_index');
-                if (data) {
-                    setState(prev => {
-                        // Preserve declaration field for any agenda currently being edited
-                        const editingAgendaIds = Object.keys(prev.declarationEditState || {})
-                            .filter(id => prev.declarationEditState[id]?.isEditing);
-
-                        const mergedAgendas = data.map(agenda => {
-                            // If this agenda is being edited, preserve its local declaration
-                            if (editingAgendaIds.includes(String(agenda.id))) {
-                                const existingAgenda = prev.agendas.find(a => a.id === agenda.id);
-                                if (existingAgenda) {
-                                    return { ...agenda, declaration: existingAgenda.declaration };
-                                }
-                            }
-                            return agenda;
-                        });
-
-                        if (areAgendaListsEqual(prev.agendas, mergedAgendas)) {
-                            return prev;
-                        }
-
-                        return { ...prev, agendas: mergedAgendas };
-                    });
-                }
+                await refreshAgendasFromDb();
             })
             .on('postgres_changes', { event: '*', schema: 'public', table: 'members' }, async () => {
                 const { data } = await supabase.from('members').select('*').order('id');
@@ -340,11 +514,7 @@ export function StoreProvider({ children }) {
             supabase.removeChannel(channel);
             supabase.removeChannel(presenceChannel);
         };
-    }, []);
-
-    // Ref for latest state in async actions
-    const stateRef = useRef(state);
-    useEffect(() => { stateRef.current = state; }, [state]);
+    }, [refreshAgendasFromDb]);
 
     const setAgendaById = async (id) => {
         console.log('[setAgenda] Called with ID:', id);
@@ -420,58 +590,90 @@ export function StoreProvider({ children }) {
                 return; // Block check-in if no meeting is active
             }
 
-            // Optimistic Update (Attendance Only)
-            const tempId = Date.now();
-            const newRecord = {
-                id: tempId,
-                member_id: memberId,
-                meeting_id: meetingId,
-                type,
-                proxy_name: proxyName,
-                created_at: new Date().toISOString()
-            };
+            const attendanceKey = `${meetingId}:${memberId}`;
+            if (pendingAttendanceOpsRef.current.has(attendanceKey)) {
+                return;
+            }
 
-            setState(prev => ({
-                ...prev,
-                attendance: [...prev.attendance, newRecord]
-            }));
+            const hasExistingAttendance = stateRef.current.attendance.some((record) =>
+                record.member_id === memberId && record.meeting_id === meetingId
+            );
+            if (hasExistingAttendance) {
+                return;
+            }
 
-            // Use RPC for Transactional Check-in (with Votes)
-            // Even if no votes, RPC handles attendance insert safely.
-            const { error } = await supabase.rpc('check_in_member', {
-                p_member_id: memberId,
-                p_meeting_id: meetingId,
-                p_type: type,
-                p_proxy_name: proxyName,
-                p_votes: votes // Can be null
-            });
+            pendingAttendanceOpsRef.current.add(attendanceKey);
 
-            if (error) {
-                // If RPC fails (e.g., function not found), try fallback only if NO votes
-                if (error.code === '42883' && !votes) { // undefined_function
-                    console.warn("RPC 'check_in_member' not found. Falling back to simple insert.");
-                    const { error: fallbackError } = await supabase.from('attendance').insert({
-                        member_id: memberId,
-                        meeting_id: meetingId,
-                        type,
-                        proxy_name: proxyName
-                    });
-                    if (fallbackError) {
-                        console.error("Fallback Check-in Failed:", fallbackError);
+            try {
+                // Optimistic Update (Attendance Only)
+                const tempId = Date.now();
+                const newRecord = {
+                    id: tempId,
+                    member_id: memberId,
+                    meeting_id: meetingId,
+                    type,
+                    proxy_name: proxyName,
+                    created_at: new Date().toISOString()
+                };
+
+                setState(prev => ({
+                    ...prev,
+                    attendance: [...prev.attendance, newRecord]
+                }));
+
+                // Use RPC for Transactional Check-in (with Votes)
+                // Even if no votes, RPC handles attendance insert safely.
+                const { error } = await supabase.rpc('check_in_member', {
+                    p_member_id: memberId,
+                    p_meeting_id: meetingId,
+                    p_type: type,
+                    p_proxy_name: proxyName,
+                    p_votes: votes // Can be null
+                });
+
+                if (error) {
+                    // If RPC fails (e.g., function not found), try fallback only if NO votes
+                    if (error.code === '42883' && !votes) { // undefined_function
+                        console.warn("RPC 'check_in_member' not found. Falling back to simple insert.");
+                        const { error: fallbackError } = await supabase.from('attendance').insert({
+                            member_id: memberId,
+                            meeting_id: meetingId,
+                            type,
+                            proxy_name: proxyName
+                        });
+                        if (fallbackError) {
+                            console.error("Fallback Check-in Failed:", fallbackError);
+                            // Rollback
+                            setState(prev => ({
+                                ...prev,
+                                attendance: prev.attendance.filter(a => a.id !== tempId)
+                            }));
+                            return;
+                        }
+                    } else {
+                        console.error("Check-in Transaction Failed:", error);
                         // Rollback
                         setState(prev => ({
                             ...prev,
                             attendance: prev.attendance.filter(a => a.id !== tempId)
                         }));
+                        return;
                     }
-                } else {
-                    console.error("Check-in Transaction Failed:", error);
-                    // Rollback
-                    setState(prev => ({
-                        ...prev,
-                        attendance: prev.attendance.filter(a => a.id !== tempId)
-                    }));
                 }
+
+                if (type === 'written') {
+                    const meetingAgendaIds = getAgendaIdsForMeeting(stateRef.current.agendas, meetingId);
+                    const meetingAgendas = stateRef.current.agendas.filter((agenda) => meetingAgendaIds.includes(agenda.id));
+                    const didReconcile = await reconcileAgendaVoteCountsFromWrittenVotes(meetingAgendas);
+                    if (didReconcile) {
+                        await refreshAgendasFromDb();
+                        return;
+                    }
+                }
+
+                await refreshAgendasFromDb();
+            } finally {
+                pendingAttendanceOpsRef.current.delete(attendanceKey);
             }
         },
 
@@ -480,30 +682,65 @@ export function StoreProvider({ children }) {
             const meetingId = stateRef.current.activeMeetingId;
             if (!meetingId) return;
 
-            // Optimistic Update
-            setState(prev => ({
-                ...prev,
-                attendance: prev.attendance.filter(a => !(a.member_id === memberId && a.meeting_id === meetingId))
-            }));
+            const attendanceKey = `${meetingId}:${memberId}`;
+            if (pendingAttendanceOpsRef.current.has(attendanceKey)) {
+                return;
+            }
 
-            // Use RPC to Cancel (and reverse votes)
-            const { error } = await supabase.rpc('cancel_check_in_member', {
-                p_member_id: memberId,
-                p_meeting_id: meetingId
-            });
+            const existingRecords = stateRef.current.attendance.filter((record) =>
+                record.member_id === memberId && record.meeting_id === meetingId
+            );
+            if (!existingRecords.length) {
+                return;
+            }
 
-            if (error) {
-                // Fallback for simple delete if RPC missing
-                if (error.code === '42883') {
-                    console.warn("RPC 'cancel_check_in_member' not found. Falling back to simple delete.");
-                    const { error: fallbackError } = await supabase.from('attendance')
-                        .delete()
-                        .eq('member_id', memberId)
-                        .eq('meeting_id', meetingId);
-                    if (fallbackError) console.error("Fallback Cancel Check-in Failed:", fallbackError);
-                } else {
-                    console.error("Cancel Check-in Failed:", error);
+            const hadWrittenAttendance = existingRecords.some((record) => record.type === 'written');
+            pendingAttendanceOpsRef.current.add(attendanceKey);
+
+            try {
+                // Optimistic Update
+                setState(prev => ({
+                    ...prev,
+                    attendance: prev.attendance.filter(a => !(a.member_id === memberId && a.meeting_id === meetingId))
+                }));
+
+                // Use RPC to Cancel (and reverse votes)
+                const { error } = await supabase.rpc('cancel_check_in_member', {
+                    p_member_id: memberId,
+                    p_meeting_id: meetingId
+                });
+
+                if (error) {
+                    // Fallback for simple delete if RPC missing
+                    if (error.code === '42883') {
+                        console.warn("RPC 'cancel_check_in_member' not found. Falling back to simple delete.");
+                        const { error: fallbackError } = await supabase.from('attendance')
+                            .delete()
+                            .eq('member_id', memberId)
+                            .eq('meeting_id', meetingId);
+                        if (fallbackError) {
+                            console.error("Fallback Cancel Check-in Failed:", fallbackError);
+                            return;
+                        }
+                    } else {
+                        console.error("Cancel Check-in Failed:", error);
+                        return;
+                    }
                 }
+
+                if (hadWrittenAttendance) {
+                    const meetingAgendaIds = getAgendaIdsForMeeting(stateRef.current.agendas, meetingId);
+                    const meetingAgendas = stateRef.current.agendas.filter((agenda) => meetingAgendaIds.includes(agenda.id));
+                    const didReconcile = await reconcileAgendaVoteCountsFromWrittenVotes(meetingAgendas);
+                    if (didReconcile) {
+                        await refreshAgendasFromDb();
+                        return;
+                    }
+                }
+
+                await refreshAgendasFromDb();
+            } finally {
+                pendingAttendanceOpsRef.current.delete(attendanceKey);
             }
         },
 
@@ -693,17 +930,11 @@ export function StoreProvider({ children }) {
                     if (error) throw error;
                 }
             } catch (error) {
-                const { data } = await supabase.from('agendas').select('*').order('order_index');
-                if (data) {
-                    setState(prev => ({ ...prev, agendas: data }));
-                }
+                await refreshAgendasFromDb();
                 throw error;
             } finally {
                 isReorderingAgendasRef.current = false;
-                const { data } = await supabase.from('agendas').select('*').order('order_index');
-                if (data) {
-                    setState(prev => ({ ...prev, agendas: data }));
-                }
+                await refreshAgendasFromDb();
             }
         },
 
@@ -933,7 +1164,7 @@ export function StoreProvider({ children }) {
         },
 
         resetHelper: async () => { }
-    }), []); // Actions are stable because they use stateRef to access current state values
+    }), [reconcileAgendaVoteCountsFromWrittenVotes, refreshAgendasFromDb]); // Actions are stable because they use stateRef to access current state values
 
     return (
         <StoreContext.Provider value={{ state, actions }}>
