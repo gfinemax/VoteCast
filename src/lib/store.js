@@ -136,6 +136,30 @@ export const withLegacyVoteTotals = (agenda = {}) => {
     };
 };
 
+const areAgendaListsEqual = (left = [], right = []) => {
+    if (left === right) return true;
+    if (left.length !== right.length) return false;
+
+    return left.every((agenda, index) => {
+        const other = right[index];
+        if (!other) return false;
+
+        const leftKeys = Object.keys(agenda);
+        const rightKeys = Object.keys(other);
+        if (leftKeys.length !== rightKeys.length) return false;
+
+        return leftKeys.every((key) => agenda[key] === other[key]);
+    });
+};
+
+const areAgendaRecordsEqual = (left = {}, right = {}) => {
+    const leftKeys = Object.keys(left);
+    const rightKeys = Object.keys(right);
+    if (leftKeys.length !== rightKeys.length) return false;
+
+    return leftKeys.every((key) => left[key] === right[key]);
+};
+
 export const getMajorityThreshold = (count) => Math.floor((Number(count) || 0) / 2) + 1;
 export const normalizeAgendaType = (type) => {
     if (type === 'general') return 'majority';
@@ -156,6 +180,7 @@ export function StoreProvider({ children }) {
     const [state, setState] = useState(INITIAL_DATA);
     const [isInitialized, setIsInitialized] = useState(false);
     const isReorderingAgendasRef = useRef(false);
+    const suppressAgendaRealtimeUntilRef = useRef(0);
 
     // Initial Fetch
     useEffect(() => {
@@ -214,6 +239,7 @@ export function StoreProvider({ children }) {
             })
             .on('postgres_changes', { event: '*', schema: 'public', table: 'agendas' }, async () => {
                 if (isReorderingAgendasRef.current) return;
+                if (Date.now() < suppressAgendaRealtimeUntilRef.current) return;
                 const { data } = await supabase.from('agendas').select('*').order('order_index');
                 if (data) {
                     setState(prev => {
@@ -231,6 +257,10 @@ export function StoreProvider({ children }) {
                             }
                             return agenda;
                         });
+
+                        if (areAgendaListsEqual(prev.agendas, mergedAgendas)) {
+                            return prev;
+                        }
 
                         return { ...prev, agendas: mergedAgendas };
                     });
@@ -557,6 +587,9 @@ export function StoreProvider({ children }) {
         updateAgenda: async (updatedAgenda) => {
             const currentAgenda = stateRef.current.agendas.find(a => a.id === updatedAgenda.id) || {};
             const normalizedAgenda = withLegacyVoteTotals({ ...currentAgenda, ...updatedAgenda });
+            if (areAgendaRecordsEqual(currentAgenda, normalizedAgenda)) {
+                return;
+            }
 
             setState(prev => ({
                 ...prev,
@@ -564,6 +597,7 @@ export function StoreProvider({ children }) {
             }));
 
             const { id, ...fields } = normalizedAgenda;
+            suppressAgendaRealtimeUntilRef.current = Date.now() + 1000;
             const { error } = await supabase.from('agendas').update(fields).eq('id', id);
             if (error) {
                 console.error("FAILED to update Agenda:", error);

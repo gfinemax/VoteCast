@@ -236,6 +236,27 @@ export default function VoteControl() {
         handleVoteUpdate(editableVoteFieldMap.yes, remainder);
     };
 
+    const handleResetEditableVotes = () => {
+        if (isConfirmed || !currentAgenda) return;
+
+        if (hasSplitVoteColumns) {
+            updateAgenda({
+                id: currentAgenda.id,
+                onsite_yes: 0,
+                onsite_no: 0,
+                onsite_abstain: 0
+            });
+            return;
+        }
+
+        updateAgenda({
+            id: currentAgenda.id,
+            votes_yes: 0,
+            votes_no: 0,
+            votes_abstain: 0
+        });
+    };
+
     const handleConfirmDecision = () => {
         if (!confirm("현재 상태로 의결을 확정하시겠습니까?\n이후 성원이 변경되어도 결과는 고정됩니다.")) return;
 
@@ -471,11 +492,7 @@ export default function VoteControl() {
                             자동계산 {isAutoCalc ? 'ON' : 'OFF'}
                         </button>
                         <button
-                            onClick={() => {
-                                handleVoteUpdate(editableVoteFieldMap.yes, 0);
-                                handleVoteUpdate(editableVoteFieldMap.no, 0);
-                                handleVoteUpdate(editableVoteFieldMap.abstain, 0);
-                            }}
+                            onClick={handleResetEditableVotes}
                             disabled={isConfirmed}
                             className="text-xs text-slate-400 hover:text-red-500 flex items-center gap-1 ml-2 disabled:opacity-50 disabled:cursor-not-allowed"
                         >

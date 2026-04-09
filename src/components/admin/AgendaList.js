@@ -68,6 +68,19 @@ export default function AgendaList() {
         () => [...agendas].sort((a, b) => a.order_index - b.order_index).map((agenda) => agenda.id),
         [agendas]
     );
+    const currentAgendaFolderId = useMemo(() => {
+        const currentIndex = agendas.findIndex((agenda) => agenda.id === currentAgendaId);
+        if (currentIndex < 0) return null;
+
+        for (let i = currentIndex; i >= 0; i -= 1) {
+            const candidate = agendas[i];
+            if (candidate.type === 'folder') {
+                return candidate.id;
+            }
+        }
+
+        return null;
+    }, [agendas, currentAgendaId]);
     const isAgendaOrderLocked = !!voteData?.agendaOrderLocked;
     const canDragAgendas = editingId === null && !isSubmitting && !isDeleting && !isUploading && !deleteTarget && !isReordering && !isAgendaOrderLocked;
 
@@ -430,20 +443,14 @@ export default function AgendaList() {
     }, [deleteTarget, isDeleting]);
 
     useEffect(() => {
-        const currentIndex = agendas.findIndex((agenda) => agenda.id === currentAgendaId);
-        if (currentIndex < 0) return;
+        if (!currentAgendaFolderId) return;
+        if (expandedFolders[currentAgendaFolderId] !== false) return;
 
-        for (let i = currentIndex; i >= 0; i--) {
-            const candidate = agendas[i];
-            if (candidate.type !== 'folder') continue;
-
-            setExpandedFolders((prev) => {
-                if (prev[candidate.id] !== false) return prev;
-                return { ...prev, [candidate.id]: true };
-            });
-            break;
-        }
-    }, [agendas, currentAgendaId]);
+        setExpandedFolders((prev) => ({
+            ...prev,
+            [currentAgendaFolderId]: true
+        }));
+    }, [currentAgendaFolderId, expandedFolders]);
 
     useEffect(() => {
         const frame = window.requestAnimationFrame(() => {
