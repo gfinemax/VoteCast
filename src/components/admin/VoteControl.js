@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useMemo, useEffect, useState, useRef, useCallback } from 'react';
+import React, { useMemo, useEffect, useState, useCallback } from 'react';
 import { useStore } from '@/lib/store';
 import { getAttendanceQuorumTarget, normalizeAgendaType } from '@/lib/store';
 import { CheckCircle2, AlertTriangle, Trash2, Lock, Unlock, RotateCcw, Save, Wand2 } from 'lucide-react';
@@ -10,6 +10,7 @@ const EMPTY_INACTIVE_MEMBER_IDS = [];
 
 export default function VoteControl() {
     const { state, actions } = useStore();
+    const { updateAgenda, setDeclarationEditMode, setAgendaTypeLock } = actions;
     const { members, attendance, agendas, currentAgendaId, voteData } = state;
     const inactiveMemberIds = Array.isArray(voteData?.inactiveMemberIds) ? voteData.inactiveMemberIds : EMPTY_INACTIVE_MEMBER_IDS;
     const activeMemberIdSet = useMemo(() => {
@@ -101,7 +102,7 @@ export default function VoteControl() {
     const isPassed = calculatePass();
 
     // 3. Declaration Generation
-    const generateDefaultDeclaration = () => {
+    const generateDefaultDeclaration = useCallback(() => {
         if (!currentAgenda || displayStats.total === 0) return '';
 
         const criterion = isSpecialVote ? "3분의 2 이상" : "과반수 이상";
@@ -109,7 +110,7 @@ export default function VoteControl() {
         return `"${currentAgenda.title}" 서면결의 포함 찬성(${votesYes})표, 반대(${votesNo})표, 기권(${votesAbstain})표로
 전체 참석자(${displayStats.total.toLocaleString()})명중 ${criterion} ${isPassed ? '찬성으로' : '찬성 미달로'}
 "${currentAgenda.title}"은 ${isPassed ? '가결' : '부결'}되었음을 선포합니다.`;
-    };
+    }, [currentAgenda, displayStats.total, isPassed, isSpecialVote, votesAbstain, votesNo, votesYes]);
 
     // Use GLOBAL state for declaration editing (prevents revert on re-render)
     const declarationEditState = state.declarationEditState?.[currentAgendaId] || { isEditing: false, isAutoCalc: true };
@@ -120,29 +121,27 @@ export default function VoteControl() {
         : {};
 
     // LOCAL declaration state for editing (doesn't trigger realtime sync)
-    const [localDeclaration, setLocalDeclaration] = useState(declaration || '');
+    const [declarationDraft, setDeclarationDraft] = useState({ agendaId: null, value: '' });
+    const localDeclaration = declarationDraft.agendaId === currentAgendaId
+        ? declarationDraft.value
+        : (declaration || '');
     const isTypeLocked = !!agendaTypeLocks[currentAgendaId];
 
-    // Sync localDeclaration with server when NOT editing
-    useEffect(() => {
-        if (!isEditingDeclaration) {
-            setLocalDeclaration(declaration || '');
-        }
-    }, [declaration, isEditingDeclaration]);
-
     const setIsEditingDeclaration = (value) => {
-        actions.setDeclarationEditMode(currentAgendaId, value, isAutoCalc);
+        if (!currentAgendaId) return;
+        setDeclarationEditMode(currentAgendaId, value, isAutoCalc);
     };
     const setIsAutoCalc = (value) => {
-        actions.setDeclarationEditMode(currentAgendaId, isEditingDeclaration, value);
+        if (!currentAgendaId) return;
+        setDeclarationEditMode(currentAgendaId, isEditingDeclaration, value);
     };
 
     // Save declaration to DB (called when clicking Done)
     const saveDeclaration = useCallback(() => {
         if (currentAgenda && localDeclaration !== declaration) {
-            actions.updateAgenda({ id: currentAgenda.id, declaration: localDeclaration });
+            updateAgenda({ id: currentAgenda.id, declaration: localDeclaration });
         }
-    }, [currentAgenda, localDeclaration, declaration, actions]);
+    }, [currentAgenda, declaration, localDeclaration, updateAgenda]);
 
     // Declaration Auto-Update (only when NOT editing)
     useEffect(() => {
@@ -150,10 +149,10 @@ export default function VoteControl() {
         if (isAutoCalc) {
             const newDecl = generateDefaultDeclaration();
             if (newDecl !== currentAgenda.declaration) {
-                actions.updateAgenda({ id: currentAgenda.id, declaration: newDecl });
+                updateAgenda({ id: currentAgenda.id, declaration: newDecl });
             }
         }
-    }, [isAutoCalc, votesYes, votesNo, votesAbstain, displayStats, currentAgenda, isConfirmed, isEditingDeclaration]);
+    }, [currentAgenda, generateDefaultDeclaration, isAutoCalc, isConfirmed, isEditingDeclaration, updateAgenda]);
 
 
     // Handlers
@@ -166,7 +165,7 @@ export default function VoteControl() {
     const toggleTypeLock = async () => {
         if (!currentAgendaId) return;
         try {
-            await actions.setAgendaTypeLock(currentAgendaId, !isTypeLocked);
+            await setAgendaTypeLock(currentAgendaId, !isTypeLocked);
         } catch (error) {
             console.error('Failed to persist agenda type lock:', error);
             alert(error.message || '잠금 상태 저장에 실패했습니다.');
@@ -200,7 +199,7 @@ export default function VoteControl() {
             }
         }
 
-        actions.updateAgenda({ id: currentAgenda.id, ...updates });
+        updateAgenda({ id: currentAgenda.id, ...updates });
     };
 
     const handleAutoSum = () => {
@@ -220,12 +219,12 @@ export default function VoteControl() {
             result: isPassed ? 'PASSED' : 'FAILED',
             timestamp: new Date().toISOString()
         };
-        actions.updateAgenda({ id: currentAgenda.id, vote_snapshot: snapshotData });
+        updateAgenda({ id: currentAgenda.id, vote_snapshot: snapshotData });
     };
 
     const handleResetDecision = () => {
         if (!confirm("확정을 취소하시겠습니까?\n다시 실시간 성원 데이터가 반영됩니다.")) return;
-        actions.updateAgenda({ id: currentAgenda.id, vote_snapshot: null });
+        updateAgenda({ id: currentAgenda.id, vote_snapshot: null });
     };
 
     if (!currentAgenda) return <div className="p-10 text-center text-slate-400">안건을 선택해주세요.</div>;
@@ -374,8 +373,8 @@ export default function VoteControl() {
                         <div className="w-full h-2 bg-slate-700 rounded-full overflow-hidden mb-2 relative">
                             <div className="absolute top-0 bottom-0 w-0.5 bg-white/50 z-10" style={{ left: isSpecialVote ? '66.66%' : '50%' }}></div>
                             <div
-                                className={`h - full transition - all duration - 500 ${isQuorumSatisfied ? 'bg-emerald-500' : 'bg-red-500'} `}
-                                style={{ width: `${Math.min(100, (displayStats.total / (totalMembers || 1)) * 100)}% ` }}
+                                className={`h-full transition-all duration-500 ${isQuorumSatisfied ? 'bg-emerald-500' : 'bg-red-500'}`}
+                                style={{ width: `${Math.min(100, (displayStats.total / (totalMembers || 1)) * 100)}%` }}
                             ></div>
                         </div>
 
@@ -384,10 +383,10 @@ export default function VoteControl() {
                                 개회 기준: {quorumTarget}명
                                 {isElection && <span className="text-emerald-400 ml-1"> + 직접 {directTarget}명(20%)</span>}
                             </span>
-                            <span className={`font - bold ${isQuorumSatisfied ? 'text-emerald-400' : 'text-red-400'} `}>
+                            <span className={`font-bold ${isQuorumSatisfied ? 'text-emerald-400' : 'text-red-400'}`}>
                                 {isQuorumSatisfied
                                     ? '조건 충족 (개회 가능)'
-                                    : `미달 ${!isDirectSatisfied ? '(직접참석 부족)' : `(${Math.max(0, quorumTarget - displayStats.total)}명 부족)`} `}
+                                    : `미달 ${!isDirectSatisfied ? '(직접참석 부족)' : `(${Math.max(0, quorumTarget - displayStats.total)}명 부족)`}`}
                             </span>
                         </div>
                     </div>
@@ -554,15 +553,9 @@ export default function VoteControl() {
                         <button
                             onClick={() => {
                                 if (isConfirmed) return;
-                                // Initialize local declaration if empty, then set auto-generated
-                                if (!declaration) {
-                                    const generatedDecl = generateDefaultDeclaration();
-                                    actions.updateAgenda({ id: currentAgenda.id, declaration: generatedDecl });
-                                    setLocalDeclaration(generatedDecl);
-                                } else {
-                                    setLocalDeclaration(declaration);
-                                }
-                                actions.setDeclarationEditMode(currentAgendaId, true, false);
+                                const initialDeclaration = declaration || generateDefaultDeclaration();
+                                setDeclarationDraft({ agendaId: currentAgendaId, value: initialDeclaration });
+                                setDeclarationEditMode(currentAgendaId, true, false);
                             }}
                             disabled={isConfirmed}
                             className={`text-xs flex items-center gap-1 px-3 py-1 rounded-full transition-colors font-medium ${isConfirmed ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
@@ -575,7 +568,7 @@ export default function VoteControl() {
                 <Card className="p-4">
                     <textarea
                         value={isEditingDeclaration ? localDeclaration : (declaration || '')}
-                        onChange={(e) => setLocalDeclaration(e.target.value)}
+                        onChange={(e) => setDeclarationDraft({ agendaId: currentAgendaId, value: e.target.value })}
                         disabled={!isEditingDeclaration || isConfirmed}
                         placeholder={isEditingDeclaration ? "선포문구를 입력하세요..." : "편집 버튼을 클릭하면 자동 생성됩니다."}
                         rows={Math.max(4, ((isEditingDeclaration ? localDeclaration : declaration) || '').split('\n').length + 1)}
@@ -591,6 +584,6 @@ export default function VoteControl() {
                     )}
                 </Card>
             </section>
-        </div >
+        </div>
     );
 }

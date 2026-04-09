@@ -29,42 +29,6 @@ export default function AdminPage() {
     }, [inactiveMemberIds, members]);
     const currentAgenda = agendas.find(a => a.id === currentAgendaId);
 
-    // Remote keyboard control for agenda selection and PPT paging
-    React.useEffect(() => {
-        const handleKeyDown = (e) => {
-            // Allow control in both IDLE and PPT mode as both show the PDF base layer
-            if (projectorMode !== 'PPT' && projectorMode !== 'IDLE') return;
-
-            if (e.isComposing || e.altKey || e.ctrlKey || e.metaKey) return;
-
-            const activeElement = document.activeElement;
-            if (
-                ['INPUT', 'TEXTAREA', 'SELECT'].includes(activeElement?.tagName) ||
-                activeElement?.isContentEditable
-            ) {
-                return;
-            }
-
-            if (e.key === 'ArrowDown') {
-                e.preventDefault();
-                actions.moveAgendaSelection(1);
-            } else if (e.key === 'ArrowUp') {
-                e.preventDefault();
-                actions.moveAgendaSelection(-1);
-            } else if (e.key === 'ArrowRight') {
-                e.preventDefault();
-                actions.updatePresentationPage(1);
-            } else if (e.key === 'ArrowLeft') {
-                e.preventDefault();
-                actions.updatePresentationPage(-1);
-            }
-        };
-
-        window.addEventListener('keydown', handleKeyDown);
-        return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [actions, projectorMode]);
-
-
     // 1. Identify Context (Meeting/Folder) for stats
     const meetingId = React.useMemo(() => {
         if (!currentAgenda) return null;

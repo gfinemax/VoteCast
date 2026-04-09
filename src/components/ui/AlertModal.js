@@ -1,26 +1,15 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import { AlertCircle, X } from 'lucide-react';
 
 export default function AlertModal({ isOpen, onClose, title, message }) {
-    const [isVisible, setIsVisible] = useState(false);
-
-    useEffect(() => {
-        if (isOpen) {
-            setIsVisible(true);
-        } else {
-            const timer = setTimeout(() => setIsVisible(false), 300); // Wait for fade out
-            return () => clearTimeout(timer);
-        }
-    }, [isOpen]);
-
-    if (!isVisible && !isOpen) return null;
+    if (!isOpen) return null;
 
     return (
-        <div className={`fixed inset-0 z-50 flex items-center justify-center p-4 transition-all duration-300 ${isOpen ? 'opacity-100 backdrop-blur-sm bg-black/50' : 'opacity-0 pointer-events-none'}`}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
             <div
-                className={`w-full max-w-sm bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl transform transition-all duration-300 ${isOpen ? 'scale-100 translate-y-0' : 'scale-95 translate-y-4'}`}
+                className="w-full max-w-sm rounded-2xl border border-slate-700 bg-slate-900 shadow-2xl"
                 role="alertdialog"
             >
                 {/* Header */}

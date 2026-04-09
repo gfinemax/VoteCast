@@ -1,13 +1,13 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Document, Page, pdfjs } from 'react-pdf';
 
 // Configure PDF.js worker
 pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
 
 export default function PDFViewer({ url, pageNumber, width, scale, className }) {
-    const [containerWidth, setContainerWidth] = useState(width || 1000);
+    const [measuredWidth, setMeasuredWidth] = useState(1000);
     const containerRef = useRef(null);
 
     // --- State for Rendering ---
@@ -16,83 +16,108 @@ export default function PDFViewer({ url, pageNumber, width, scale, className }) 
         pageA: pageNumber,
         pageB: null
     });
+    const bufferRef = useRef(buffer);
 
-    // Stores the list of pages we need to visit in order.
-    const pageQueue = useRef([]);
     // Tracks if we are currently "busy" (rendering a page -> waiting for onLoad -> swapping).
     const isProcessing = useRef(false);
 
     // Track document page count
     const [numPages, setNumPages] = useState(0);
+    const numPagesRef = useRef(0);
 
     // --- Refs for Logic ---
     const targetPageRef = useRef(pageNumber);
+    const containerWidth = width || measuredWidth;
+
+    const updateBuffer = useCallback((updater) => {
+        setBuffer((prev) => {
+            const next = typeof updater === 'function' ? updater(prev) : updater;
+            bufferRef.current = next;
+            return next;
+        });
+    }, []);
 
     // Initial load handling
     useEffect(() => {
-        if (width) setContainerWidth(width);
         const updateWidth = () => {
-            if (containerRef.current) setContainerWidth(containerRef.current.clientWidth);
+            if (containerRef.current) {
+                setMeasuredWidth(containerRef.current.clientWidth);
+            }
         };
+
         window.addEventListener('resize', updateWidth);
-        updateWidth();
-        return () => window.removeEventListener('resize', updateWidth);
+        const frameId = width ? null : requestAnimationFrame(updateWidth);
+
+        return () => {
+            window.removeEventListener('resize', updateWidth);
+            if (frameId !== null) {
+                cancelAnimationFrame(frameId);
+            }
+        };
     }, [width]);
 
-
-    // 1. Enqueue new page request
     useEffect(() => {
-        targetPageRef.current = pageNumber;
-        processNext();
-    }, [pageNumber]);
+        bufferRef.current = buffer;
+    }, [buffer]);
 
+    useEffect(() => {
+        numPagesRef.current = numPages;
+    }, [numPages]);
 
-    // 2. Process Next Task
-    const processNext = () => {
+    // 1. Process Next Task
+    const processNext = useCallback(() => {
         if (isProcessing.current) return;
+        const currentBuffer = bufferRef.current;
 
         // Determine what is currently loaded in the "next" slot (inactive slot)
-        const nextSlot = buffer.activeSlot === 'A' ? 'B' : 'A';
-        const pageInNextSlot = nextSlot === 'A' ? buffer.pageA : buffer.pageB;
+        const nextSlot = currentBuffer.activeSlot === 'A' ? 'B' : 'A';
+        const pageInNextSlot = nextSlot === 'A' ? currentBuffer.pageA : currentBuffer.pageB;
 
         // Ensure validity
         const target = targetPageRef.current;
-        if (!target || target < 1 || (numPages > 0 && target > numPages)) {
+        const totalPages = numPagesRef.current;
+        if (!target || target < 1 || (totalPages > 0 && target > totalPages)) {
             // Invalid target, stop processing
             return;
         }
 
         // If the next slot ALREADY has the target page, we just need to swap active.
         if (pageInNextSlot === target) {
-            setBuffer(prev => ({ ...prev, activeSlot: nextSlot }));
+            updateBuffer(prev => ({ ...prev, activeSlot: nextSlot }));
             return;
         }
 
         // If the ACTIVE slot has the target page, no need to do anything
-        const pageInActiveSlot = buffer.activeSlot === 'A' ? buffer.pageA : buffer.pageB;
+        const pageInActiveSlot = currentBuffer.activeSlot === 'A' ? currentBuffer.pageA : currentBuffer.pageB;
         if (pageInActiveSlot === target) return;
 
         // Otherwise, load into next slot
         isProcessing.current = true;
-        setBuffer(prev => ({
+        updateBuffer(prev => ({
             ...prev,
             [nextSlot === 'A' ? 'pageA' : 'pageB']: target
         }));
-    };
+    }, [updateBuffer]);
+
+    // 2. Enqueue new page request
+    useEffect(() => {
+        targetPageRef.current = pageNumber;
+        processNext();
+    }, [pageNumber, processNext]);
 
 
     // 3. Render Success Callback
-    const onPageRenderSuccess = (slot, renderedPageNum) => {
+    const onPageRenderSuccess = useCallback((slot, renderedPageNum) => {
         requestAnimationFrame(() => {
             requestAnimationFrame(() => {
                 if (renderedPageNum === targetPageRef.current) {
-                    setBuffer(prev => ({ ...prev, activeSlot: slot }));
+                    updateBuffer(prev => ({ ...prev, activeSlot: slot }));
                 }
                 isProcessing.current = false;
                 processNext();
             });
         });
-    };
+    }, [processNext, updateBuffer]);
 
     // Safety timeout
     useEffect(() => {
@@ -102,12 +127,13 @@ export default function PDFViewer({ url, pageNumber, width, scale, className }) 
             processNext();
         }, 2000);
         return () => clearTimeout(timer);
-    }, [buffer]);
+    }, [buffer, processNext]);
 
-    function onDocumentLoadSuccess({ numPages }) {
-        setNumPages(numPages);
+    function onDocumentLoadSuccess({ numPages: nextNumPages }) {
+        numPagesRef.current = nextNumPages;
+        setNumPages(nextNumPages);
         // Trigger processNext once we know total pages (in case target was waiting)
-        setTimeout(processNext, 0);
+        requestAnimationFrame(() => processNext());
     }
 
     // Helper to check if page is renderable
