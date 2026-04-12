@@ -220,7 +220,7 @@ export default function AdminMembersPage() {
                             />
                         </div>
                         <div className="min-w-[160px] flex-1">
-                            <label className="mb-1 block text-xs font-bold uppercase tracking-[0.14em] text-slate-400">대리인 기본명</label>
+                            <label className="mb-1 block text-xs font-bold uppercase tracking-[0.14em] text-slate-400">대리인</label>
                             <input
                                 value={newMember.proxy}
                                 onChange={(e) => setNewMember((prev) => ({ ...prev, proxy: e.target.value }))}
@@ -261,7 +261,7 @@ export default function AdminMembersPage() {
                                     <th className="px-5 py-3">ID</th>
                                     <th className="px-5 py-3">동/호수</th>
                                     <th className="px-5 py-3">성명</th>
-                                    <th className="px-5 py-3">대리인 기본명</th>
+                                    <th className="px-5 py-3">대리인</th>
                                     <th className="px-5 py-3 text-right">관리</th>
                                 </tr>
                             </thead>

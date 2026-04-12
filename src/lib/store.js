@@ -65,6 +65,16 @@ const normalizeMemberPayload = (member = {}) => ({
     proxy: String(member.proxy || '').trim()
 });
 
+const sortMembersById = (members = []) => (
+    [...members].sort((left, right) => (Number(left?.id) || 0) - (Number(right?.id) || 0))
+);
+
+const upsertMemberInList = (members = [], nextMember) => {
+    const nextMembers = members.filter((member) => member.id !== nextMember.id);
+    nextMembers.push(nextMember);
+    return sortMembersById(nextMembers);
+};
+
 const getInactiveMemberIds = (voteData = {}) => {
     if (!Array.isArray(voteData?.inactiveMemberIds)) return [];
     return voteData.inactiveMemberIds
@@ -453,7 +463,7 @@ export function StoreProvider({ children }) {
                 await refreshAgendasFromDb();
             })
             .on('postgres_changes', { event: '*', schema: 'public', table: 'members' }, async () => {
-                const { data } = await supabase.from('members').select('*').order('id');
+                const { data } = await supabase.from('members').select('*').order('id', { ascending: true });
                 if (data) setState(prev => ({ ...prev, members: data }));
             })
             .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'attendance' }, (payload) => {
@@ -985,6 +995,12 @@ export function StoreProvider({ children }) {
                 .single();
 
             if (error) throw error;
+            if (data) {
+                setState((prev) => ({
+                    ...prev,
+                    members: upsertMemberInList(prev.members, data)
+                }));
+            }
             return data;
         },
 
@@ -1076,12 +1092,20 @@ export function StoreProvider({ children }) {
                 updates.is_active = member.is_active;
             }
 
-            const { error } = await supabase
+            const { data, error } = await supabase
                 .from('members')
                 .update(updates)
-                .eq('id', member.id);
+                .eq('id', member.id)
+                .select()
+                .single();
 
             if (error) throw error;
+            if (data) {
+                setState((prev) => ({
+                    ...prev,
+                    members: upsertMemberInList(prev.members, data)
+                }));
+            }
         },
 
         deleteMember: async (id) => {
@@ -1107,6 +1131,12 @@ export function StoreProvider({ children }) {
                 .eq('id', 1);
 
             if (settingsError) throw settingsError;
+
+            setState((prev) => ({
+                ...prev,
+                members: prev.members.filter((member) => member.id !== id),
+                voteData: nextVoteData
+            }));
         },
 
         updateVoteData: async (field, value) => {
