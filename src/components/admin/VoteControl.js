@@ -415,7 +415,7 @@ export default function VoteControl() {
                         <div className="flex justify-between items-center text-xs">
                             <span className="text-slate-400">
                                 개회 기준: {quorumTarget}명
-                                {isElection && <span className="text-emerald-400 ml-1"> + 직접 {directTarget}명(20%)</span>}
+                                {isElection && <span className="text-emerald-400 ml-1">중에 현장참석 {directTarget}명(20%)</span>}
                             </span>
                             <span className={`font-bold ${isQuorumSatisfied ? 'text-emerald-400' : 'text-red-400'}`}>
                                 {isQuorumSatisfied
