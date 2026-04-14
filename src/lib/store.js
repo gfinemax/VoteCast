@@ -34,6 +34,9 @@ const INITIAL_DATA = {
     declarationEditState: {}, // { [agendaId]: { isEditing: bool, isAutoCalc: bool } }
 };
 
+const WINDOW_SYNC_CHANNEL = 'votecast-system-settings-sync';
+const WINDOW_SYNC_STORAGE_KEY = '__votecast_system_settings_sync__';
+
 export const getKeyboardNavigableAgendaIds = (agendas = []) => {
     const groups = [];
     let currentGroup = { folder: null, items: [] };
@@ -252,10 +255,150 @@ export function StoreProvider({ children }) {
     const suppressAgendaRealtimeUntilRef = useRef(0);
     const stateRef = useRef(state);
     const pendingAttendanceOpsRef = useRef(new Set());
+    const windowSyncIdRef = useRef(`window-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
+    const broadcastChannelRef = useRef(null);
 
     useEffect(() => {
         stateRef.current = state;
     }, [state]);
+
+    const getDefaultMeetingId = React.useCallback((agendas = []) => {
+        if (agendas.length === 0) return null;
+
+        const firstFolder = agendas.find((agenda) => agenda.type === 'folder');
+        return firstFolder ? firstFolder.id : null;
+    }, []);
+
+    const applySystemSettingsToState = React.useCallback((settings, options = {}) => {
+        if (!settings) return;
+
+        const {
+            defaultMeetingId = null,
+            preserveCurrentMeetingId = false,
+            projectorData = Object.prototype.hasOwnProperty.call(settings, 'projector_data')
+                ? settings.projector_data
+                : null
+        } = options;
+
+        setState((prev) => ({
+            ...prev,
+            currentMeetingId: preserveCurrentMeetingId
+                ? prev.currentMeetingId
+                : (defaultMeetingId ?? prev.currentMeetingId),
+            voteData: { ...INITIAL_DATA.voteData, ...(settings.vote_data || {}) },
+            currentAgendaId: settings.current_agenda_id || 1,
+            activeMeetingId: settings.active_meeting_id || null,
+            projectorMode: settings.projector_mode || 'IDLE',
+            projectorData,
+            masterPresentationSource: settings.master_presentation_source
+        }));
+    }, []);
+
+    const refreshSystemSettingsFromDb = React.useCallback(async (options = {}) => {
+        const { data: settings, error } = await supabase
+            .from('system_settings')
+            .select('*')
+            .eq('id', 1)
+            .single();
+
+        if (error) {
+            console.error('Failed to refresh system settings:', error);
+            return null;
+        }
+
+        applySystemSettingsToState(settings, options);
+        return settings;
+    }, [applySystemSettingsToState]);
+
+    const createSystemSettingsSnapshot = React.useCallback((overrides = {}) => {
+        const currentState = stateRef.current;
+        const hasOwn = (key) => Object.prototype.hasOwnProperty.call(overrides, key);
+
+        return {
+            current_agenda_id: hasOwn('current_agenda_id') ? overrides.current_agenda_id : currentState.currentAgendaId,
+            active_meeting_id: hasOwn('active_meeting_id') ? overrides.active_meeting_id : currentState.activeMeetingId,
+            projector_mode: hasOwn('projector_mode') ? overrides.projector_mode : currentState.projectorMode,
+            vote_data: hasOwn('vote_data') ? overrides.vote_data : currentState.voteData,
+            master_presentation_source: hasOwn('master_presentation_source') ? overrides.master_presentation_source : currentState.masterPresentationSource,
+            projector_data: hasOwn('projector_data') ? overrides.projector_data : currentState.projectorData
+        };
+    }, []);
+
+    const broadcastSystemSettingsSync = React.useCallback((overrides = {}) => {
+        if (typeof window === 'undefined') return;
+
+        const message = {
+            senderId: windowSyncIdRef.current,
+            sentAt: Date.now(),
+            settings: createSystemSettingsSnapshot(overrides)
+        };
+
+        try {
+            broadcastChannelRef.current?.postMessage(message);
+        } catch (error) {
+            console.error('Failed to post BroadcastChannel sync message:', error);
+        }
+
+        try {
+            window.localStorage.setItem(WINDOW_SYNC_STORAGE_KEY, JSON.stringify(message));
+            window.localStorage.removeItem(WINDOW_SYNC_STORAGE_KEY);
+        } catch (error) {
+            console.error('Failed to write localStorage sync message:', error);
+        }
+    }, [createSystemSettingsSnapshot]);
+
+    useEffect(() => {
+        if (!isInitialized || typeof window === 'undefined') return undefined;
+        if (!window.location.pathname.startsWith('/projector')) return undefined;
+
+        const pollId = window.setInterval(() => {
+            refreshSystemSettingsFromDb({ preserveCurrentMeetingId: true });
+        }, 1000);
+
+        return () => {
+            window.clearInterval(pollId);
+        };
+    }, [isInitialized, refreshSystemSettingsFromDb]);
+
+    useEffect(() => {
+        if (typeof window === 'undefined') return undefined;
+
+        const applyIncomingWindowSync = (message) => {
+            if (!message?.settings) return;
+            if (message.senderId === windowSyncIdRef.current) return;
+
+            applySystemSettingsToState(message.settings, {
+                preserveCurrentMeetingId: true,
+                projectorData: message.settings.projector_data ?? null
+            });
+        };
+
+        if ('BroadcastChannel' in window) {
+            const channel = new BroadcastChannel(WINDOW_SYNC_CHANNEL);
+            broadcastChannelRef.current = channel;
+            channel.onmessage = (event) => applyIncomingWindowSync(event.data);
+        }
+
+        const handleStorage = (event) => {
+            if (event.key !== WINDOW_SYNC_STORAGE_KEY || !event.newValue) return;
+
+            try {
+                applyIncomingWindowSync(JSON.parse(event.newValue));
+            } catch (error) {
+                console.error('Failed to parse localStorage sync message:', error);
+            }
+        };
+
+        window.addEventListener('storage', handleStorage);
+
+        return () => {
+            window.removeEventListener('storage', handleStorage);
+            if (broadcastChannelRef.current) {
+                broadcastChannelRef.current.close();
+                broadcastChannelRef.current = null;
+            }
+        };
+    }, [applySystemSettingsToState]);
 
     const applyAgendaRowsToState = React.useCallback((rows) => {
         if (!rows) return;
@@ -396,7 +539,6 @@ export function StoreProvider({ children }) {
     useEffect(() => {
         const fetchData = async () => {
             try {
-                const { data: settings } = await supabase.from('system_settings').select('*').eq('id', 1).single();
                 const { data: agendas } = await supabase.from('agendas').select('*').order('order_index', { ascending: true });
                 const { data: members } = await supabase.from('members').select('*').order('id', { ascending: true });
                 const { data: attendance } = await supabase.from('attendance').select('*');
@@ -411,28 +553,16 @@ export function StoreProvider({ children }) {
                     nextAgendas = refreshedAgendas || nextAgendas;
                 }
 
-                // Determine default meeting ID (First folder or first agenda)
-                let defaultMeetingId = null;
-                if (nextAgendas.length > 0) {
-                    const firstFolder = nextAgendas.find(a => a.type === 'folder');
-                    defaultMeetingId = firstFolder ? firstFolder.id : null;
-                }
+                const defaultMeetingId = getDefaultMeetingId(nextAgendas);
 
-                if (settings) {
-                    setState(prev => ({
-                        ...prev,
-                        agendas: nextAgendas,
-                        members: members || [],
-                        attendance: attendance || [],
-                        voteData: { ...INITIAL_DATA.voteData, ...(settings.vote_data || {}) },
-                        currentAgendaId: settings.current_agenda_id || 1,
-                        currentMeetingId: defaultMeetingId, // Store Local Admin View Context
-                        activeMeetingId: settings.active_meeting_id || null, // Global Admission Context
-                        projectorMode: settings.projector_mode || 'IDLE',
-                        projectorData: null,
-                        masterPresentationSource: settings.master_presentation_source // Sync Master PPT
-                    }));
-                }
+                setState(prev => ({
+                    ...prev,
+                    agendas: nextAgendas,
+                    members: members || [],
+                    attendance: attendance || []
+                }));
+
+                await refreshSystemSettingsFromDb({ defaultMeetingId });
                 setIsInitialized(true);
             } catch (error) {
                 console.error("Error fetching initial data:", error);
@@ -440,7 +570,7 @@ export function StoreProvider({ children }) {
         };
 
         fetchData();
-    }, [reconcileAgendaVoteCountsFromWrittenVotes]);
+    }, [getDefaultMeetingId, reconcileAgendaVoteCountsFromWrittenVotes, refreshSystemSettingsFromDb]);
 
     // Realtime Subscriptions
     useEffect(() => {
@@ -498,8 +628,13 @@ export function StoreProvider({ children }) {
                 if (!agendaId) return;
                 await syncAgendaForWrittenVote(agendaId);
             })
-            .subscribe((status) => {
+            .subscribe(async (status) => {
                 console.log('[Realtime] Subscription Status:', status);
+
+                if (status === 'SUBSCRIBED') {
+                    // Bridge the boot-time race between initial load and realtime attach.
+                    await refreshSystemSettingsFromDb({ preserveCurrentMeetingId: true });
+                }
             });
 
         // New: Presence Channel for Projector Detection
@@ -541,9 +676,9 @@ export function StoreProvider({ children }) {
             supabase.removeChannel(channel);
             supabase.removeChannel(presenceChannel);
         };
-    }, [refreshAgendasFromDb, syncAgendaForWrittenVote]);
+    }, [refreshAgendasFromDb, refreshSystemSettingsFromDb, syncAgendaForWrittenVote]);
 
-    const setAgendaById = async (id) => {
+    const setAgendaById = React.useCallback(async (id) => {
         console.log('[setAgenda] Called with ID:', id);
 
         const targetAgenda = stateRef.current.agendas.find(a => a.id === id);
@@ -589,7 +724,13 @@ export function StoreProvider({ children }) {
         }).eq('id', 1);
 
         if (error) console.error("Set Agenda Error:", error);
-    };
+        else {
+            broadcastSystemSettingsSync({
+                current_agenda_id: id,
+                vote_data: newVoteData
+            });
+        }
+    }, [broadcastSystemSettingsSync]);
 
     // Actions
     const actions = React.useMemo(() => ({
@@ -607,6 +748,9 @@ export function StoreProvider({ children }) {
                 .update({ active_meeting_id: id })
                 .eq('id', 1);
             if (error) console.error("Failed to set active meeting:", error);
+            else {
+                broadcastSystemSettingsSync({ active_meeting_id: id });
+            }
         },
 
         checkInMember: async (memberId, type = 'direct', proxyName = null, votes = null) => {
@@ -1030,6 +1174,7 @@ export function StoreProvider({ children }) {
                 .eq('id', 1);
 
             if (error) throw error;
+            broadcastSystemSettingsSync({ vote_data: newVoteData });
         },
 
         setAgendaTypeLock: async (agendaId, isLocked) => {
@@ -1059,6 +1204,7 @@ export function StoreProvider({ children }) {
                 .eq('id', 1);
 
             if (error) throw error;
+            broadcastSystemSettingsSync({ vote_data: newVoteData });
         },
 
         setAgendaOrderLock: async (isLocked) => {
@@ -1075,6 +1221,7 @@ export function StoreProvider({ children }) {
                 .eq('id', 1);
 
             if (error) throw error;
+            broadcastSystemSettingsSync({ vote_data: newVoteData });
         },
 
         updateMember: async (member) => {
@@ -1131,6 +1278,7 @@ export function StoreProvider({ children }) {
                 .eq('id', 1);
 
             if (settingsError) throw settingsError;
+            broadcastSystemSettingsSync({ vote_data: nextVoteData });
 
             setState((prev) => ({
                 ...prev,
@@ -1150,6 +1298,9 @@ export function StoreProvider({ children }) {
                 .eq('id', 1);
 
             if (error) console.error("Update VoteData Error:", error);
+            else {
+                broadcastSystemSettingsSync({ vote_data: newVoteData });
+            }
         },
 
         updatePresentationPage: async (delta) => {
@@ -1162,9 +1313,16 @@ export function StoreProvider({ children }) {
             const newVoteData = { ...currentVoteData, presentationPage: newPage };
             setState(prev => ({ ...prev, voteData: newVoteData }));
 
-            await supabase.from('system_settings')
+            const { error } = await supabase.from('system_settings')
                 .update({ vote_data: newVoteData })
                 .eq('id', 1);
+
+            if (error) {
+                console.error('Update Presentation Page Error:', error);
+                return;
+            }
+
+            broadcastSystemSettingsSync({ vote_data: newVoteData });
         },
 
         setPresentationPage: async (page) => {
@@ -1176,9 +1334,16 @@ export function StoreProvider({ children }) {
             const newVoteData = { ...currentVoteData, presentationPage: normalizedPage };
             setState(prev => ({ ...prev, voteData: newVoteData }));
 
-            await supabase.from('system_settings')
+            const { error } = await supabase.from('system_settings')
                 .update({ vote_data: newVoteData })
                 .eq('id', 1);
+
+            if (error) {
+                console.error('Set Presentation Page Error:', error);
+                return;
+            }
+
+            broadcastSystemSettingsSync({ vote_data: newVoteData });
         },
 
         setProjectorMode: async (mode, data = null) => {
@@ -1189,9 +1354,19 @@ export function StoreProvider({ children }) {
                 projectorData: data  // This was missing!
             }));
 
-            await supabase.from('system_settings')
+            const { error } = await supabase.from('system_settings')
                 .update({ projector_mode: mode })
                 .eq('id', 1);
+
+            if (error) {
+                console.error('Set Projector Mode Error:', error);
+                return;
+            }
+
+            broadcastSystemSettingsSync({
+                projector_mode: mode,
+                projector_data: data
+            });
         },
 
         // Declaration Editing State Management (per-agenda, local only)
@@ -1211,7 +1386,7 @@ export function StoreProvider({ children }) {
         },
 
         resetHelper: async () => { }
-    }), [reconcileAgendaVoteCountsFromWrittenVotes, refreshAgendasFromDb]); // Actions are stable because they use stateRef to access current state values
+    }), [broadcastSystemSettingsSync, reconcileAgendaVoteCountsFromWrittenVotes, refreshAgendasFromDb, setAgendaById]); // Actions are stable because they use stateRef to access current state values
 
     return (
         <StoreContext.Provider value={{ state, actions }}>
