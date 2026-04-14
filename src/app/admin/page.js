@@ -117,18 +117,10 @@ export default function AdminPage() {
                     </div>
                 </>
             }
+            fixedTopContent={<LiveMonitor />}
         >
-            <div className="grid grid-cols-12 gap-8">
-                <div className="col-span-12">
-                    <LiveMonitor />
-                </div>
-
-                <div className="col-span-12">
-                    <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-
-                        <VoteControl />
-                    </div>
-                </div>
+            <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm relative z-0">
+                <VoteControl />
             </div>
         </DashboardLayout>
     );

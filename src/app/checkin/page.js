@@ -119,15 +119,16 @@ export default function CheckInPage() {
 
     const handleCancelCheckIn = (memberId) => {
         if (!activeMeetingId) return;
-        if (confirm("입장을 취소하시겠습니까?")) {
-            actions.cancelCheckInMember(memberId);
-        }
+        setCancelMemberId(memberId);
+        setIsCancelModalOpen(true);
     };
 
     // Proxy Modal State
     const [isProxyModalOpen, setIsProxyModalOpen] = useState(false);
     const [proxyMemberId, setProxyMemberId] = useState(null);
     const [proxyNameInput, setProxyNameInput] = useState("");
+    const [isCancelModalOpen, setIsCancelModalOpen] = useState(false);
+    const [cancelMemberId, setCancelMemberId] = useState(null);
 
     const handleOpenProxyModal = (member) => {
         setProxyMemberId(member.id);
@@ -198,6 +199,18 @@ export default function CheckInPage() {
             setProxyMemberId(null);
         }
     };
+
+    const handleConfirmCancelCheckIn = () => {
+        if (!cancelMemberId) return;
+        actions.cancelCheckInMember(cancelMemberId);
+        setIsCancelModalOpen(false);
+        setCancelMemberId(null);
+    };
+
+    const cancelMember = useMemo(
+        () => members.find((member) => member.id === cancelMemberId) || null,
+        [cancelMemberId, members]
+    );
 
     return (
         <div className="flex flex-col h-screen bg-slate-100 font-sans">
@@ -431,6 +444,37 @@ export default function CheckInPage() {
                                 onClick={handleConfirmProxy}
                                 disabled={!proxyNameInput.trim()}
                                 className="flex-1 py-4 text-base font-bold text-blue-600 hover:bg-blue-50 active:bg-blue-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                            >
+                                확인
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {isCancelModalOpen && cancelMember && (
+                <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center px-4 animate-in fade-in duration-200">
+                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-xs overflow-hidden animate-in zoom-in-95 duration-200">
+                        <div className="p-5">
+                            <h3 className="text-lg font-bold text-slate-800 mb-1">입장 취소</h3>
+                            <p className="text-sm text-slate-500 mb-4 break-keep">
+                                {cancelMember.unit} {cancelMember.name} 조합원의 입장을 취소하시겠습니까?
+                            </p>
+                        </div>
+                        <div className="flex border-t border-slate-100">
+                            <button
+                                onClick={() => {
+                                    setIsCancelModalOpen(false);
+                                    setCancelMemberId(null);
+                                }}
+                                className="flex-1 py-4 text-base font-bold text-slate-500 hover:bg-slate-50 active:bg-slate-100 transition-colors"
+                            >
+                                닫기
+                            </button>
+                            <div className="w-[1px] bg-slate-100"></div>
+                            <button
+                                onClick={handleConfirmCancelCheckIn}
+                                className="flex-1 py-4 text-base font-bold text-red-600 hover:bg-red-50 active:bg-red-100 transition-colors"
                             >
                                 확인
                             </button>

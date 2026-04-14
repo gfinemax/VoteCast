@@ -3,7 +3,7 @@
 import React from 'react';
 import { FileText } from 'lucide-react';
 
-export default function DashboardLayout({ title, subtitle, sidebarContent, sidebarFooter, headerContent, children }) {
+export default function DashboardLayout({ title, subtitle, sidebarContent, sidebarFooter, headerContent, fixedTopContent, children }) {
     return (
         <div className="flex h-screen bg-slate-50 font-sans text-slate-800 overflow-hidden">
             {/* Sidebar */}
@@ -34,16 +34,29 @@ export default function DashboardLayout({ title, subtitle, sidebarContent, sideb
             {/* Main Content */}
             <main className="flex-1 flex flex-col h-full overflow-hidden relative">
                 {/* Header */}
-                <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-8 shadow-sm shrink-0">
+                <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-8 shadow-sm shrink-0 z-20">
                     <div className="flex items-center gap-4 w-full">
                         {headerContent}
                     </div>
                 </header>
 
                 {/* Scrollable Content Area */}
-                <div className="flex-1 overflow-y-auto p-8">
-                    <div className="max-w-5xl mx-auto pb-20">
-                        {children}
+                <div className="flex-1 overflow-y-auto w-full">
+                    {/* Fixed Top Content as Sticky (Matches scroll context width) */}
+                    {fixedTopContent && (
+                        <div className="sticky top-0 z-20 px-8 pt-4 pb-0 w-full relative pointer-events-none">
+                            {/* Seamless masking to hide scrolling text ONLY in the top 16px gap */}
+                            <div className="absolute top-0 left-0 right-0 h-4 bg-slate-50"></div>
+                            <div className="max-w-5xl mx-auto relative pointer-events-auto drop-shadow-xl rounded-xl">
+                                {fixedTopContent}
+                            </div>
+                        </div>
+                    )}
+
+                    <div className="px-8 pt-4 pb-8">
+                        <div className="max-w-5xl mx-auto pb-20">
+                            {children}
+                        </div>
                     </div>
                 </div>
             </main>

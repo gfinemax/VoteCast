@@ -8,6 +8,41 @@ import Card from '@/components/ui/Card';
 
 const EMPTY_INACTIVE_MEMBER_IDS = [];
 
+const FastNumericInput = ({ value, onChange, className, disabled, placeholder, innerRef }) => {
+    const [localValue, setLocalValue] = useState(value);
+    const [isFocused, setIsFocused] = useState(false);
+
+    useEffect(() => {
+        if (!isFocused) {
+            setLocalValue(value);
+        }
+    }, [value, isFocused]);
+
+    const handleChange = (e) => {
+        const val = e.target.value.replace(/[^0-9]/g, '');
+        setLocalValue(val);
+        onChange(val);
+    };
+
+    return (
+        <input
+            ref={innerRef}
+            type="text"
+            inputMode="numeric"
+            value={localValue === 0 && !disabled ? '' : localValue}
+            placeholder={placeholder}
+            onFocus={(e) => {
+                setIsFocused(true);
+                e.target.select();
+            }}
+            onBlur={() => setIsFocused(false)}
+            onChange={handleChange}
+            disabled={disabled}
+            className={className}
+        />
+    );
+};
+
 export default function VoteControl() {
     const { state, actions } = useStore();
     const { updateAgenda, setDeclarationEditMode, setAgendaTypeLock } = actions;
@@ -329,12 +364,12 @@ export default function VoteControl() {
             onsiteValue: editableVotesYes,
             updateField: editableVoteFieldMap.yes,
             tone: {
-                rowTint: 'border-emerald-100 bg-emerald-50/60',
-                labelBadge: 'bg-emerald-100 text-emerald-700 border-emerald-200',
-                totalText: 'text-emerald-700',
-                writtenText: 'text-emerald-700/80',
-                inputLabel: 'text-emerald-700',
-                inputBorder: 'border-emerald-100 text-emerald-700 caret-emerald-700 focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100'
+                rowTint: 'border-emerald-900/50 bg-emerald-900/10',
+                labelBadge: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20',
+                totalText: 'text-emerald-400',
+                writtenText: 'text-emerald-600',
+                inputLabel: 'text-emerald-600',
+                inputBox: 'bg-slate-950 shadow-[inset_0_2px_8px_rgba(0,0,0,0.5)] border-transparent text-emerald-400 caret-emerald-400 focus:bg-slate-900 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/30'
             }
         },
         {
@@ -346,12 +381,12 @@ export default function VoteControl() {
             onsiteValue: editableVotesNo,
             updateField: editableVoteFieldMap.no,
             tone: {
-                rowTint: 'border-red-100 bg-red-50/60',
-                labelBadge: 'bg-red-100 text-red-700 border-red-200',
-                totalText: 'text-red-700',
-                writtenText: 'text-red-700/80',
-                inputLabel: 'text-red-700',
-                inputBorder: 'border-red-100 text-red-700 caret-red-700 focus:border-red-500 focus:ring-4 focus:ring-red-100'
+                rowTint: 'border-rose-900/50 bg-rose-900/10',
+                labelBadge: 'bg-rose-500/10 text-rose-400 border-rose-500/20',
+                totalText: 'text-rose-400',
+                writtenText: 'text-rose-400',
+                inputLabel: 'text-rose-600',
+                inputBox: 'bg-slate-950 shadow-[inset_0_2px_8px_rgba(0,0,0,0.5)] border-transparent text-rose-400 caret-rose-400 focus:bg-slate-900 focus:border-rose-500 focus:ring-2 focus:ring-rose-500/30'
             }
         },
         {
@@ -363,12 +398,12 @@ export default function VoteControl() {
             onsiteValue: editableVotesAbstain,
             updateField: editableVoteFieldMap.abstain,
             tone: {
-                rowTint: 'border-slate-200 bg-slate-50',
-                labelBadge: 'bg-slate-100 text-slate-600 border-slate-200',
-                totalText: 'text-slate-600',
+                rowTint: 'border-slate-800 bg-slate-800/40',
+                labelBadge: 'bg-slate-700/50 text-slate-300 border-slate-600/50',
+                totalText: 'text-slate-200',
                 writtenText: 'text-slate-500',
                 inputLabel: 'text-slate-500',
-                inputBorder: 'border-slate-200 text-slate-500 caret-slate-600 focus:border-slate-400 focus:ring-4 focus:ring-slate-100'
+                inputBox: 'bg-slate-950 shadow-[inset_0_2px_8px_rgba(0,0,0,0.5)] border-transparent text-slate-300 caret-slate-400 focus:bg-slate-900 focus:border-slate-500 focus:ring-2 focus:ring-slate-500/30'
             }
         }
     ] : [];
@@ -536,87 +571,76 @@ export default function VoteControl() {
                     {hasSplitVoteColumns ? (
                         <div className="space-y-3">
                             {/* Summary Dashboard Component */}
-                            <div className="flex flex-col md:flex-row gap-4 items-center justify-between rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                                <div className="flex items-center gap-6 divide-x divide-slate-200 w-full md:w-auto">
+                            <div className="flex flex-col md:flex-row gap-3 items-center justify-between rounded-xl border border-blue-100/70 bg-blue-50/30 py-2 px-4 shadow-sm">
+                                <div className="flex items-center gap-6 divide-x divide-slate-200/60 w-full md:w-auto">
                                     <div className="flex flex-col">
-                                        <span className="text-xs font-semibold text-slate-400 mb-1">총 투표수</span>
-                                        <span className="text-2xl font-black text-blue-700">{totalVotesCast}<span className="text-sm font-normal ml-1">표</span></span>
+                                        <span className="text-xs font-bold text-slate-500 mb-0.5 tracking-wide">총 투표수</span>
+                                        <span className="text-2xl font-black text-blue-700">{totalVotesCast}<span className="text-sm font-semibold text-blue-500 ml-1">표</span></span>
                                     </div>
                                     <div className="flex flex-col pl-6">
-                                        <span className="text-xs font-semibold text-slate-400 mb-1">성원(참석자)</span>
-                                        <span className="text-xl font-bold text-slate-700">{displayStats.total}<span className="text-sm font-normal ml-1">명</span></span>
+                                        <span className="text-xs font-bold text-slate-500 mb-0.5 tracking-wide">성원(참석자)</span>
+                                        <span className="text-2xl font-black text-slate-700">{displayStats.total}<span className="text-sm font-medium text-slate-500 ml-1">명</span></span>
                                     </div>
                                     <div className="flex flex-col pl-6 hidden sm:flex">
-                                        <span className="text-xs font-semibold text-slate-400 mb-1">투표 구성</span>
-                                        <div className="text-sm font-medium text-slate-600 mt-1">
+                                        <span className="text-xs font-bold text-slate-500 mb-0.5 tracking-wide">투표 구성</span>
+                                        <div className="text-base font-medium text-slate-600 mt-0.5">
                                             서면 <span className="font-bold text-slate-800">{totalWrittenVotes}</span>
-                                            <span className="text-slate-400 mx-1.5">+</span>
+                                            <span className="text-slate-300 mx-2">+</span>
                                             현장 <span className="font-bold text-slate-800">{editableVotesYes + editableVotesNo + editableVotesAbstain}</span>
                                         </div>
                                     </div>
                                 </div>
-                                <div className={`flex flex-col items-center justify-center p-3 rounded-xl border-2 w-full md:w-auto md:min-w-[140px] transition-colors ${
+                                <div className={`flex flex-col items-center justify-center py-1.5 px-3 rounded-xl border w-full md:w-auto md:min-w-[120px] transition-colors shadow-sm ${
                                     isVoteCountValid 
-                                        ? 'bg-emerald-50 border-emerald-100 text-emerald-700' 
-                                        : 'bg-red-50 border-red-100 text-red-600 animate-pulse'
+                                        ? 'bg-emerald-50/80 border-emerald-200 text-emerald-700' 
+                                        : 'bg-red-50 border-red-200 text-red-600 animate-pulse'
                                 }`}>
                                     {isVoteCountValid ? (
                                         <>
-                                            <CheckCircle2 size={24} className="mb-1 text-emerald-500" />
-                                            <span className="text-sm font-bold">결과 일치 (검증됨)</span>
+                                            <CheckCircle2 size={20} className="mb-0.5 text-emerald-500" />
+                                            <span className="text-sm font-bold tracking-tight">결과 일치 (검증됨)</span>
                                         </>
                                     ) : (
                                         <>
-                                            <AlertTriangle size={24} className="mb-1" />
-                                            <span className="text-sm font-bold">{displayStats.total - totalVotesCast}표 부족</span>
+                                            <AlertTriangle size={20} className="mb-0.5" />
+                                            <span className="text-sm font-bold tracking-tight">{displayStats.total - totalVotesCast}표 부족</span>
                                         </>
                                     )}
                                 </div>
                             </div>
 
-                            <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-                                <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between border-b border-slate-100 pb-4">
-                                    <div className="text-lg font-black text-slate-800">현장 투표 입력</div>
-                                    <div className="flex flex-wrap items-center gap-2 bg-slate-50 p-2 rounded-xl border border-slate-100">
+                            <div className="rounded-2xl border border-slate-800 bg-slate-900 px-4 py-3 shadow-[0_12px_40px_-15px_rgba(0,0,0,0.5)]">
+                                <div className="mb-2 flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between border-b border-slate-800 pb-2">
+                                    <div className="text-lg font-black text-white ml-2">현장 투표 입력</div>
+                                    <div className="flex flex-wrap items-center gap-2">
                                         {!isConfirmed && (
                                             <button
                                                 onClick={() => setIsAutoCalc(!isAutoCalc)}
                                                 className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${
                                                     isAutoCalc 
                                                         ? 'bg-blue-600 text-white shadow-md' 
-                                                        : 'bg-white text-slate-500 border border-slate-200 hover:bg-slate-100'
+                                                        : 'bg-slate-800 text-slate-400 border border-slate-700 hover:bg-slate-700 hover:text-white'
                                                 }`}
                                             >
                                                 <CheckCircle2 size={14} className={isAutoCalc ? 'opacity-100' : 'opacity-0 hidden'} />
                                                 자동계산 {isAutoCalc ? 'ON' : 'OFF'}
                                             </button>
                                         )}
-                                        {!isConfirmed && (
-                                            <button
-                                                onClick={handleAutoSum}
-                                                title="참석자 수에 맞춰 잔여 표 자동 입력"
-                                                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg bg-emerald-100 text-emerald-700 border border-emerald-200 hover:bg-emerald-200 transition-colors"
-                                            >
-                                                <Wand2 size={14} />
-                                                잔여표 찬성 채우기
-                                            </button>
-                                        )}
-                                        <div className="w-px h-6 bg-slate-200 mx-1 hidden sm:block"></div>
                                         <button
                                             onClick={handleResetEditableVotes}
                                             disabled={isConfirmed}
-                                            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg text-slate-500 hover:bg-red-50 hover:text-red-600 transition-colors disabled:opacity-50"
+                                            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg text-slate-400 hover:bg-rose-950 hover:text-rose-400 transition-colors disabled:opacity-50"
                                         >
                                             <Trash2 size={14} /> 초기화
                                         </button>
                                     </div>
                                 </div>
 
-                                <div className="hidden grid-cols-[minmax(100px,1fr)_1fr_auto_minmax(140px,1.5fr)_auto_1fr] gap-4 px-4 pb-2 text-xs font-bold uppercase tracking-wide text-slate-400 md:grid items-center">
-                                    <div>구분</div>
-                                    <div className="text-center">서면(고정)</div>
+                                <div className="hidden grid-cols-[minmax(100px,1fr)_1fr_auto_minmax(140px,1.5fr)_auto_1fr] gap-4 px-4 pb-2 text-xs font-bold uppercase tracking-wide text-slate-500 md:grid items-center">
+                                    <div className="text-slate-400">구분</div>
+                                    <div className="text-center text-slate-500">서면(고정)</div>
                                     <div className="w-4"></div>
-                                    <div className="text-center text-blue-600">현장 입력</div>
+                                    <div className="text-center text-blue-400">현장 입력</div>
                                     <div className="w-4"></div>
                                     <div className="text-center">총 합계</div>
                                 </div>
@@ -633,34 +657,31 @@ export default function VoteControl() {
                                                 </span>
                                             </div>
 
-                                            <div className="flex items-center justify-between rounded-xl bg-white/60 px-4 py-3 md:bg-transparent md:px-0 md:py-0 md:justify-center">
-                                                <span className="text-xs font-bold text-slate-400 md:hidden">서면(고정)</span>
+                                            <div className="flex items-center justify-between rounded-xl bg-slate-800/30 px-4 py-3 md:bg-transparent md:px-0 md:py-0 md:justify-center">
+                                                <span className="text-xs font-bold text-slate-500 md:hidden">서면(고정)</span>
                                                 <span className={`font-mono text-xl font-bold ${card.tone.writtenText}`}>{card.writtenValue}</span>
                                             </div>
 
-                                            <div className="hidden md:flex justify-center text-slate-300 font-black">+</div>
+                                            <div className="hidden md:flex justify-center text-slate-700 font-black">+</div>
 
                                             <div className="relative">
                                                 <div className={`mb-1 text-xs font-bold md:hidden ${card.tone.inputLabel}`}>현장 입력</div>
-                                                <input
-                                                    ref={card.key === 'yes' ? primaryOnsiteInputRef : null}
-                                                    type="text"
-                                                    inputMode="numeric"
-                                                    value={card.onsiteValue === 0 && !isConfirmed ? '' : card.onsiteValue}
+                                                <FastNumericInput
+                                                    innerRef={card.key === 'yes' ? primaryOnsiteInputRef : null}
+                                                    value={card.onsiteValue}
                                                     placeholder="0"
-                                                    onChange={(e) => {
-                                                        const val = e.target.value.replace(/[^0-9]/g, '');
+                                                    onChange={(val) => {
                                                         handleVoteUpdate(card.updateField, val);
                                                     }}
                                                     disabled={isConfirmed}
-                                                    className={`w-full rounded-xl border-2 bg-white px-3 py-2 text-center text-2xl md:text-3xl font-black shadow-sm outline-none disabled:bg-slate-100 disabled:text-slate-500 transition-all ${card.tone.inputBorder}`}
+                                                    className={`w-full rounded-xl border px-3 py-2 text-center text-2xl md:text-3xl font-black shadow-[inset_0_2px_4px_rgba(0,0,0,0.06)] outline-none disabled:bg-slate-50 disabled:text-slate-400 transition-all ${card.tone.inputBox}`}
                                                 />
                                             </div>
 
-                                            <div className="hidden md:flex justify-center text-slate-300 font-black">=</div>
+                                            <div className="hidden md:flex justify-center text-slate-700 font-black">=</div>
 
-                                            <div className="flex items-center justify-between rounded-xl bg-white/60 px-4 py-3 md:bg-transparent md:px-0 md:py-0 md:justify-center">
-                                                <span className="text-xs font-bold text-slate-400 md:hidden">총 합계</span>
+                                            <div className="flex items-center justify-between rounded-xl bg-slate-800/30 px-4 py-3 md:bg-transparent md:px-0 md:py-0 md:justify-center">
+                                                <span className="text-xs font-bold text-slate-500 md:hidden">총 합계</span>
                                                 <div className="flex items-end gap-1">
                                                     <span className={`font-mono text-2xl font-black ${card.tone.totalText}`}>{card.totalValue}</span>
                                                     <span className="text-xs font-bold text-slate-400 mb-1">표</span>
@@ -746,45 +767,30 @@ export default function VoteControl() {
                                                 </button>
                                             )}
                                         </label>
-                                        <input
-                                            type="text"
-                                            inputMode="numeric"
-                                            value={editableVotesYes === 0 && !isConfirmed ? '' : editableVotesYes}
+                                        <FastNumericInput
+                                            value={editableVotesYes}
                                             placeholder="0"
-                                            onChange={(e) => {
-                                                const val = e.target.value.replace(/[^0-9]/g, '');
-                                                handleVoteUpdate(editableVoteFieldMap.yes, val);
-                                            }}
+                                            onChange={(val) => handleVoteUpdate(editableVoteFieldMap.yes, val)}
                                             disabled={isConfirmed}
                                             className="w-full p-4 border-2 border-emerald-200 rounded-xl text-center text-4xl font-black text-emerald-800 bg-white shadow-inner outline-none caret-emerald-700 focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100 disabled:bg-slate-100 disabled:text-slate-500 transition-all"
                                         />
                                     </div>
                                     <div className="flex flex-col gap-2 bg-red-50/50 p-4 border border-red-100 rounded-2xl transition-colors hover:bg-red-50">
                                         <label className="text-base font-bold text-red-800">반대</label>
-                                        <input
-                                            type="text"
-                                            inputMode="numeric"
-                                            value={editableVotesNo === 0 && !isConfirmed ? '' : editableVotesNo}
+                                        <FastNumericInput
+                                            value={editableVotesNo}
                                             placeholder="0"
-                                            onChange={(e) => {
-                                                const val = e.target.value.replace(/[^0-9]/g, '');
-                                                handleVoteUpdate(editableVoteFieldMap.no, val);
-                                            }}
+                                            onChange={(val) => handleVoteUpdate(editableVoteFieldMap.no, val)}
                                             disabled={isConfirmed}
                                             className="w-full p-4 border-2 border-red-200 rounded-xl text-center text-4xl font-black text-red-800 bg-white shadow-inner outline-none caret-red-700 focus:border-red-500 focus:ring-4 focus:ring-red-100 disabled:bg-slate-100 disabled:text-slate-500 transition-all"
                                         />
                                     </div>
                                     <div className="flex flex-col gap-2 bg-slate-50/50 p-4 border border-slate-200 rounded-2xl transition-colors hover:bg-slate-50">
                                         <label className="text-base font-bold text-slate-600">기권/무효</label>
-                                        <input
-                                            type="text"
-                                            inputMode="numeric"
-                                            value={editableVotesAbstain === 0 && !isConfirmed ? '' : editableVotesAbstain}
+                                        <FastNumericInput
+                                            value={editableVotesAbstain}
                                             placeholder="0"
-                                            onChange={(e) => {
-                                                const val = e.target.value.replace(/[^0-9]/g, '');
-                                                handleVoteUpdate(editableVoteFieldMap.abstain, val);
-                                            }}
+                                            onChange={(val) => handleVoteUpdate(editableVoteFieldMap.abstain, val)}
                                             disabled={isConfirmed}
                                             className="w-full p-4 border-2 border-slate-200 rounded-xl text-center text-4xl font-black text-slate-600 bg-white shadow-inner outline-none caret-slate-600 focus:border-slate-400 focus:ring-4 focus:ring-slate-100 disabled:bg-slate-100 disabled:text-slate-400 transition-all"
                                         />
