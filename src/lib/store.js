@@ -257,6 +257,7 @@ export function StoreProvider({ children }) {
     const pendingAttendanceOpsRef = useRef(new Set());
     const windowSyncIdRef = useRef(`window-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
     const broadcastChannelRef = useRef(null);
+    const attendanceSyncChannelRef = useRef(null);
 
     useEffect(() => {
         stateRef.current = state;
@@ -672,11 +673,93 @@ export function StoreProvider({ children }) {
             })
             .subscribe();
 
+        // Fast Attendance Sync via Supabase Broadcast (sub-second, bypasses WAL latency)
+        // Receives inline data — no DB refetch needed on the receiver side
+        const attendanceSyncChannel = supabase.channel('attendance_sync')
+            .on('broadcast', { event: 'attendance_insert' }, (msg) => {
+                const record = msg.payload?.record;
+                if (!record) return;
+                console.log('[Broadcast] Attendance INSERT received:', record.member_id);
+                setState(prev => {
+                    const cleanList = prev.attendance.filter(a =>
+                        !(a.member_id === record.member_id && a.meeting_id === record.meeting_id)
+                    );
+                    return { ...prev, attendance: [...cleanList, record] };
+                });
+            })
+            .on('broadcast', { event: 'attendance_delete' }, (msg) => {
+                const { memberId, meetingId } = msg.payload || {};
+                if (!memberId || !meetingId) return;
+                console.log('[Broadcast] Attendance DELETE received:', memberId);
+                setState(prev => ({
+                    ...prev,
+                    attendance: prev.attendance.filter(a =>
+                        !(a.member_id === memberId && a.meeting_id === meetingId)
+                    )
+                }));
+            })
+            .subscribe();
+        attendanceSyncChannelRef.current = attendanceSyncChannel;
+
         return () => {
             supabase.removeChannel(channel);
             supabase.removeChannel(presenceChannel);
+            supabase.removeChannel(attendanceSyncChannel);
+            attendanceSyncChannelRef.current = null;
         };
     }, [refreshAgendasFromDb, refreshSystemSettingsFromDb, syncAgendaForWrittenVote]);
+
+    // Visibility Change + Polling Fallback for Attendance
+    // Handles mobile browser WebSocket disconnects (tab switch, screen lock, etc.)
+    useEffect(() => {
+        if (!isInitialized || typeof document === 'undefined') return undefined;
+
+        let lastHiddenAt = 0;
+        const STALE_THRESHOLD_MS = 3000; // Only refetch if hidden for 3+ seconds
+        const POLL_INTERVAL_MS = 15000; // Lightweight poll every 15s as Realtime fallback
+
+        const refetchAttendance = async () => {
+            const { data } = await supabase.from('attendance').select('*');
+            if (data) {
+                setState(prev => {
+                    // Skip update if nothing changed (avoid unnecessary re-renders)
+                    if (prev.attendance.length === data.length &&
+                        prev.attendance.every((a, i) => a.id === data[i]?.id)) {
+                        return prev;
+                    }
+                    return { ...prev, attendance: data };
+                });
+            }
+        };
+
+        const handleVisibilityChange = async () => {
+            if (document.visibilityState === 'hidden') {
+                lastHiddenAt = Date.now();
+                return;
+            }
+
+            // Tab is now visible again
+            const hiddenDuration = lastHiddenAt > 0 ? Date.now() - lastHiddenAt : 0;
+            if (hiddenDuration < STALE_THRESHOLD_MS) return;
+
+            console.log(`[Visibility] Tab restored after ${Math.round(hiddenDuration / 1000)}s — refetching attendance`);
+            await refetchAttendance();
+        };
+
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+
+        // Lightweight poll as Realtime fallback (only when tab is visible)
+        const pollId = window.setInterval(() => {
+            if (document.visibilityState === 'visible') {
+                refetchAttendance();
+            }
+        }, POLL_INTERVAL_MS);
+
+        return () => {
+            document.removeEventListener('visibilitychange', handleVisibilityChange);
+            window.clearInterval(pollId);
+        };
+    }, [isInitialized]);
 
     const setAgendaById = React.useCallback(async (id) => {
         console.log('[setAgenda] Called with ID:', id);
@@ -832,6 +915,13 @@ export function StoreProvider({ children }) {
                     }
                 }
 
+                // Broadcast attendance INSERT to all other clients IMMEDIATELY
+                attendanceSyncChannelRef.current?.send({
+                    type: 'broadcast',
+                    event: 'attendance_insert',
+                    payload: { record: newRecord }
+                });
+
                 if (type === 'written') {
                     const meetingAgendaIds = getAgendaIdsForMeeting(stateRef.current.agendas, meetingId);
                     const meetingAgendas = stateRef.current.agendas.filter((agenda) => meetingAgendaIds.includes(agenda.id));
@@ -898,6 +988,13 @@ export function StoreProvider({ children }) {
                         return;
                     }
                 }
+
+                // Broadcast attendance DELETE to all other clients IMMEDIATELY
+                attendanceSyncChannelRef.current?.send({
+                    type: 'broadcast',
+                    event: 'attendance_delete',
+                    payload: { memberId, meetingId }
+                });
 
                 if (hadWrittenAttendance) {
                     const meetingAgendaIds = getAgendaIdsForMeeting(stateRef.current.agendas, meetingId);
