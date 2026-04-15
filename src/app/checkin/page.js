@@ -161,10 +161,10 @@ export default function CheckInPage() {
     const handleOpenWrittenVoteModal = (member) => {
         setWrittenVoteMemberId(member.id);
 
-        // Initialize Default Votes (Abstain)
+        // Initialize Default Votes (All Yes)
         const initialVotes = {};
         activeAgendas.forEach(a => {
-            initialVotes[a.id] = 'abstain';
+            initialVotes[a.id] = 'yes';
         });
         setWrittenVotes(initialVotes);
 
