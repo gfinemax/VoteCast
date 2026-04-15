@@ -766,8 +766,16 @@ export function StoreProvider({ children }) {
                     agendas: applyWrittenVoteDeltaToAgendaList(prev.agendas, votes, delta)
                 }));
             })
-            .on('broadcast', { event: 'written_votes_changed' }, async () => {
-                console.log('[Broadcast] Written votes changed — refreshing agendas');
+            .on('broadcast', { event: 'written_votes_changed' }, async (msg) => {
+                const meetingId = msg.payload?.meetingId || null;
+                console.log('[Broadcast] Written votes changed — reconciling agendas', meetingId);
+
+                const currentAgendas = stateRef.current.agendas;
+                const targetAgendas = meetingId
+                    ? currentAgendas.filter((agenda) => getAgendaIdsForMeeting(currentAgendas, meetingId).includes(agenda.id))
+                    : currentAgendas;
+
+                await reconcileAgendaVoteCountsFromWrittenVotes(targetAgendas);
                 await refreshAgendasFromDb();
             })
             .subscribe();
@@ -779,7 +787,7 @@ export function StoreProvider({ children }) {
             supabase.removeChannel(attendanceSyncChannel);
             attendanceSyncChannelRef.current = null;
         };
-    }, [refreshAgendasFromDb, refreshSystemSettingsFromDb, syncAgendaForWrittenVote]);
+    }, [reconcileAgendaVoteCountsFromWrittenVotes, refreshAgendasFromDb, refreshSystemSettingsFromDb, syncAgendaForWrittenVote]);
 
     // Visibility Change + Polling Fallback for Attendance
     // Handles mobile browser WebSocket disconnects (tab switch, screen lock, etc.)
