@@ -392,10 +392,6 @@ export default function ProjectorPage() {
 
                     {/* Stats Grid: Fixed Height relative to viewport (approx 15-20%) */}
                     <div className="flex-none h-[18vh] w-full max-w-[80vw] mx-auto z-20 grid grid-cols-4 gap-[1.5vw] my-[1.5vh]">
-                        <div className="flex flex-col items-center justify-center bg-slate-50 rounded-xl border border-slate-100 shadow-sm">
-                            <div className="text-[min(1.4vw,1.8vh)] font-bold text-slate-500 mb-[0.5vh]">총 참석</div>
-                            <div className="text-[min(5vw,7.5vh)] font-black font-mono tracking-tight text-slate-800 mb-[0.2vh]">{resultStats.totalAttendance.toLocaleString()}</div>
-                        </div>
                         <div className="flex flex-col items-center justify-center bg-blue-50 rounded-xl border border-blue-100 shadow-md transform scale-105 z-10">
                             <div className="flex items-center gap-2 mb-[0.5vh]"><div className="text-[min(1.4vw,1.8vh)] font-bold text-blue-600">찬성</div><CheckCircle2 size="2vh" className="text-blue-500" /></div>
                             <div className="text-[min(5vw,7.5vh)] font-black font-mono tracking-tight text-blue-700 mb-[0.2vh]">{resultStats.votesYes.toLocaleString()}</div>
@@ -407,6 +403,10 @@ export default function ProjectorPage() {
                         <div className="flex flex-col items-center justify-center bg-slate-100 rounded-xl border border-slate-200 shadow-sm">
                             <div className="text-[min(1.4vw,1.8vh)] font-bold text-slate-600 mb-[0.5vh]">기권/무효</div>
                             <div className="text-[min(5vw,7.5vh)] font-black font-mono tracking-tight text-slate-700 mb-[0.2vh]">{resultStats.votesAbstain.toLocaleString()}</div>
+                        </div>
+                        <div className="flex flex-col items-center justify-center bg-slate-50 rounded-xl border border-slate-100 shadow-sm">
+                            <div className="text-[min(1.4vw,1.8vh)] font-bold text-slate-500 mb-[0.5vh]">총 참석</div>
+                            <div className="text-[min(5vw,7.5vh)] font-black font-mono tracking-tight text-slate-800 mb-[0.2vh]">{resultStats.totalAttendance.toLocaleString()}</div>
                         </div>
                     </div>
 

@@ -528,12 +528,18 @@ export function StoreProvider({ children }) {
         if (!agendaId) return;
 
         const targetAgenda = stateRef.current.agendas.find((agenda) => agenda.id === agendaId);
-        if (!targetAgenda) return;
-
-        const didReconcile = await reconcileAgendaVoteCountsFromWrittenVotes([targetAgenda]);
-        if (didReconcile) {
+        if (!targetAgenda) {
+            // Agenda not in local state yet — just refresh everything
             await refreshAgendasFromDb();
+            return;
         }
+
+        // Reconcile acts as a safety net (e.g. if the RPC didn't update agendas)
+        await reconcileAgendaVoteCountsFromWrittenVotes([targetAgenda]);
+        // Always refresh local state from DB — the RPC may have already updated
+        // agendas correctly (so reconcile found no mismatch), but our local
+        // state still has the old values.
+        await refreshAgendasFromDb();
     }, [reconcileAgendaVoteCountsFromWrittenVotes, refreshAgendasFromDb]);
 
     // Initial Fetch
@@ -698,6 +704,10 @@ export function StoreProvider({ children }) {
                     )
                 }));
             })
+            .on('broadcast', { event: 'written_votes_changed' }, async () => {
+                console.log('[Broadcast] Written votes changed — refreshing agendas');
+                await refreshAgendasFromDb();
+            })
             .subscribe();
         attendanceSyncChannelRef.current = attendanceSyncChannel;
 
@@ -716,7 +726,7 @@ export function StoreProvider({ children }) {
 
         let lastHiddenAt = 0;
         const STALE_THRESHOLD_MS = 3000; // Only refetch if hidden for 3+ seconds
-        const POLL_INTERVAL_MS = 15000; // Lightweight poll every 15s as Realtime fallback
+        const POLL_INTERVAL_MS = 2000; // Poll every 2s — primary sync mechanism
 
         const refetchAttendance = async () => {
             const { data } = await supabase.from('attendance').select('*');
@@ -760,6 +770,33 @@ export function StoreProvider({ children }) {
             window.clearInterval(pollId);
         };
     }, [isInitialized]);
+
+    // Polling Fallback for Written Vote Reconciliation
+    // Same pattern as attendance polling — guarantees written vote counts stay in sync
+    // even when Supabase Realtime (postgres_changes) fails to deliver events.
+    useEffect(() => {
+        if (!isInitialized || typeof document === 'undefined') return undefined;
+
+        const RECONCILE_POLL_MS = 3000; // Poll every 3s
+
+        const reconcileWrittenVotes = async () => {
+            const currentAgendas = stateRef.current.agendas;
+            if (!currentAgendas.length) return;
+
+            const didReconcile = await reconcileAgendaVoteCountsFromWrittenVotes(currentAgendas);
+            if (didReconcile) {
+                await refreshAgendasFromDb();
+            }
+        };
+
+        const pollId = window.setInterval(() => {
+            if (document.visibilityState === 'visible') {
+                reconcileWrittenVotes();
+            }
+        }, RECONCILE_POLL_MS);
+
+        return () => window.clearInterval(pollId);
+    }, [isInitialized, reconcileAgendaVoteCountsFromWrittenVotes, refreshAgendasFromDb]);
 
     const setAgendaById = React.useCallback(async (id) => {
         console.log('[setAgenda] Called with ID:', id);
@@ -875,6 +912,13 @@ export function StoreProvider({ children }) {
                     attendance: [...prev.attendance, newRecord]
                 }));
 
+                // Broadcast to other clients BEFORE RPC (RPC can be slow)
+                attendanceSyncChannelRef.current?.send({
+                    type: 'broadcast',
+                    event: 'attendance_insert',
+                    payload: { record: newRecord }
+                });
+
                 // Use RPC for Transactional Check-in (with Votes)
                 // Even if no votes, RPC handles attendance insert safely.
                 const { error } = await supabase.rpc('check_in_member', {
@@ -915,21 +959,20 @@ export function StoreProvider({ children }) {
                     }
                 }
 
-                // Broadcast attendance INSERT to all other clients IMMEDIATELY
-                attendanceSyncChannelRef.current?.send({
-                    type: 'broadcast',
-                    event: 'attendance_insert',
-                    payload: { record: newRecord }
-                });
+
 
                 if (type === 'written') {
+                    // Reconcile as safety net (in case deployed RPC doesn't update agendas)
                     const meetingAgendaIds = getAgendaIdsForMeeting(stateRef.current.agendas, meetingId);
                     const meetingAgendas = stateRef.current.agendas.filter((agenda) => meetingAgendaIds.includes(agenda.id));
-                    const didReconcile = await reconcileAgendaVoteCountsFromWrittenVotes(meetingAgendas);
-                    if (didReconcile) {
-                        await refreshAgendasFromDb();
-                        return;
-                    }
+                    await reconcileAgendaVoteCountsFromWrittenVotes(meetingAgendas);
+
+                    // Broadcast to ALL other clients so they refresh agendas instantly
+                    attendanceSyncChannelRef.current?.send({
+                        type: 'broadcast',
+                        event: 'written_votes_changed',
+                        payload: { meetingId }
+                    });
                 }
 
                 await refreshAgendasFromDb();
@@ -959,11 +1002,17 @@ export function StoreProvider({ children }) {
             pendingAttendanceOpsRef.current.add(attendanceKey);
 
             try {
-                // Optimistic Update
                 setState(prev => ({
                     ...prev,
                     attendance: prev.attendance.filter(a => !(a.member_id === memberId && a.meeting_id === meetingId))
                 }));
+
+                // Broadcast to other clients BEFORE RPC (RPC can be slow)
+                attendanceSyncChannelRef.current?.send({
+                    type: 'broadcast',
+                    event: 'attendance_delete',
+                    payload: { memberId, meetingId }
+                });
 
                 // Use RPC to Cancel (and reverse votes)
                 const { error } = await supabase.rpc('cancel_check_in_member', {
@@ -989,21 +1038,20 @@ export function StoreProvider({ children }) {
                     }
                 }
 
-                // Broadcast attendance DELETE to all other clients IMMEDIATELY
-                attendanceSyncChannelRef.current?.send({
-                    type: 'broadcast',
-                    event: 'attendance_delete',
-                    payload: { memberId, meetingId }
-                });
+
 
                 if (hadWrittenAttendance) {
+                    // Reconcile as safety net (in case deployed RPC doesn't update agendas)
                     const meetingAgendaIds = getAgendaIdsForMeeting(stateRef.current.agendas, meetingId);
                     const meetingAgendas = stateRef.current.agendas.filter((agenda) => meetingAgendaIds.includes(agenda.id));
-                    const didReconcile = await reconcileAgendaVoteCountsFromWrittenVotes(meetingAgendas);
-                    if (didReconcile) {
-                        await refreshAgendasFromDb();
-                        return;
-                    }
+                    await reconcileAgendaVoteCountsFromWrittenVotes(meetingAgendas);
+
+                    // Broadcast to ALL other clients so they refresh agendas instantly
+                    attendanceSyncChannelRef.current?.send({
+                        type: 'broadcast',
+                        event: 'written_votes_changed',
+                        payload: { meetingId }
+                    });
                 }
 
                 await refreshAgendasFromDb();
@@ -1091,7 +1139,8 @@ export function StoreProvider({ children }) {
 
         updateAgenda: async (updatedAgenda) => {
             const currentAgenda = stateRef.current.agendas.find(a => a.id === updatedAgenda.id) || {};
-            const normalizedAgenda = withLegacyVoteTotals({ ...currentAgenda, ...updatedAgenda });
+            const mergedAgenda = { ...currentAgenda, ...updatedAgenda };
+            const normalizedAgenda = withLegacyVoteTotals(mergedAgenda);
             if (areAgendaRecordsEqual(currentAgenda, normalizedAgenda)) {
                 return;
             }
@@ -1101,9 +1150,32 @@ export function StoreProvider({ children }) {
                 agendas: prev.agendas.map(a => a.id === updatedAgenda.id ? { ...a, ...normalizedAgenda } : a)
             }));
 
-            const { id, ...fields } = normalizedAgenda;
+            // Only send explicitly changed fields to the DB (NOT all agenda fields).
+            // This prevents accidental overwrites of written_yes/no/abstain columns,
+            // which are managed exclusively by the check_in_member RPC and reconcile logic.
+            const { id, ...passedFields } = updatedAgenda;
+            const dbFields = { ...passedFields };
+
+            // When onsite vote fields change, include the derived votes_* totals
+            const onsiteVoteFields = ['onsite_yes', 'onsite_no', 'onsite_abstain'];
+            const legacyVoteFields = ['votes_yes', 'votes_no', 'votes_abstain'];
+            const hasOnsiteChange = onsiteVoteFields.some(f => Object.prototype.hasOwnProperty.call(passedFields, f));
+            const hasLegacyChange = legacyVoteFields.some(f => Object.prototype.hasOwnProperty.call(passedFields, f));
+
+            if (hasOnsiteChange) {
+                // Recompute legacy totals from the merged (up-to-date) values
+                dbFields.votes_yes = normalizedAgenda.votes_yes;
+                dbFields.votes_no = normalizedAgenda.votes_no;
+                dbFields.votes_abstain = normalizedAgenda.votes_abstain;
+            } else if (hasLegacyChange) {
+                // Non-split mode: use the values as-is from the merged agenda
+                dbFields.votes_yes = normalizedAgenda.votes_yes;
+                dbFields.votes_no = normalizedAgenda.votes_no;
+                dbFields.votes_abstain = normalizedAgenda.votes_abstain;
+            }
+
             suppressAgendaRealtimeUntilRef.current = Date.now() + 1000;
-            const { error } = await supabase.from('agendas').update(fields).eq('id', id);
+            const { error } = await supabase.from('agendas').update(dbFields).eq('id', id);
             if (error) {
                 console.error("FAILED to update Agenda:", error);
             }

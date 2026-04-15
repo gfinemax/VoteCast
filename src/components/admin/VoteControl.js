@@ -11,12 +11,7 @@ const EMPTY_INACTIVE_MEMBER_IDS = [];
 const FastNumericInput = ({ value, onChange, className, disabled, placeholder, innerRef }) => {
     const [localValue, setLocalValue] = useState(value);
     const [isFocused, setIsFocused] = useState(false);
-
-    useEffect(() => {
-        if (!isFocused) {
-            setLocalValue(value);
-        }
-    }, [value, isFocused]);
+    const displayValue = isFocused ? localValue : value;
 
     const handleChange = (e) => {
         const val = e.target.value.replace(/[^0-9]/g, '');
@@ -29,10 +24,11 @@ const FastNumericInput = ({ value, onChange, className, disabled, placeholder, i
             ref={innerRef}
             type="text"
             inputMode="numeric"
-            value={localValue === 0 && !disabled ? '' : localValue}
+            value={(displayValue === 0 || displayValue === '0') && !disabled ? '' : displayValue}
             placeholder={placeholder}
             onFocus={(e) => {
                 setIsFocused(true);
+                setLocalValue(value);
                 e.target.select();
             }}
             onBlur={() => setIsFocused(false)}
@@ -47,7 +43,7 @@ export default function VoteControl() {
     const { state, actions } = useStore();
     const { updateAgenda, setDeclarationEditMode, setAgendaTypeLock } = actions;
     const { members, attendance, agendas, currentAgendaId, voteData } = state;
-    const [isReadyToConfirm, setIsReadyToConfirm] = useState(false);
+    const [confirmReadyAgendaId, setConfirmReadyAgendaId] = useState(null);
     const [confirmModalState, setConfirmModalState] = useState({ isOpen: false, type: null }); // type: 'confirm' | 'reset'
     const inactiveMemberIds = Array.isArray(voteData?.inactiveMemberIds) ? voteData.inactiveMemberIds : EMPTY_INACTIVE_MEMBER_IDS;
     const activeMemberIdSet = useMemo(() => {
@@ -61,6 +57,12 @@ export default function VoteControl() {
     const activeMembers = useMemo(() => {
         return members.filter(member => activeMemberIdSet.has(member.id));
     }, [activeMemberIdSet, members]);
+
+    const [localVoteDraft, setLocalVoteDraft] = useState({
+        agendaId: null,
+        values: { yes: 0, no: 0, abstain: 0 },
+        dirty: false
+    });
 
     // 1. Identify Context (Current Agenda & Meeting/Folder)
     const currentAgenda = agendas.find(a => a.id === currentAgendaId);
@@ -100,13 +102,19 @@ export default function VoteControl() {
     const votesNo = isConfirmed ? snapshot.votes.no : finalVoteTotals.no;
     const votesAbstain = isConfirmed ? snapshot.votes.abstain : finalVoteTotals.abstain;
     const declaration = isConfirmed ? snapshot.declaration : (currentAgenda?.declaration || '');
-    const editableVoteFieldMap = hasSplitVoteColumns
-        ? { yes: 'onsite_yes', no: 'onsite_no', abstain: 'onsite_abstain' }
-        : { yes: 'votes_yes', no: 'votes_no', abstain: 'votes_abstain' };
     const totalWrittenVotes = writtenVoteTotals.yes + writtenVoteTotals.no + writtenVoteTotals.abstain;
     const editableVotesYes = onsiteVoteTotals.yes;
     const editableVotesNo = onsiteVoteTotals.no;
     const editableVotesAbstain = onsiteVoteTotals.abstain;
+    const syncedLocalVotes = {
+        yes: editableVotesYes,
+        no: editableVotesNo,
+        abstain: editableVotesAbstain
+    };
+    const isDraftForCurrentAgenda = localVoteDraft.agendaId === currentAgendaId;
+    const localVotes = isDraftForCurrentAgenda ? localVoteDraft.values : syncedLocalVotes;
+    const isLocalDirty = isDraftForCurrentAgenda && localVoteDraft.dirty;
+    const isReadyToConfirm = confirmReadyAgendaId === currentAgendaId;
 
     // Vote Type Map
     const currentAgendaType = normalizeAgendaType(currentAgenda?.type);
@@ -220,60 +228,78 @@ export default function VoteControl() {
         }
     };
 
-    const handleVoteUpdate = (field, rawValue) => {
-        if (isConfirmed) return;
-        if (!currentAgenda) return;
+    const handleLocalVoteChange = (fieldKey, rawValue) => {
+        if (isConfirmed || !currentAgenda) return;
 
-        // Explicitly treat empty string as 0
         const value = (rawValue === '' || rawValue === null || rawValue === undefined) ? 0 : parseInt(rawValue);
         if (isNaN(value)) return;
 
-        let updates = { [field]: value };
+        let newLocal = { ...localVotes, [fieldKey]: value };
 
-        // Auto-Calc Logic
         if (isAutoCalc) {
-            if (hasSplitVoteColumns) {
-                if (field === 'onsite_yes') {
-                    const currentAbstain = editableVotesAbstain;
-                    const nextNo = Math.max(0, displayStats.total - totalWrittenVotes - value - currentAbstain);
-                    updates.onsite_no = nextNo;
-                } else if (field === 'onsite_no') {
-                    const currentAbstain = editableVotesAbstain;
-                    const nextYes = Math.max(0, displayStats.total - totalWrittenVotes - value - currentAbstain);
-                    updates.onsite_yes = nextYes;
-                } else if (field === 'onsite_abstain') {
-                    const currentYes = editableVotesYes;
-                    const nextNo = Math.max(0, displayStats.total - totalWrittenVotes - currentYes - value);
-                    updates.onsite_no = nextNo;
-                }
-            } else if (field === 'votes_yes') {
-                const currentAbstain = votesAbstain;
-                const nextNo = Math.max(0, displayStats.total - value - currentAbstain);
-                updates.votes_no = nextNo;
-            } else if (field === 'votes_no') {
-                const currentAbstain = votesAbstain;
-                const nextYes = Math.max(0, displayStats.total - value - currentAbstain);
-                updates.votes_yes = nextYes;
-            } else if (field === 'votes_abstain') {
-                const currentYes = votesYes;
-                const nextNo = Math.max(0, displayStats.total - currentYes - value);
-                updates.votes_no = nextNo;
+            const currentTotal = hasSplitVoteColumns ? displayStats.total - totalWrittenVotes : displayStats.total;
+            if (fieldKey === 'yes') {
+                const currentAbstain = parseInt(localVotes.abstain) || 0;
+                newLocal.no = Math.max(0, currentTotal - value - currentAbstain);
+            } else if (fieldKey === 'no') {
+                const currentAbstain = parseInt(localVotes.abstain) || 0;
+                newLocal.yes = Math.max(0, currentTotal - value - currentAbstain);
+            } else if (fieldKey === 'abstain') {
+                const currentYes = parseInt(localVotes.yes) || 0;
+                newLocal.no = Math.max(0, currentTotal - currentYes - value);
             }
         }
 
+        setLocalVoteDraft({
+            agendaId: currentAgenda.id,
+            values: newLocal,
+            dirty: true
+        });
+        setConfirmReadyAgendaId(null);
+    };
+
+    const handleApplyLocalVotes = () => {
+        if (isConfirmed || !currentAgenda) return;
+        const y = parseInt(localVotes.yes) || 0;
+        const n = parseInt(localVotes.no) || 0;
+        const a = parseInt(localVotes.abstain) || 0;
+
+        let updates = {};
+        if (hasSplitVoteColumns) {
+            updates.onsite_yes = y;
+            updates.onsite_no = n;
+            updates.onsite_abstain = a;
+        } else {
+            updates.votes_yes = y;
+            updates.votes_no = n;
+            updates.votes_abstain = a;
+        }
+        
         updateAgenda({ id: currentAgenda.id, ...updates });
+        setLocalVoteDraft({
+            agendaId: currentAgenda.id,
+            values: { yes: y, no: n, abstain: a },
+            dirty: false
+        });
+        setConfirmReadyAgendaId(null);
     };
 
     const handleAutoSum = () => {
         if (isConfirmed || !currentAgenda) return;
-        const remainder = hasSplitVoteColumns
-            ? Math.max(0, displayStats.total - totalWrittenVotes - editableVotesNo - editableVotesAbstain)
-            : Math.max(0, displayStats.total - votesNo - votesAbstain);
-        handleVoteUpdate(editableVoteFieldMap.yes, remainder);
+        const currentTotal = hasSplitVoteColumns ? displayStats.total - totalWrittenVotes : displayStats.total;
+        const remainder = Math.max(0, currentTotal - (parseInt(localVotes.no) || 0) - (parseInt(localVotes.abstain) || 0));
+        handleLocalVoteChange('yes', remainder);
     };
 
     const handleResetEditableVotes = () => {
         if (isConfirmed || !currentAgenda) return;
+        
+        setLocalVoteDraft({
+            agendaId: currentAgenda.id,
+            values: { yes: 0, no: 0, abstain: 0 },
+            dirty: false
+        });
+        setConfirmReadyAgendaId(null);
 
         if (hasSplitVoteColumns) {
             updateAgenda({
@@ -294,6 +320,7 @@ export default function VoteControl() {
     };
 
     const handleConfirmDecision = () => {
+        if (isLocalDirty) return;
         setConfirmModalState({ isOpen: true, type: 'confirm' });
     };
 
@@ -314,7 +341,7 @@ export default function VoteControl() {
             setConfirmModalState({ isOpen: false, type: null });
         } else if (confirmModalState.type === 'reset') {
             updateAgenda({ id: currentAgenda.id, vote_snapshot: null });
-            setIsReadyToConfirm(false); // Reset the checkbox state when resetting
+            setConfirmReadyAgendaId(null);
             setConfirmModalState({ isOpen: false, type: null });
         }
     };
@@ -323,7 +350,12 @@ export default function VoteControl() {
 
     // Helper for Total Votes Cast
     const totalVotesCast = votesYes + votesNo + votesAbstain;
-    const isVoteCountValid = totalVotesCast === displayStats.total;
+    const localTotalVotesCast = hasSplitVoteColumns 
+        ? totalWrittenVotes + (parseInt(localVotes.yes) || 0) + (parseInt(localVotes.no) || 0) + (parseInt(localVotes.abstain) || 0)
+        : (parseInt(localVotes.yes) || 0) + (parseInt(localVotes.no) || 0) + (parseInt(localVotes.abstain) || 0);
+
+    const displayTotalVotesCast = isLocalDirty ? localTotalVotesCast : totalVotesCast;
+    const isVoteCountValid = displayTotalVotesCast === displayStats.total;
     const voteTypeOptions = [
         {
             value: 'majority',
@@ -359,10 +391,9 @@ export default function VoteControl() {
             key: 'yes',
             summaryLabel: '전체 찬성',
             inputLabel: '현장 찬성',
-            totalValue: votesYes,
+            totalValue: writtenVoteTotals.yes + (parseInt(localVotes.yes) || 0),
             writtenValue: writtenVoteTotals.yes,
-            onsiteValue: editableVotesYes,
-            updateField: editableVoteFieldMap.yes,
+            onsiteValue: localVotes.yes,
             tone: {
                 rowTint: 'border-emerald-900/50 bg-emerald-900/10',
                 labelBadge: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20',
@@ -376,10 +407,9 @@ export default function VoteControl() {
             key: 'no',
             summaryLabel: '전체 반대',
             inputLabel: '현장 반대',
-            totalValue: votesNo,
+            totalValue: writtenVoteTotals.no + (parseInt(localVotes.no) || 0),
             writtenValue: writtenVoteTotals.no,
-            onsiteValue: editableVotesNo,
-            updateField: editableVoteFieldMap.no,
+            onsiteValue: localVotes.no,
             tone: {
                 rowTint: 'border-rose-900/50 bg-rose-900/10',
                 labelBadge: 'bg-rose-500/10 text-rose-400 border-rose-500/20',
@@ -393,10 +423,9 @@ export default function VoteControl() {
             key: 'abstain',
             summaryLabel: '전체 기권/무효',
             inputLabel: '현장 기권/무효',
-            totalValue: votesAbstain,
+            totalValue: writtenVoteTotals.abstain + (parseInt(localVotes.abstain) || 0),
             writtenValue: writtenVoteTotals.abstain,
-            onsiteValue: editableVotesAbstain,
-            updateField: editableVoteFieldMap.abstain,
+            onsiteValue: localVotes.abstain,
             tone: {
                 rowTint: 'border-slate-800 bg-slate-800/40',
                 labelBadge: 'bg-slate-700/50 text-slate-300 border-slate-600/50',
@@ -575,7 +604,7 @@ export default function VoteControl() {
                                 <div className="flex items-center gap-6 divide-x divide-slate-200/60 w-full md:w-auto">
                                     <div className="flex flex-col">
                                         <span className="text-xs font-bold text-slate-500 mb-0.5 tracking-wide">총 투표수</span>
-                                        <span className="text-2xl font-black text-blue-700">{totalVotesCast}<span className="text-sm font-semibold text-blue-500 ml-1">표</span></span>
+                                        <span className="text-2xl font-black text-blue-700">{displayTotalVotesCast}<span className="text-sm font-semibold text-blue-500 ml-1">표</span></span>
                                     </div>
                                     <div className="flex flex-col pl-6">
                                         <span className="text-xs font-bold text-slate-500 mb-0.5 tracking-wide">성원(참석자)</span>
@@ -586,7 +615,7 @@ export default function VoteControl() {
                                         <div className="text-base font-medium text-slate-600 mt-0.5">
                                             서면 <span className="font-bold text-slate-800">{totalWrittenVotes}</span>
                                             <span className="text-slate-300 mx-2">+</span>
-                                            현장 <span className="font-bold text-slate-800">{editableVotesYes + editableVotesNo + editableVotesAbstain}</span>
+                                            현장 <span className="font-bold text-slate-800">{(parseInt(localVotes.yes) || 0) + (parseInt(localVotes.no) || 0) + (parseInt(localVotes.abstain) || 0)}</span>
                                         </div>
                                     </div>
                                 </div>
@@ -603,7 +632,7 @@ export default function VoteControl() {
                                     ) : (
                                         <>
                                             <AlertTriangle size={20} className="mb-0.5" />
-                                            <span className="text-sm font-bold tracking-tight">{displayStats.total - totalVotesCast}표 부족</span>
+                                            <span className="text-sm font-bold tracking-tight">{displayStats.total - displayTotalVotesCast}표 부족</span>
                                         </>
                                     )}
                                 </div>
@@ -611,8 +640,22 @@ export default function VoteControl() {
 
                             <div className="rounded-2xl border border-slate-800 bg-slate-900 px-4 py-3 shadow-[0_12px_40px_-15px_rgba(0,0,0,0.5)]">
                                 <div className="mb-2 flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between border-b border-slate-800 pb-2">
-                                    <div className="text-lg font-black text-white ml-2">현장 투표 입력</div>
+                                    <div className="flex items-center gap-3 ml-2">
+                                        <div className="text-lg font-black text-white">현장 투표 입력</div>
+                                        <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-800 border border-slate-700">
+                                            <span className="text-xs font-bold text-slate-400">현장투표인원</span>
+                                            <span className="text-sm font-black text-blue-400 tabular-nums">{displayStats.direct + displayStats.proxy}명</span>
+                                        </div>
+                                    </div>
                                     <div className="flex flex-wrap items-center gap-2">
+                                        {isLocalDirty && (
+                                            <button
+                                                onClick={handleApplyLocalVotes}
+                                                className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold rounded-lg bg-blue-600 text-white shadow-md hover:bg-blue-700 transition-colors animate-pulse mr-2"
+                                            >
+                                                <Save size={14} /> 입력 완료 (선포문구 반영)
+                                            </button>
+                                        )}
                                         {!isConfirmed && (
                                             <button
                                                 onClick={() => setIsAutoCalc(!isAutoCalc)}
@@ -671,7 +714,7 @@ export default function VoteControl() {
                                                     value={card.onsiteValue}
                                                     placeholder="0"
                                                     onChange={(val) => {
-                                                        handleVoteUpdate(card.updateField, val);
+                                                        handleLocalVoteChange(card.key, val);
                                                     }}
                                                     disabled={isConfirmed}
                                                     className={`w-full rounded-xl border px-3 py-2 text-center text-2xl md:text-3xl font-black shadow-[inset_0_2px_4px_rgba(0,0,0,0.06)] outline-none disabled:bg-slate-50 disabled:text-slate-400 transition-all ${card.tone.inputBox}`}
@@ -699,7 +742,7 @@ export default function VoteControl() {
                                 <div className="flex items-center gap-6 divide-x divide-slate-200">
                                     <div className="flex flex-col">
                                         <span className="text-xs font-semibold text-slate-400 mb-1">총 투표수</span>
-                                        <span className="text-2xl font-black text-blue-700">{totalVotesCast}<span className="text-sm font-normal ml-1">표</span></span>
+                                        <span className="text-2xl font-black text-blue-700">{displayTotalVotesCast}<span className="text-sm font-normal ml-1">표</span></span>
                                     </div>
                                     <div className="flex flex-col pl-6">
                                         <span className="text-xs font-semibold text-slate-400 mb-1">성원(참석자)</span>
@@ -719,7 +762,7 @@ export default function VoteControl() {
                                     ) : (
                                         <>
                                             <AlertTriangle size={24} className="mb-1" />
-                                            <span className="text-sm font-bold">{displayStats.total - totalVotesCast}표 부족</span>
+                                            <span className="text-sm font-bold">{displayStats.total - displayTotalVotesCast}표 부족</span>
                                         </>
                                     )}
                                 </div>
@@ -729,6 +772,14 @@ export default function VoteControl() {
                                 <div className="mb-3 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between border-b border-slate-100 pb-3">
                                     <div className="text-lg font-black text-slate-800">투표 결과 직접 입력</div>
                                     <div className="flex flex-wrap items-center gap-2 bg-slate-50 p-2 rounded-xl border border-slate-100">
+                                        {isLocalDirty && (
+                                            <button
+                                                onClick={handleApplyLocalVotes}
+                                                className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold rounded-lg bg-blue-600 text-white shadow-md hover:bg-blue-700 transition-colors animate-pulse"
+                                            >
+                                                <Save size={14} /> 입력 완료 (선포문구 반영)
+                                            </button>
+                                        )}
                                         {!isConfirmed && (
                                             <button
                                                 onClick={() => setIsAutoCalc(!isAutoCalc)}
@@ -768,9 +819,9 @@ export default function VoteControl() {
                                             )}
                                         </label>
                                         <FastNumericInput
-                                            value={editableVotesYes}
+                                            value={localVotes.yes}
                                             placeholder="0"
-                                            onChange={(val) => handleVoteUpdate(editableVoteFieldMap.yes, val)}
+                                            onChange={(val) => handleLocalVoteChange('yes', val)}
                                             disabled={isConfirmed}
                                             className="w-full p-4 border-2 border-emerald-200 rounded-xl text-center text-4xl font-black text-emerald-800 bg-white shadow-inner outline-none caret-emerald-700 focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100 disabled:bg-slate-100 disabled:text-slate-500 transition-all"
                                         />
@@ -778,9 +829,9 @@ export default function VoteControl() {
                                     <div className="flex flex-col gap-2 bg-red-50/50 p-4 border border-red-100 rounded-2xl transition-colors hover:bg-red-50">
                                         <label className="text-base font-bold text-red-800">반대</label>
                                         <FastNumericInput
-                                            value={editableVotesNo}
+                                            value={localVotes.no}
                                             placeholder="0"
-                                            onChange={(val) => handleVoteUpdate(editableVoteFieldMap.no, val)}
+                                            onChange={(val) => handleLocalVoteChange('no', val)}
                                             disabled={isConfirmed}
                                             className="w-full p-4 border-2 border-red-200 rounded-xl text-center text-4xl font-black text-red-800 bg-white shadow-inner outline-none caret-red-700 focus:border-red-500 focus:ring-4 focus:ring-red-100 disabled:bg-slate-100 disabled:text-slate-500 transition-all"
                                         />
@@ -788,9 +839,9 @@ export default function VoteControl() {
                                     <div className="flex flex-col gap-2 bg-slate-50/50 p-4 border border-slate-200 rounded-2xl transition-colors hover:bg-slate-50">
                                         <label className="text-base font-bold text-slate-600">기권/무효</label>
                                         <FastNumericInput
-                                            value={editableVotesAbstain}
+                                            value={localVotes.abstain}
                                             placeholder="0"
-                                            onChange={(val) => handleVoteUpdate(editableVoteFieldMap.abstain, val)}
+                                            onChange={(val) => handleLocalVoteChange('abstain', val)}
                                             disabled={isConfirmed}
                                             className="w-full p-4 border-2 border-slate-200 rounded-xl text-center text-4xl font-black text-slate-600 bg-white shadow-inner outline-none caret-slate-600 focus:border-slate-400 focus:ring-4 focus:ring-slate-100 disabled:bg-slate-100 disabled:text-slate-400 transition-all"
                                         />
@@ -873,7 +924,7 @@ export default function VoteControl() {
                             <button
                                 onClick={() => {
                                     handleResetDecision();
-                                    setIsReadyToConfirm(false);
+                                    setConfirmReadyAgendaId(null);
                                 }}
                                 className="mt-2 flex items-center gap-2 text-slate-500 bg-white border border-slate-200 px-5 py-2.5 rounded-xl hover:bg-slate-100 transition-all font-semibold"
                             >
@@ -888,22 +939,28 @@ export default function VoteControl() {
                                     type="checkbox" 
                                     className="w-5 h-5 accent-blue-600 cursor-pointer rounded" 
                                     checked={isReadyToConfirm}
-                                    onChange={(e) => setIsReadyToConfirm(e.target.checked)}
+                                    disabled={isLocalDirty}
+                                    onChange={(e) => setConfirmReadyAgendaId(e.target.checked ? currentAgendaId : null)}
                                 />
                                 <span className="font-semibold text-slate-700">모든 결과를 확인하였으며, 확정합니다.</span>
                             </label>
+                            {isLocalDirty && (
+                                <div className="w-full rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-center text-sm font-semibold text-amber-700">
+                                    현장 투표 입력이 아직 반영되지 않았습니다. `입력 완료`를 눌러 선포문구와 DB에 반영한 뒤 확정하세요.
+                                </div>
+                            )}
                             <button
                                 onClick={() => {
                                     handleConfirmDecision();
                                 }}
-                                disabled={!isReadyToConfirm}
+                                disabled={!isReadyToConfirm || isLocalDirty}
                                 className={`w-full flex items-center justify-center gap-2 px-6 py-4 rounded-xl transition-all font-bold text-xl ${
-                                    isReadyToConfirm 
+                                    isReadyToConfirm && !isLocalDirty
                                     ? 'bg-blue-600 border border-blue-700 text-white hover:bg-blue-700 hover:shadow-lg shadow-md' 
                                     : 'bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed shadow-none opacity-80'
                                 }`}
                             >
-                                <Lock size={22} className={isReadyToConfirm ? 'text-white/90' : 'opacity-50'} />
+                                <Lock size={22} className={isReadyToConfirm && !isLocalDirty ? 'text-white/90' : 'opacity-50'} />
                                 안건 결과 최종 확정
                             </button>
                         </div>
