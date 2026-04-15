@@ -45,6 +45,40 @@ const WINDOW_SYNC_CHANNEL = 'votecast-system-settings-sync';
 const WINDOW_SYNC_STORAGE_KEY = '__votecast_system_settings_sync__';
 const normalizeProjectorModeValue = (mode) => mode === 'ADJUSTING' ? 'RESULT' : (mode || 'IDLE');
 
+const applyWrittenVoteDeltaToAgendaList = (agendas = [], votes = [], delta = 1) => {
+    if (!Array.isArray(votes) || !votes.length || !delta) return agendas;
+
+    const deltasByAgendaId = new Map();
+    votes.forEach((vote) => {
+        const agendaId = parseInt(vote?.agenda_id, 10);
+        const choice = vote?.choice;
+        if (!agendaId || !['yes', 'no', 'abstain'].includes(choice)) return;
+
+        const currentDelta = deltasByAgendaId.get(agendaId) || { yes: 0, no: 0, abstain: 0 };
+        currentDelta[choice] += delta;
+        deltasByAgendaId.set(agendaId, currentDelta);
+    });
+
+    if (!deltasByAgendaId.size) return agendas;
+
+    return agendas.map((agenda) => {
+        const agendaDelta = deltasByAgendaId.get(agenda.id);
+        if (!agendaDelta) return agenda;
+
+        const nextAgenda = {
+            ...agenda,
+            written_yes: Math.max(0, toVoteNumber(agenda.written_yes) + agendaDelta.yes),
+            written_no: Math.max(0, toVoteNumber(agenda.written_no) + agendaDelta.no),
+            written_abstain: Math.max(0, toVoteNumber(agenda.written_abstain) + agendaDelta.abstain),
+            votes_yes: Math.max(0, toVoteNumber(agenda.votes_yes) + agendaDelta.yes),
+            votes_no: Math.max(0, toVoteNumber(agenda.votes_no) + agendaDelta.no),
+            votes_abstain: Math.max(0, toVoteNumber(agenda.votes_abstain) + agendaDelta.abstain)
+        };
+
+        return withLegacyVoteTotals(nextAgenda);
+    });
+};
+
 export const getKeyboardNavigableAgendaIds = (agendas = []) => {
     const groups = [];
     let currentGroup = { folder: null, items: [] };
@@ -722,6 +756,16 @@ export function StoreProvider({ children }) {
                     )
                 }));
             })
+            .on('broadcast', { event: 'written_votes_preview' }, (msg) => {
+                const votes = Array.isArray(msg.payload?.votes) ? msg.payload.votes : [];
+                const delta = Number(msg.payload?.delta) || 0;
+                if (!votes.length || !delta) return;
+                console.log('[Broadcast] Written vote preview received:', delta, votes.length);
+                setState(prev => ({
+                    ...prev,
+                    agendas: applyWrittenVoteDeltaToAgendaList(prev.agendas, votes, delta)
+                }));
+            })
             .on('broadcast', { event: 'written_votes_changed' }, async () => {
                 console.log('[Broadcast] Written votes changed — refreshing agendas');
                 await refreshAgendasFromDb();
@@ -912,6 +956,8 @@ export function StoreProvider({ children }) {
             }
 
             pendingAttendanceOpsRef.current.add(attendanceKey);
+            const writtenVotePayload = type === 'written' && Array.isArray(votes) ? votes : [];
+            let didApplyWrittenPreview = false;
 
             try {
                 // Optimistic Update (Attendance Only)
@@ -929,6 +975,19 @@ export function StoreProvider({ children }) {
                     ...prev,
                     attendance: [...prev.attendance, newRecord]
                 }));
+
+                if (writtenVotePayload.length) {
+                    setState(prev => ({
+                        ...prev,
+                        agendas: applyWrittenVoteDeltaToAgendaList(prev.agendas, writtenVotePayload, 1)
+                    }));
+                    attendanceSyncChannelRef.current?.send({
+                        type: 'broadcast',
+                        event: 'written_votes_preview',
+                        payload: { meetingId, votes: writtenVotePayload, delta: 1 }
+                    });
+                    didApplyWrittenPreview = true;
+                }
 
                 // Broadcast to other clients BEFORE RPC (RPC can be slow)
                 attendanceSyncChannelRef.current?.send({
@@ -964,6 +1023,17 @@ export function StoreProvider({ children }) {
                                 ...prev,
                                 attendance: prev.attendance.filter(a => a.id !== tempId)
                             }));
+                            if (didApplyWrittenPreview) {
+                                setState(prev => ({
+                                    ...prev,
+                                    agendas: applyWrittenVoteDeltaToAgendaList(prev.agendas, writtenVotePayload, -1)
+                                }));
+                                attendanceSyncChannelRef.current?.send({
+                                    type: 'broadcast',
+                                    event: 'written_votes_preview',
+                                    payload: { meetingId, votes: writtenVotePayload, delta: -1 }
+                                });
+                            }
                             return;
                         }
                     } else {
@@ -973,6 +1043,17 @@ export function StoreProvider({ children }) {
                             ...prev,
                             attendance: prev.attendance.filter(a => a.id !== tempId)
                         }));
+                        if (didApplyWrittenPreview) {
+                            setState(prev => ({
+                                ...prev,
+                                agendas: applyWrittenVoteDeltaToAgendaList(prev.agendas, writtenVotePayload, -1)
+                            }));
+                            attendanceSyncChannelRef.current?.send({
+                                type: 'broadcast',
+                                event: 'written_votes_preview',
+                                payload: { meetingId, votes: writtenVotePayload, delta: -1 }
+                            });
+                        }
                         return;
                     }
                 }
@@ -1018,12 +1099,36 @@ export function StoreProvider({ children }) {
 
             const hadWrittenAttendance = existingRecords.some((record) => record.type === 'written');
             pendingAttendanceOpsRef.current.add(attendanceKey);
+            let writtenVotePayload = [];
+            let didApplyWrittenPreview = false;
 
             try {
+                if (hadWrittenAttendance) {
+                    const { data: existingWrittenVotes } = await supabase
+                        .from('written_votes')
+                        .select('agenda_id, choice')
+                        .eq('member_id', memberId)
+                        .eq('meeting_id', meetingId);
+                    writtenVotePayload = Array.isArray(existingWrittenVotes) ? existingWrittenVotes : [];
+                }
+
                 setState(prev => ({
                     ...prev,
                     attendance: prev.attendance.filter(a => !(a.member_id === memberId && a.meeting_id === meetingId))
                 }));
+
+                if (writtenVotePayload.length) {
+                    setState(prev => ({
+                        ...prev,
+                        agendas: applyWrittenVoteDeltaToAgendaList(prev.agendas, writtenVotePayload, -1)
+                    }));
+                    attendanceSyncChannelRef.current?.send({
+                        type: 'broadcast',
+                        event: 'written_votes_preview',
+                        payload: { meetingId, votes: writtenVotePayload, delta: -1 }
+                    });
+                    didApplyWrittenPreview = true;
+                }
 
                 // Broadcast to other clients BEFORE RPC (RPC can be slow)
                 attendanceSyncChannelRef.current?.send({
@@ -1048,10 +1153,32 @@ export function StoreProvider({ children }) {
                             .eq('meeting_id', meetingId);
                         if (fallbackError) {
                             console.error("Fallback Cancel Check-in Failed:", fallbackError);
+                            if (didApplyWrittenPreview) {
+                                setState(prev => ({
+                                    ...prev,
+                                    agendas: applyWrittenVoteDeltaToAgendaList(prev.agendas, writtenVotePayload, 1)
+                                }));
+                                attendanceSyncChannelRef.current?.send({
+                                    type: 'broadcast',
+                                    event: 'written_votes_preview',
+                                    payload: { meetingId, votes: writtenVotePayload, delta: 1 }
+                                });
+                            }
                             return;
                         }
                     } else {
                         console.error("Cancel Check-in Failed:", error);
+                        if (didApplyWrittenPreview) {
+                            setState(prev => ({
+                                ...prev,
+                                agendas: applyWrittenVoteDeltaToAgendaList(prev.agendas, writtenVotePayload, 1)
+                            }));
+                            attendanceSyncChannelRef.current?.send({
+                                type: 'broadcast',
+                                event: 'written_votes_preview',
+                                payload: { meetingId, votes: writtenVotePayload, delta: 1 }
+                            });
+                        }
                         return;
                     }
                 }
