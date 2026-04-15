@@ -1516,15 +1516,24 @@ export function StoreProvider({ children }) {
         },
 
         setProjectorMode: async (mode, data = null) => {
+            const currentVoteData = stateRef.current.voteData || {};
+            const nextVoteData = (mode === 'RESULT' && data?.declaration !== undefined)
+                ? { ...currentVoteData, customDeclaration: data.declaration || '' }
+                : currentVoteData;
+
             // Save both mode AND data to state
             setState(prev => ({
                 ...prev,
                 projectorMode: mode,
-                projectorData: data  // This was missing!
+                projectorData: data,
+                voteData: nextVoteData
             }));
 
             const { error } = await supabase.from('system_settings')
-                .update({ projector_mode: mode })
+                .update({
+                    projector_mode: mode,
+                    vote_data: nextVoteData
+                })
                 .eq('id', 1);
 
             if (error) {
@@ -1534,7 +1543,36 @@ export function StoreProvider({ children }) {
 
             broadcastSystemSettingsSync({
                 projector_mode: mode,
-                projector_data: data
+                projector_data: data,
+                vote_data: nextVoteData
+            });
+        },
+
+        updateProjectorData: async (data) => {
+            const currentVoteData = stateRef.current.voteData || {};
+            const nextVoteData = {
+                ...currentVoteData,
+                customDeclaration: data?.declaration || ''
+            };
+
+            setState(prev => ({
+                ...prev,
+                projectorData: data,
+                voteData: nextVoteData
+            }));
+
+            const { error } = await supabase.from('system_settings')
+                .update({ vote_data: nextVoteData })
+                .eq('id', 1);
+
+            if (error) {
+                console.error('Update Projector Data Error:', error);
+                return;
+            }
+
+            broadcastSystemSettingsSync({
+                projector_data: data,
+                vote_data: nextVoteData
             });
         },
 

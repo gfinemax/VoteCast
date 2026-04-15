@@ -134,12 +134,16 @@ export default function ProjectorPage() {
         const snapshot = currentAgenda?.vote_snapshot;
         const isConfirmed = !!snapshot;
         const liveVoteBuckets = getAgendaVoteBuckets(currentAgenda);
+        const projectorDeclaration = projectorMode === 'RESULT'
+            ? String(voteData?.customDeclaration || '').trim()
+            : '';
 
         const totalAttendance = isConfirmed ? snapshot.stats.total : meetingStats.total;
         const votesYes = isConfirmed ? snapshot.votes.yes : liveVoteBuckets.final.yes;
         const votesNo = isConfirmed ? snapshot.votes.no : liveVoteBuckets.final.no;
         const votesAbstain = isConfirmed ? snapshot.votes.abstain : liveVoteBuckets.final.abstain;
-        const customDeclaration = isConfirmed ? snapshot.declaration : (currentAgenda?.declaration || '');
+        const customDeclaration = projectorDeclaration
+            || (isConfirmed ? snapshot.declaration : (currentAgenda?.declaration || ''));
 
         const currentAgendaType = normalizeAgendaType(currentAgenda?.type);
         const isSpecialVote = currentAgendaType === 'twoThirds';
@@ -171,7 +175,7 @@ export default function ProjectorPage() {
             customDeclaration,
             isSpecialVote
         };
-    }, [currentAgenda, meetingStats]);
+    }, [currentAgenda, meetingStats, projectorMode, voteData?.customDeclaration]);
 
 
 

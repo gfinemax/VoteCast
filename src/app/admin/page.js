@@ -58,6 +58,8 @@ export default function AdminPage() {
     const passThreshold = isSpecialVote ? Math.ceil(totalAttendance * (2 / 3)) : (totalAttendance / 2);
     const voteBuckets = getAgendaVoteBuckets(currentAgenda);
     const votesYes = voteBuckets.final.yes;
+    const votesNo = voteBuckets.final.no;
+    const votesAbstain = voteBuckets.final.abstain;
     const isPassed = votesYes >= passThreshold;
 
     const totalVotesCast = voteBuckets.final.yes + voteBuckets.final.no + voteBuckets.final.abstain;
@@ -69,8 +71,13 @@ export default function AdminPage() {
         }
         actions.setProjectorMode('RESULT', {
             ...voteData,
+            agendaId: currentAgenda.id,
             totalAttendance,
             agendaTitle: currentAgenda.title,
+            declaration: currentAgenda.declaration || '',
+            votesYes,
+            votesNo,
+            votesAbstain,
             isPassed,
             timestamp: new Date().toLocaleTimeString()
         });

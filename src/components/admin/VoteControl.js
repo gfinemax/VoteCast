@@ -41,8 +41,8 @@ const FastNumericInput = ({ value, onChange, className, disabled, placeholder, i
 
 export default function VoteControl() {
     const { state, actions } = useStore();
-    const { updateAgenda, setDeclarationEditMode, setAgendaTypeLock } = actions;
-    const { members, attendance, agendas, currentAgendaId, voteData } = state;
+    const { updateAgenda, setDeclarationEditMode, setAgendaTypeLock, updateProjectorData } = actions;
+    const { members, attendance, agendas, currentAgendaId, voteData, projectorMode, projectorData } = state;
     const [confirmReadyAgendaId, setConfirmReadyAgendaId] = useState(null);
     const [confirmModalState, setConfirmModalState] = useState({ isOpen: false, type: null }); // type: 'confirm' | 'reset'
     const inactiveMemberIds = Array.isArray(voteData?.inactiveMemberIds) ? voteData.inactiveMemberIds : EMPTY_INACTIVE_MEMBER_IDS;
@@ -182,12 +182,25 @@ export default function VoteControl() {
         setDeclarationEditMode(currentAgendaId, isEditingDeclaration, value);
     };
 
+    const syncProjectorDeclaration = useCallback((nextDeclaration) => {
+        if (projectorMode !== 'RESULT' || !currentAgenda) return;
+
+        const nextProjectorData = {
+            ...(projectorData || {}),
+            agendaId: currentAgenda.id,
+            agendaTitle: currentAgenda.title,
+            declaration: nextDeclaration
+        };
+        updateProjectorData(nextProjectorData);
+    }, [currentAgenda, projectorData, projectorMode, updateProjectorData]);
+
     // Save declaration to DB (called when clicking Done)
     const saveDeclaration = useCallback(() => {
         if (currentAgenda && localDeclaration !== declaration) {
             updateAgenda({ id: currentAgenda.id, declaration: localDeclaration });
+            syncProjectorDeclaration(localDeclaration);
         }
-    }, [currentAgenda, declaration, localDeclaration, updateAgenda]);
+    }, [currentAgenda, declaration, localDeclaration, syncProjectorDeclaration, updateAgenda]);
 
     // Declaration Auto-Update (only when NOT editing)
     useEffect(() => {
@@ -196,9 +209,10 @@ export default function VoteControl() {
             const newDecl = generateDefaultDeclaration();
             if (newDecl !== currentAgenda.declaration) {
                 updateAgenda({ id: currentAgenda.id, declaration: newDecl });
+                syncProjectorDeclaration(newDecl);
             }
         }
-    }, [currentAgenda, generateDefaultDeclaration, isAutoCalc, isConfirmed, isEditingDeclaration, updateAgenda]);
+    }, [currentAgenda, generateDefaultDeclaration, isAutoCalc, isConfirmed, isEditingDeclaration, syncProjectorDeclaration, updateAgenda]);
 
     useEffect(() => {
         if (!hasSplitVoteColumns || isConfirmed) return undefined;
@@ -289,6 +303,9 @@ export default function VoteControl() {
         }
         
         updateAgenda({ id: currentAgenda.id, ...updates });
+        if (updates.declaration) {
+            syncProjectorDeclaration(updates.declaration);
+        }
         setLocalVoteDraft({
             agendaId: currentAgenda.id,
             values: { yes: y, no: n, abstain: a },
@@ -334,6 +351,9 @@ export default function VoteControl() {
         });
         setConfirmReadyAgendaId(null);
         updateAgenda({ id: currentAgenda.id, ...updates });
+        if (updates.declaration) {
+            syncProjectorDeclaration(updates.declaration);
+        }
     };
 
     const handleConfirmDecision = () => {
