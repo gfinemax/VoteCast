@@ -134,26 +134,28 @@ export default function VoteControl() {
     const isDirectSatisfied = !isElection || (displayStats.direct >= directTarget);
     const isQuorumSatisfied = (displayStats.total >= quorumTarget) && isDirectSatisfied;
 
-    // Pass/Fail Logic (derived)
-    const calculatePass = () => {
+    const calculatePass = useCallback((yesCount, totalCount = displayStats.total) => {
         if (isSpecialVote) {
-            return votesYes >= Math.ceil(displayStats.total * (2 / 3));
-        } else {
-            return votesYes > (displayStats.total / 2);
+            return yesCount >= Math.ceil(totalCount * (2 / 3));
         }
-    };
-    const isPassed = calculatePass();
+        return yesCount > (totalCount / 2);
+    }, [displayStats.total, isSpecialVote]);
+    const isPassed = calculatePass(votesYes);
 
     // 3. Declaration Generation
-    const generateDefaultDeclaration = useCallback(() => {
+    const generateDefaultDeclaration = useCallback((overrides = {}) => {
         if (!currentAgenda || displayStats.total === 0) return '';
 
+        const yesCount = overrides.yes ?? votesYes;
+        const noCount = overrides.no ?? votesNo;
+        const abstainCount = overrides.abstain ?? votesAbstain;
         const criterion = isSpecialVote ? "3분의 2 이상" : "과반수 이상";
+        const passed = calculatePass(yesCount, displayStats.total);
 
-        return `"${currentAgenda.title}" 서면결의 포함 찬성(${votesYes})표, 반대(${votesNo})표, 기권(${votesAbstain})표로
-전체 참석자(${displayStats.total.toLocaleString()})명중 ${criterion} ${isPassed ? '찬성으로' : '찬성 미달로'}
-"${currentAgenda.title}"은 ${isPassed ? '가결' : '부결'}되었음을 선포합니다.`;
-    }, [currentAgenda, displayStats.total, isPassed, isSpecialVote, votesAbstain, votesNo, votesYes]);
+        return `"${currentAgenda.title}" 서면결의 포함 찬성(${yesCount})표, 반대(${noCount})표, 기권(${abstainCount})표로
+전체 참석자(${displayStats.total.toLocaleString()})명중 ${criterion} ${passed ? '찬성으로' : '찬성 미달로'}
+"${currentAgenda.title}"은 ${passed ? '가결' : '부결'}되었음을 선포합니다.`;
+    }, [calculatePass, currentAgenda, displayStats.total, isSpecialVote, votesAbstain, votesNo, votesYes]);
 
     // Use GLOBAL state for declaration editing (prevents revert on re-render)
     const declarationEditState = state.declarationEditState?.[currentAgendaId] || { isEditing: false, isAutoCalc: true };
@@ -263,6 +265,13 @@ export default function VoteControl() {
         const y = parseInt(localVotes.yes) || 0;
         const n = parseInt(localVotes.no) || 0;
         const a = parseInt(localVotes.abstain) || 0;
+        const appliedTotals = hasSplitVoteColumns
+            ? {
+                yes: writtenVoteTotals.yes + y,
+                no: writtenVoteTotals.no + n,
+                abstain: writtenVoteTotals.abstain + a
+            }
+            : { yes: y, no: n, abstain: a };
 
         let updates = {};
         if (hasSplitVoteColumns) {
@@ -273,6 +282,10 @@ export default function VoteControl() {
             updates.votes_yes = y;
             updates.votes_no = n;
             updates.votes_abstain = a;
+        }
+
+        if (isAutoCalc && !isEditingDeclaration) {
+            updates.declaration = generateDefaultDeclaration(appliedTotals);
         }
         
         updateAgenda({ id: currentAgenda.id, ...updates });
@@ -293,30 +306,34 @@ export default function VoteControl() {
 
     const handleResetEditableVotes = () => {
         if (isConfirmed || !currentAgenda) return;
-        
+
+        const updates = hasSplitVoteColumns
+            ? {
+                onsite_yes: 0,
+                onsite_no: 0,
+                onsite_abstain: 0
+            }
+            : {
+                votes_yes: 0,
+                votes_no: 0,
+                votes_abstain: 0
+            };
+
+        if (isAutoCalc && !isEditingDeclaration) {
+            updates.declaration = generateDefaultDeclaration({
+                yes: writtenVoteTotals.yes,
+                no: writtenVoteTotals.no,
+                abstain: writtenVoteTotals.abstain
+            });
+        }
+
         setLocalVoteDraft({
             agendaId: currentAgenda.id,
             values: { yes: 0, no: 0, abstain: 0 },
             dirty: false
         });
         setConfirmReadyAgendaId(null);
-
-        if (hasSplitVoteColumns) {
-            updateAgenda({
-                id: currentAgenda.id,
-                onsite_yes: 0,
-                onsite_no: 0,
-                onsite_abstain: 0
-            });
-            return;
-        }
-
-        updateAgenda({
-            id: currentAgenda.id,
-            votes_yes: 0,
-            votes_no: 0,
-            votes_abstain: 0
-        });
+        updateAgenda({ id: currentAgenda.id, ...updates });
     };
 
     const handleConfirmDecision = () => {
@@ -679,8 +696,8 @@ export default function VoteControl() {
                                     </div>
                                 </div>
 
-                                <div className="hidden grid-cols-[minmax(100px,1fr)_1fr_auto_minmax(140px,1.5fr)_auto_1fr] gap-4 px-4 pb-2 text-xs font-bold uppercase tracking-wide text-slate-500 md:grid items-center">
-                                    <div className="text-slate-400">구분</div>
+                                <div className="hidden grid-cols-[88px_minmax(76px,0.7fr)_auto_minmax(180px,1.7fr)_auto_minmax(124px,0.9fr)] gap-4 px-4 pb-3 text-xs font-bold uppercase tracking-wide text-slate-500 lg:grid items-center">
+                                    <div className="text-center text-slate-400">구분</div>
                                     <div className="text-center text-slate-500">서면(고정)</div>
                                     <div className="w-4"></div>
                                     <div className="text-center text-blue-400">현장 입력</div>
@@ -692,23 +709,23 @@ export default function VoteControl() {
                                     {splitVoteDisplayCards.map((card) => (
                                         <div
                                             key={`${card.key}-row`}
-                                            className={`grid grid-cols-1 md:grid-cols-[minmax(100px,1fr)_1fr_auto_minmax(140px,1.5fr)_auto_1fr] gap-3 items-center rounded-2xl border px-3 py-2 transition-colors ${card.tone.rowTint} hover:shadow-md`}
+                                            className={`grid grid-cols-1 lg:grid-cols-[88px_minmax(76px,0.7fr)_auto_minmax(180px,1.7fr)_auto_minmax(124px,0.9fr)] gap-4 lg:gap-4 items-center rounded-2xl border px-4 py-2.5 transition-colors ${card.tone.rowTint} hover:shadow-md`}
                                         >
-                                            <div className="flex items-center justify-between md:block">
-                                                <span className={`inline-flex rounded-lg border px-3 py-1.5 text-sm font-bold shadow-sm ${card.tone.labelBadge}`}>
+                                            <div className="flex items-center justify-between lg:flex lg:justify-center">
+                                                <span className={`inline-flex h-12 w-[88px] items-center justify-center rounded-lg border px-2 text-sm font-bold shadow-sm ${card.tone.labelBadge}`}>
                                                     {card.summaryLabel.replace('전체 ', '')}
                                                 </span>
                                             </div>
 
-                                            <div className="flex items-center justify-between rounded-xl bg-slate-800/30 px-4 py-3 md:bg-transparent md:px-0 md:py-0 md:justify-center">
-                                                <span className="text-xs font-bold text-slate-500 md:hidden">서면(고정)</span>
-                                                <span className={`font-mono text-xl font-bold ${card.tone.writtenText}`}>{card.writtenValue}</span>
+                                            <div className="flex items-center justify-between rounded-xl bg-slate-800/30 px-4 py-3 lg:bg-transparent lg:px-0 lg:py-0 lg:justify-center">
+                                                <span className="text-xs font-bold text-slate-500 lg:hidden">서면(고정)</span>
+                                                <span className={`font-mono text-2xl md:text-[2rem] font-black tabular-nums ${card.tone.writtenText}`}>{card.writtenValue}</span>
                                             </div>
 
-                                            <div className="hidden md:flex justify-center text-slate-700 font-black">+</div>
+                                            <div className="hidden lg:flex justify-center text-slate-700 text-2xl font-black">+</div>
 
-                                            <div className="relative">
-                                                <div className={`mb-1 text-xs font-bold md:hidden ${card.tone.inputLabel}`}>현장 입력</div>
+                                            <div className="relative lg:flex lg:justify-center">
+                                                <div className={`mb-1 text-xs font-bold lg:hidden ${card.tone.inputLabel}`}>현장 입력</div>
                                                 <FastNumericInput
                                                     innerRef={card.key === 'yes' ? primaryOnsiteInputRef : null}
                                                     value={card.onsiteValue}
@@ -717,17 +734,17 @@ export default function VoteControl() {
                                                         handleLocalVoteChange(card.key, val);
                                                     }}
                                                     disabled={isConfirmed}
-                                                    className={`w-full rounded-xl border px-3 py-2 text-center text-2xl md:text-3xl font-black shadow-[inset_0_2px_4px_rgba(0,0,0,0.06)] outline-none disabled:bg-slate-50 disabled:text-slate-400 transition-all ${card.tone.inputBox}`}
+                                                    className={`w-full lg:w-[66%] lg:mx-auto rounded-xl border px-3 py-2 text-center text-2xl md:text-3xl font-black shadow-[inset_0_2px_4px_rgba(0,0,0,0.06)] outline-none disabled:bg-slate-50 disabled:text-slate-400 transition-all ${card.tone.inputBox}`}
                                                 />
                                             </div>
 
-                                            <div className="hidden md:flex justify-center text-slate-700 font-black">=</div>
+                                            <div className="hidden lg:flex justify-center text-slate-700 text-2xl font-black">=</div>
 
-                                            <div className="flex items-center justify-between rounded-xl bg-slate-800/30 px-4 py-3 md:bg-transparent md:px-0 md:py-0 md:justify-center">
-                                                <span className="text-xs font-bold text-slate-500 md:hidden">총 합계</span>
+                                            <div className="flex items-center justify-between rounded-xl bg-slate-800/30 px-4 py-3 lg:bg-transparent lg:px-0 lg:py-0 lg:justify-center">
+                                                <span className="text-xs font-bold text-slate-500 lg:hidden">총 합계</span>
                                                 <div className="flex items-end gap-1">
-                                                    <span className={`font-mono text-2xl font-black ${card.tone.totalText}`}>{card.totalValue}</span>
-                                                    <span className="text-xs font-bold text-slate-400 mb-1">표</span>
+                                                    <span className={`font-mono text-2xl md:text-3xl font-black tabular-nums leading-none ${card.tone.totalText}`}>{card.totalValue}</span>
+                                                    <span className="text-sm font-bold text-slate-400 mb-1 md:mb-0.5">표</span>
                                                 </div>
                                             </div>
                                         </div>
