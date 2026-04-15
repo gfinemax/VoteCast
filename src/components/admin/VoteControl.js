@@ -182,17 +182,27 @@ export default function VoteControl() {
         setDeclarationEditMode(currentAgendaId, isEditingDeclaration, value);
     };
 
-    const syncProjectorDeclaration = useCallback((nextDeclaration) => {
+    const syncProjectorDeclaration = useCallback((nextDeclaration, overrides = {}) => {
         if (projectorMode !== 'RESULT' || !currentAgenda) return;
+
+        const totalAttendance = overrides.totalAttendance ?? displayStats.total;
+        const votesYesForProjector = overrides.yes ?? votesYes;
+        const votesNoForProjector = overrides.no ?? votesNo;
+        const votesAbstainForProjector = overrides.abstain ?? votesAbstain;
 
         const nextProjectorData = {
             ...(projectorData || {}),
             agendaId: currentAgenda.id,
             agendaTitle: currentAgenda.title,
-            declaration: nextDeclaration
+            declaration: nextDeclaration,
+            votesYes: votesYesForProjector,
+            votesNo: votesNoForProjector,
+            votesAbstain: votesAbstainForProjector,
+            totalAttendance,
+            isPassed: calculatePass(votesYesForProjector, totalAttendance)
         };
         updateProjectorData(nextProjectorData);
-    }, [currentAgenda, projectorData, projectorMode, updateProjectorData]);
+    }, [calculatePass, currentAgenda, displayStats.total, projectorData, projectorMode, updateProjectorData, votesAbstain, votesNo, votesYes]);
 
     // Save declaration to DB (called when clicking Done)
     const saveDeclaration = useCallback(() => {
@@ -304,7 +314,12 @@ export default function VoteControl() {
         
         updateAgenda({ id: currentAgenda.id, ...updates });
         if (updates.declaration) {
-            syncProjectorDeclaration(updates.declaration);
+            syncProjectorDeclaration(updates.declaration, {
+                yes: appliedTotals.yes,
+                no: appliedTotals.no,
+                abstain: appliedTotals.abstain,
+                totalAttendance: displayStats.total
+            });
         }
         setLocalVoteDraft({
             agendaId: currentAgenda.id,
@@ -352,7 +367,12 @@ export default function VoteControl() {
         setConfirmReadyAgendaId(null);
         updateAgenda({ id: currentAgenda.id, ...updates });
         if (updates.declaration) {
-            syncProjectorDeclaration(updates.declaration);
+            syncProjectorDeclaration(updates.declaration, {
+                yes: writtenVoteTotals.yes,
+                no: writtenVoteTotals.no,
+                abstain: writtenVoteTotals.abstain,
+                totalAttendance: displayStats.total
+            });
         }
     };
 

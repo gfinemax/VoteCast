@@ -9,6 +9,26 @@ import dynamic from 'next/dynamic';
 
 const PDFViewer = dynamic(() => import('@/components/PDFViewer'), { ssr: false });
 const EMPTY_INACTIVE_MEMBER_IDS = [];
+const parseResultStatsFromDeclaration = (declaration = '') => {
+    const text = String(declaration || '').replace(/\s+/g, ' ');
+    if (!text) return null;
+
+    const yesMatch = text.match(/찬성\((\d+)\)표/);
+    const noMatch = text.match(/반대\((\d+)\)표/);
+    const abstainMatch = text.match(/(?:기권\/무효|기권)\((\d+)\)표/);
+    const totalMatch = text.match(/전체 참석자\((\d+)\)명/);
+
+    if (!yesMatch && !noMatch && !abstainMatch && !totalMatch) {
+        return null;
+    }
+
+    return {
+        votesYes: yesMatch ? parseInt(yesMatch[1], 10) : null,
+        votesNo: noMatch ? parseInt(noMatch[1], 10) : null,
+        votesAbstain: abstainMatch ? parseInt(abstainMatch[1], 10) : null,
+        totalAttendance: totalMatch ? parseInt(totalMatch[1], 10) : null
+    };
+};
 
 export default function ProjectorPage() {
     const { state } = useStore();
@@ -134,16 +154,50 @@ export default function ProjectorPage() {
         const snapshot = currentAgenda?.vote_snapshot;
         const isConfirmed = !!snapshot;
         const liveVoteBuckets = getAgendaVoteBuckets(currentAgenda);
-        const projectorDeclaration = projectorMode === 'RESULT'
-            ? String(voteData?.customDeclaration || '').trim()
+        const isResultSnapshot = projectorMode === 'RESULT' && voteData?.resultAgendaId === currentAgenda?.id;
+        const projectorDeclaration = isResultSnapshot
+            ? String(voteData?.resultDeclaration || voteData?.customDeclaration || '').trim()
             : '';
 
-        const totalAttendance = isConfirmed ? snapshot.stats.total : meetingStats.total;
-        const votesYes = isConfirmed ? snapshot.votes.yes : liveVoteBuckets.final.yes;
-        const votesNo = isConfirmed ? snapshot.votes.no : liveVoteBuckets.final.no;
-        const votesAbstain = isConfirmed ? snapshot.votes.abstain : liveVoteBuckets.final.abstain;
+        const baseTotalAttendance = isResultSnapshot
+            ? (
+                (voteData?.resultTotalAttendance > 0
+                    ? voteData.resultTotalAttendance
+                    : null)
+                ?? meetingStats.total
+            )
+            : (isConfirmed ? snapshot.stats.total : meetingStats.total);
+        const baseVotesYes = isResultSnapshot
+            ? (
+                (voteData?.resultVotesYes > 0
+                    ? voteData.resultVotesYes
+                    : null)
+                ?? liveVoteBuckets.final.yes
+            )
+            : (isConfirmed ? snapshot.votes.yes : liveVoteBuckets.final.yes);
+        const baseVotesNo = isResultSnapshot
+            ? (
+                (voteData?.resultVotesNo > 0
+                    ? voteData.resultVotesNo
+                    : null)
+                ?? liveVoteBuckets.final.no
+            )
+            : (isConfirmed ? snapshot.votes.no : liveVoteBuckets.final.no);
+        const baseVotesAbstain = isResultSnapshot
+            ? (
+                (voteData?.resultVotesAbstain > 0
+                    ? voteData.resultVotesAbstain
+                    : null)
+                ?? liveVoteBuckets.final.abstain
+            )
+            : (isConfirmed ? snapshot.votes.abstain : liveVoteBuckets.final.abstain);
         const customDeclaration = projectorDeclaration
             || (isConfirmed ? snapshot.declaration : (currentAgenda?.declaration || ''));
+        const parsedDeclarationStats = parseResultStatsFromDeclaration(customDeclaration);
+        const totalAttendance = parsedDeclarationStats?.totalAttendance ?? baseTotalAttendance;
+        const resolvedVotesYes = parsedDeclarationStats?.votesYes ?? baseVotesYes;
+        const resolvedVotesNo = parsedDeclarationStats?.votesNo ?? baseVotesNo;
+        const resolvedVotesAbstain = parsedDeclarationStats?.votesAbstain ?? baseVotesAbstain;
 
         const currentAgendaType = normalizeAgendaType(currentAgenda?.type);
         const isSpecialVote = currentAgendaType === 'twoThirds';
@@ -152,30 +206,32 @@ export default function ProjectorPage() {
 
         // Result Logic
         let isPassed = false;
-        if (isConfirmed && snapshot.result) {
+        if (isResultSnapshot) {
+            isPassed = !!voteData?.resultIsPassed;
+        } else if (isConfirmed && snapshot.result) {
             isPassed = snapshot.result === 'PASSED';
         } else {
             // Realtime Limit
             const passThreshold = isSpecialVote ? Math.ceil(totalAttendance * (2 / 3)) : (totalAttendance / 2);
             // Fix logic to match Admin: Special is >=, Majority is >
             if (isSpecialVote) {
-                isPassed = votesYes >= passThreshold;
+                isPassed = resolvedVotesYes >= passThreshold;
             } else {
-                isPassed = votesYes > passThreshold;
+                isPassed = resolvedVotesYes > passThreshold;
             }
         }
 
         return {
             totalAttendance,
-            votesYes,
-            votesNo,
-            votesAbstain,
+            votesYes: resolvedVotesYes,
+            votesNo: resolvedVotesNo,
+            votesAbstain: resolvedVotesAbstain,
             isPassed,
             agendaTitle,
             customDeclaration,
             isSpecialVote
         };
-    }, [currentAgenda, meetingStats, projectorMode, voteData?.customDeclaration]);
+    }, [currentAgenda, meetingStats, projectorMode, voteData]);
 
 
 

@@ -295,14 +295,17 @@ export default function LiveMonitor({ mode = 'admin' }) {
                     {/* Button */}
                     <button
                         onClick={() => handleProjectorAction(() => {
-                            // Toggle Logic Check
                             console.log('[VoteResult] Clicked. Current:', projectorMode);
-                            if (projectorMode === 'RESULT') {
-                                actions.setProjectorMode('ADJUSTING', { agendaTitle: currentAgenda?.title });
-                            } else {
-                                // If IDLE, PPT, WAITING, or ADJUSTING -> Go to RESULT
-                                actions.setProjectorMode('RESULT', { agendaTitle: currentAgenda?.title });
-                            }
+                            actions.setProjectorMode('RESULT', {
+                                agendaId: currentAgenda?.id,
+                                agendaTitle: currentAgenda?.title,
+                                declaration: currentAgenda?.declaration || '',
+                                votesYes,
+                                votesNo,
+                                votesAbstain,
+                                totalAttendance,
+                                isPassed
+                            });
                         })}
                         className={`w-full py-2 px-3 rounded-lg font-semibold text-xs flex items-center justify-center gap-2 transition-all ${projectorMode === 'RESULT'
                             ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/30'

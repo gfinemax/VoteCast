@@ -20,6 +20,13 @@ const INITIAL_DATA = {
         votesNo: 0,
         votesAbstain: 0,
         customDeclaration: '',
+        resultDeclaration: '',
+        resultAgendaId: null,
+        resultVotesYes: 0,
+        resultVotesNo: 0,
+        resultVotesAbstain: 0,
+        resultTotalAttendance: 0,
+        resultIsPassed: false,
         inactiveMemberIds: [],
         agendaTypeLocks: {},
         agendaOrderLocked: false,
@@ -36,6 +43,7 @@ const INITIAL_DATA = {
 
 const WINDOW_SYNC_CHANNEL = 'votecast-system-settings-sync';
 const WINDOW_SYNC_STORAGE_KEY = '__votecast_system_settings_sync__';
+const normalizeProjectorModeValue = (mode) => mode === 'ADJUSTING' ? 'RESULT' : (mode || 'IDLE');
 
 export const getKeyboardNavigableAgendaIds = (agendas = []) => {
     const groups = [];
@@ -281,6 +289,8 @@ export function StoreProvider({ children }) {
                 : null
         } = options;
 
+        const normalizedProjectorMode = normalizeProjectorModeValue(settings.projector_mode);
+
         setState((prev) => ({
             ...prev,
             currentMeetingId: preserveCurrentMeetingId
@@ -289,7 +299,7 @@ export function StoreProvider({ children }) {
             voteData: { ...INITIAL_DATA.voteData, ...(settings.vote_data || {}) },
             currentAgendaId: settings.current_agenda_id || 1,
             activeMeetingId: settings.active_meeting_id || null,
-            projectorMode: settings.projector_mode || 'IDLE',
+            projectorMode: normalizedProjectorMode,
             projectorData,
             masterPresentationSource: settings.master_presentation_source
         }));
@@ -305,6 +315,14 @@ export function StoreProvider({ children }) {
         if (error) {
             console.error('Failed to refresh system settings:', error);
             return null;
+        }
+
+        if (settings.projector_mode === 'ADJUSTING') {
+            await supabase
+                .from('system_settings')
+                .update({ projector_mode: 'RESULT' })
+                .eq('id', 1);
+            settings.projector_mode = 'RESULT';
         }
 
         applySystemSettingsToState(settings, options);
@@ -1518,7 +1536,17 @@ export function StoreProvider({ children }) {
         setProjectorMode: async (mode, data = null) => {
             const currentVoteData = stateRef.current.voteData || {};
             const nextVoteData = (mode === 'RESULT' && data?.declaration !== undefined)
-                ? { ...currentVoteData, customDeclaration: data.declaration || '' }
+                ? {
+                    ...currentVoteData,
+                    customDeclaration: data.declaration || '',
+                    resultDeclaration: data.declaration || '',
+                    resultAgendaId: data.agendaId || null,
+                    resultVotesYes: data.votesYes ?? 0,
+                    resultVotesNo: data.votesNo ?? 0,
+                    resultVotesAbstain: data.votesAbstain ?? 0,
+                    resultTotalAttendance: data.totalAttendance ?? 0,
+                    resultIsPassed: !!data.isPassed
+                }
                 : currentVoteData;
 
             // Save both mode AND data to state
@@ -1552,7 +1580,14 @@ export function StoreProvider({ children }) {
             const currentVoteData = stateRef.current.voteData || {};
             const nextVoteData = {
                 ...currentVoteData,
-                customDeclaration: data?.declaration || ''
+                customDeclaration: data?.declaration || '',
+                resultDeclaration: data?.declaration || '',
+                resultAgendaId: data?.agendaId || currentVoteData.resultAgendaId || null,
+                resultVotesYes: data?.votesYes ?? currentVoteData.resultVotesYes ?? 0,
+                resultVotesNo: data?.votesNo ?? currentVoteData.resultVotesNo ?? 0,
+                resultVotesAbstain: data?.votesAbstain ?? currentVoteData.resultVotesAbstain ?? 0,
+                resultTotalAttendance: data?.totalAttendance ?? currentVoteData.resultTotalAttendance ?? 0,
+                resultIsPassed: data?.isPassed ?? currentVoteData.resultIsPassed ?? false
             };
 
             setState(prev => ({
