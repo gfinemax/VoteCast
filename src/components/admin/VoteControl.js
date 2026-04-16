@@ -2,7 +2,7 @@
 
 import React, { useMemo, useEffect, useState, useCallback, useRef } from 'react';
 import { useStore } from '@/lib/store';
-import { getAgendaAttendanceDisplayStats, getAgendaVoteBuckets, getAttendanceQuorumTarget, getMeetingAttendanceStats, normalizeAgendaType } from '@/lib/store';
+import { getAgendaAttendanceDisplayStats, getAgendaVoteBuckets, getAttendanceQuorumTarget, getElectionAgendaValidationStats, getMeetingAttendanceStats, normalizeAgendaType } from '@/lib/store';
 import { CheckCircle2, AlertTriangle, Trash2, Lock, Unlock, RotateCcw, Save, Wand2 } from 'lucide-react';
 import Card from '@/components/ui/Card';
 
@@ -434,6 +434,26 @@ export default function VoteControl() {
 
     const displayTotalVotesCast = isLocalDirty ? localTotalVotesCast : totalVotesCast;
     const isVoteCountValid = displayTotalVotesCast === displayStats.total;
+    const onsiteVotesCast = hasSplitVoteColumns
+        ? (parseInt(localVotes.yes) || 0) + (parseInt(localVotes.no) || 0) + (parseInt(localVotes.abstain) || 0)
+        : displayTotalVotesCast;
+    const electionValidation = getElectionAgendaValidationStats({
+        agenda: currentAgenda,
+        meetingId,
+        attendance,
+        mailElectionVotes,
+        activeMemberIdSet
+    });
+    const isElectionMailMissing = isElection && electionValidation.missingMailVoteCount > 0;
+    const hasElectionMailOverlap = isElection && electionValidation.overlapMailVoteCount > 0;
+    const isOnsiteVoteOverflow = hasSplitVoteColumns && isElection && onsiteVotesCast > electionValidation.onsiteEligibleCount;
+    const hasElectionValidationIssue = isElection && (
+        isElectionMailMissing
+        || hasElectionMailOverlap
+        || isOnsiteVoteOverflow
+        || displayTotalVotesCast !== electionValidation.expectedTotalVotes
+    );
+    const canConfirmDecision = isReadyToConfirm && !isLocalDirty && isVoteCountValid && !hasElectionValidationIssue;
     const voteTypeOptions = [
         {
             value: 'majority',
@@ -722,6 +742,64 @@ export default function VoteControl() {
                                     )}
                                 </div>
                             </div>
+
+                            {isElection && (
+                                <div className={`rounded-2xl border px-4 py-3 ${
+                                    hasElectionValidationIssue
+                                        ? 'border-amber-200 bg-amber-50'
+                                        : 'border-emerald-200 bg-emerald-50'
+                                }`}>
+                                    <div className={`text-sm font-bold ${hasElectionValidationIssue ? 'text-amber-800' : 'text-emerald-700'}`}>
+                                        선거 안건 검증
+                                    </div>
+                                    <div className="mt-2 flex flex-wrap gap-2 text-xs font-semibold">
+                                        <span className="rounded-full bg-white/80 px-3 py-1 text-slate-700 border border-slate-200">
+                                            우편투표 예상 {electionValidation.expectedMailVoteCount}명
+                                        </span>
+                                        <span className="rounded-full bg-white/80 px-3 py-1 text-slate-700 border border-slate-200">
+                                            우편투표 입력 {electionValidation.actualMailVoteCount}명
+                                        </span>
+                                        <span className="rounded-full bg-white/80 px-3 py-1 text-slate-700 border border-slate-200">
+                                            현장 입력 가능 {electionValidation.onsiteEligibleCount}명
+                                        </span>
+                                        <span className="rounded-full bg-white/80 px-3 py-1 text-slate-700 border border-slate-200">
+                                            선거 기준 총표 {electionValidation.expectedTotalVotes}표
+                                        </span>
+                                    </div>
+                                    <div className="mt-3 space-y-2 text-sm">
+                                        {isElectionMailMissing && (
+                                            <div className="flex items-start gap-2 text-amber-800">
+                                                <AlertTriangle size={16} className="mt-0.5 shrink-0" />
+                                                <span>우편투표 접수 예정 인원 중 이 안건에 미입력된 인원이 {electionValidation.missingMailVoteCount}명 있습니다.</span>
+                                            </div>
+                                        )}
+                                        {hasElectionMailOverlap && (
+                                            <div className="flex items-start gap-2 text-amber-800">
+                                                <AlertTriangle size={16} className="mt-0.5 shrink-0" />
+                                                <span>현장 참석자와 우편투표 입력이 중복된 인원이 {electionValidation.overlapMailVoteCount}명 있습니다. 현장 입력 가능 인원이 자동으로 줄어듭니다.</span>
+                                            </div>
+                                        )}
+                                        {isOnsiteVoteOverflow && (
+                                            <div className="flex items-start gap-2 text-amber-800">
+                                                <AlertTriangle size={16} className="mt-0.5 shrink-0" />
+                                                <span>현장 입력 합계가 {onsiteVotesCast}표로, 입력 가능 인원 {electionValidation.onsiteEligibleCount}명을 초과했습니다.</span>
+                                            </div>
+                                        )}
+                                        {displayTotalVotesCast !== electionValidation.expectedTotalVotes && (
+                                            <div className="flex items-start gap-2 text-amber-800">
+                                                <AlertTriangle size={16} className="mt-0.5 shrink-0" />
+                                                <span>선거 기준 총 투표수는 {electionValidation.expectedTotalVotes}표여야 하나 현재 {displayTotalVotesCast}표입니다.</span>
+                                            </div>
+                                        )}
+                                        {!hasElectionValidationIssue && (
+                                            <div className="flex items-start gap-2 text-emerald-700">
+                                                <CheckCircle2 size={16} className="mt-0.5 shrink-0" />
+                                                <span>우편투표와 현장 입력 구성이 선거 기준과 일치합니다.</span>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
 
                             <div className="rounded-2xl border border-slate-800 bg-slate-900 px-4 py-3 shadow-[0_12px_40px_-15px_rgba(0,0,0,0.5)]">
                                 <div className="mb-2 flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between border-b border-slate-800 pb-2">
@@ -1034,18 +1112,28 @@ export default function VoteControl() {
                                     현장 투표 입력이 아직 반영되지 않았습니다. `입력 완료`를 눌러 선포문구와 DB에 반영한 뒤 확정하세요.
                                 </div>
                             )}
+                            {!isLocalDirty && !isVoteCountValid && (
+                                <div className="w-full rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-center text-sm font-semibold text-red-700">
+                                    총 투표수와 성원(참석자) 수가 일치해야 확정할 수 있습니다.
+                                </div>
+                            )}
+                            {!isLocalDirty && hasElectionValidationIssue && (
+                                <div className="w-full rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-center text-sm font-semibold text-amber-700">
+                                    선거 안건 검증 경고를 모두 해소해야 확정할 수 있습니다.
+                                </div>
+                            )}
                             <button
                                 onClick={() => {
                                     handleConfirmDecision();
                                 }}
-                                disabled={!isReadyToConfirm || isLocalDirty}
+                                disabled={!canConfirmDecision}
                                 className={`w-full flex items-center justify-center gap-2 px-6 py-4 rounded-xl transition-all font-bold text-xl ${
-                                    isReadyToConfirm && !isLocalDirty
+                                    canConfirmDecision
                                     ? 'bg-blue-600 border border-blue-700 text-white hover:bg-blue-700 hover:shadow-lg shadow-md' 
                                     : 'bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed shadow-none opacity-80'
                                 }`}
                             >
-                                <Lock size={22} className={isReadyToConfirm && !isLocalDirty ? 'text-white/90' : 'opacity-50'} />
+                                <Lock size={22} className={canConfirmDecision ? 'text-white/90' : 'opacity-50'} />
                                 안건 결과 최종 확정
                             </button>
                         </div>

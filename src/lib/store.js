@@ -418,6 +418,72 @@ export const getAgendaAttendanceDisplayStats = ({
     };
 };
 
+export const getElectionAgendaValidationStats = ({
+    agenda = null,
+    meetingId = null,
+    attendance = [],
+    mailElectionVotes = [],
+    activeMemberIdSet = null
+} = {}) => {
+    const emptyStats = {
+        expectedMailVoteCount: 0,
+        actualMailVoteCount: 0,
+        missingMailVoteCount: 0,
+        overlapMailVoteCount: 0,
+        onsiteEligibleCount: 0,
+        expectedTotalVotes: 0
+    };
+
+    if (normalizeAgendaType(agenda?.type) !== 'election' || !agenda?.id || !meetingId) {
+        return emptyStats;
+    }
+
+    const uniqueRecords = getUniqueAttendanceRecords(attendance, meetingId, activeMemberIdSet);
+    const onsiteAttendanceIds = new Set(
+        uniqueRecords
+            .filter((record) => record.type === 'direct' || record.type === 'proxy')
+            .map((record) => record.member_id)
+    );
+    const expectedMailVoteIds = new Set(
+        uniqueRecords
+            .filter((record) => record.has_election && (record.type === 'written' || !record.type))
+            .map((record) => record.member_id)
+    );
+
+    const actualMailVoteIds = new Set();
+    mailElectionVotes.forEach((vote) => {
+        if (vote?.agenda_id !== agenda.id) return;
+        if (activeMemberIdSet && !activeMemberIdSet.has(vote.member_id)) return;
+        if (!['yes', 'no', 'abstain'].includes(vote?.choice)) return;
+        actualMailVoteIds.add(vote.member_id);
+    });
+
+    let missingMailVoteCount = 0;
+    expectedMailVoteIds.forEach((memberId) => {
+        if (!actualMailVoteIds.has(memberId)) {
+            missingMailVoteCount += 1;
+        }
+    });
+
+    let overlapMailVoteCount = 0;
+    actualMailVoteIds.forEach((memberId) => {
+        if (onsiteAttendanceIds.has(memberId)) {
+            overlapMailVoteCount += 1;
+        }
+    });
+
+    const onsiteEligibleCount = Math.max(0, onsiteAttendanceIds.size - overlapMailVoteCount);
+
+    return {
+        expectedMailVoteCount: expectedMailVoteIds.size,
+        actualMailVoteCount: actualMailVoteIds.size,
+        missingMailVoteCount,
+        overlapMailVoteCount,
+        onsiteEligibleCount,
+        expectedTotalVotes: onsiteEligibleCount + actualMailVoteIds.size
+    };
+};
+
 const getAgendaIdsForMeeting = (agendas = [], meetingId) => {
     if (!meetingId) return [];
 
