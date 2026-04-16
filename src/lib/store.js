@@ -330,6 +330,10 @@ const normalizeAgendaTypeForDb = (type) => {
     }
     return 'majority';
 };
+const normalizeAgendaRecord = (agenda = {}, options = {}) => withLegacyVoteTotals({
+    ...agenda,
+    type: normalizeAgendaTypeForDb(agenda?.type)
+}, options);
 export const getAttendanceQuorumTarget = (type, totalMembers) => {
     return normalizeAgendaType(type) === 'twoThirds'
         ? Math.ceil((Number(totalMembers) || 0) * (2 / 3))
@@ -605,14 +609,17 @@ export function StoreProvider({ children }) {
                 .filter((id) => prev.declarationEditState[id]?.isEditing);
 
             const mergedAgendas = rows.map((agenda) => {
+                const normalizedAgenda = normalizeAgendaRecord(agenda, {
+                    mailElectionVotes: stateRef.current.mailElectionVotes
+                });
                 if (editingAgendaIds.includes(String(agenda.id))) {
                     const existingAgenda = prev.agendas.find((item) => item.id === agenda.id);
                     if (existingAgenda) {
-                        return { ...agenda, declaration: existingAgenda.declaration };
+                        return { ...normalizedAgenda, declaration: existingAgenda.declaration };
                     }
                 }
 
-                return agenda;
+                return normalizedAgenda;
             });
 
             if (areAgendaListsEqual(prev.agendas, mergedAgendas)) {
@@ -782,7 +789,9 @@ export function StoreProvider({ children }) {
                 const { data: members } = await supabase.from('members').select('*').order('id', { ascending: true });
                 const { data: attendance } = await supabase.from('attendance').select('*');
                 const { data: mailElectionVotes, error: mailElectionVotesError } = await supabase.from('mail_election_votes').select('*').order('created_at', { ascending: true });
-                let nextAgendas = agendas || [];
+                let nextAgendas = (agendas || []).map((agenda) => normalizeAgendaRecord(agenda, {
+                    mailElectionVotes: mailElectionVotes || []
+                }));
 
                 if (mailElectionVotesError && mailElectionVotesError.code !== '42P01') {
                     console.error('Failed to load mail election votes:', mailElectionVotesError);
@@ -794,7 +803,9 @@ export function StoreProvider({ children }) {
                         .from('agendas')
                         .select('*')
                         .order('order_index', { ascending: true });
-                    nextAgendas = refreshedAgendas || nextAgendas;
+                    nextAgendas = (refreshedAgendas || nextAgendas).map((agenda) => normalizeAgendaRecord(agenda, {
+                        mailElectionVotes: mailElectionVotes || []
+                    }));
                 }
 
                 const defaultMeetingId = getDefaultMeetingId(nextAgendas);
