@@ -214,7 +214,7 @@ export default function CheckInPage() {
             meetingType: 'direct',
             electionMode: 'none',
             proxyName: member.proxy || "",
-            writtenVotes: buildInitialWrittenVotes(activeAgendas),
+            writtenVotes: buildInitialWrittenVotes(writtenAgendas),
             electionVotes: buildInitialElectionVotes(electionAgendas)
         });
         setIsCheckInModalOpen(true);
@@ -243,6 +243,7 @@ export default function CheckInPage() {
         }
         return items;
     })();
+    const writtenAgendas = activeAgendas.filter((agenda) => normalizeAgendaType(agenda?.type) !== 'election');
     const electionAgendas = activeAgendas.filter((agenda) => normalizeAgendaType(agenda?.type) === 'election');
 
     const selectedCheckInMember = members.find((member) => member.id === checkInForm.memberId) || null;
@@ -265,14 +266,19 @@ export default function CheckInPage() {
             return;
         }
 
-        const votesArray = Object.entries(checkInForm.writtenVotes || {}).map(([agendaId, choice]) => ({
-            agenda_id: parseInt(agendaId),
-            choice: choice
-        }));
+        const writtenAgendaIdSet = new Set(writtenAgendas.map((agenda) => agenda.id));
+        const electionAgendaIdSet = new Set(electionAgendas.map((agenda) => agenda.id));
+        const votesArray = Object.entries(checkInForm.writtenVotes || {})
+            .filter(([agendaId, choice]) => writtenAgendaIdSet.has(parseInt(agendaId, 10)) && ['yes', 'no', 'abstain'].includes(choice))
+            .map(([agendaId, choice]) => ({
+                agenda_id: parseInt(agendaId, 10),
+                choice
+            }));
         const electionVotesArray = Object.entries(checkInForm.electionVotes || {})
+            .filter(([agendaId]) => electionAgendaIdSet.has(parseInt(agendaId, 10)))
             .filter(([, choice]) => ['yes', 'no', 'abstain'].includes(choice))
             .map(([agendaId, choice]) => ({
-                agenda_id: parseInt(agendaId),
+                agenda_id: parseInt(agendaId, 10),
                 choice
             }));
 
@@ -514,7 +520,7 @@ export default function CheckInPage() {
                                                     ...prev,
                                                     meetingType: option.value,
                                                     writtenVotes: option.value === 'written'
-                                                        ? (Object.keys(prev.writtenVotes || {}).length ? prev.writtenVotes : buildInitialWrittenVotes(activeAgendas))
+                                                        ? (Object.keys(prev.writtenVotes || {}).length ? prev.writtenVotes : buildInitialWrittenVotes(writtenAgendas))
                                                         : prev.writtenVotes
                                                 }))}
                                                 className={`rounded-2xl border px-4 py-3 text-left transition-all ${isActive ? option.tone + ' ring-2 ring-offset-1 ring-slate-300 shadow-sm' : 'border-slate-200 bg-white text-slate-600'}`}
@@ -580,10 +586,10 @@ export default function CheckInPage() {
                                     <div className="flex items-center justify-between gap-3">
                                         <div>
                                             <div className="text-sm font-bold text-slate-800">서면 결의</div>
-                                            <p className="text-xs text-slate-500">안건별 찬반을 지정하면 즉시 반영됩니다.</p>
+                                            <p className="text-xs text-slate-500">선거 안건을 제외한 총회 안건만 반영됩니다.</p>
                                         </div>
                                         <button
-                                            onClick={() => setCheckInForm((prev) => ({ ...prev, writtenVotes: buildInitialWrittenVotes(activeAgendas) }))}
+                                            onClick={() => setCheckInForm((prev) => ({ ...prev, writtenVotes: buildInitialWrittenVotes(writtenAgendas) }))}
                                             className="px-3 py-1.5 bg-emerald-100 text-emerald-700 rounded-lg text-xs font-bold hover:bg-emerald-200 transition-colors"
                                         >
                                             전체 찬성
@@ -591,10 +597,10 @@ export default function CheckInPage() {
                                     </div>
 
                                     <div className="space-y-4">
-                                        {activeAgendas.length === 0 ? (
-                                            <p className="text-center text-slate-400 py-6">투표할 안건이 없습니다.</p>
+                                        {writtenAgendas.length === 0 ? (
+                                            <p className="text-center text-slate-400 py-6">서면결의 대상 총회 안건이 없습니다.</p>
                                         ) : (
-                                            activeAgendas.map((agenda) => (
+                                            writtenAgendas.map((agenda) => (
                                                 <div key={agenda.id} className="flex flex-col gap-2">
                                                     <span className="text-sm font-bold text-slate-700 break-keep leading-tight">
                                                         {agenda.title}

@@ -49,11 +49,13 @@ const normalizeProjectorModeValue = (mode) => mode === 'ADJUSTING' ? 'RESULT' : 
 const applyWrittenVoteDeltaToAgendaList = (agendas = [], votes = [], delta = 1) => {
     if (!Array.isArray(votes) || !votes.length || !delta) return agendas;
 
+    const agendaById = new Map(agendas.map((agenda) => [agenda.id, agenda]));
     const deltasByAgendaId = new Map();
     votes.forEach((vote) => {
         const agendaId = parseInt(vote?.agenda_id, 10);
         const choice = vote?.choice;
         if (!agendaId || !['yes', 'no', 'abstain'].includes(choice)) return;
+        if (normalizeAgendaType(agendaById.get(agendaId)?.type) === 'election') return;
 
         const currentDelta = deltasByAgendaId.get(agendaId) || { yes: 0, no: 0, abstain: 0 };
         currentDelta[choice] += delta;
@@ -750,7 +752,9 @@ export function StoreProvider({ children }) {
     const reconcileAgendaVoteCountsFromWrittenVotes = React.useCallback(async (agendaRows = null) => {
         const agendasToCheck = Array.isArray(agendaRows) ? agendaRows : stateRef.current.agendas;
         const targetAgendas = agendasToCheck.filter((agenda) =>
-            agenda.type !== 'folder' && [
+            agenda.type !== 'folder'
+            && normalizeAgendaType(agenda.type) !== 'election'
+            && [
                 'written_yes',
                 'written_no',
                 'written_abstain',
@@ -1282,8 +1286,13 @@ export function StoreProvider({ children }) {
             }
 
             pendingAttendanceOpsRef.current.add(attendanceKey);
-            const writtenVotePayload = meetingType === 'written' ? writtenVotes : [];
-            const electionVotePayload = electionMode === 'mail' ? electionVotes : [];
+            const agendaTypeById = new Map(stateRef.current.agendas.map((agenda) => [agenda.id, normalizeAgendaType(agenda?.type)]));
+            const writtenVotePayload = (meetingType === 'written' ? writtenVotes : []).filter((vote) => (
+                agendaTypeById.get(vote?.agenda_id) && agendaTypeById.get(vote.agenda_id) !== 'election'
+            ));
+            const electionVotePayload = (electionMode === 'mail' ? electionVotes : []).filter((vote) => (
+                agendaTypeById.get(vote?.agenda_id) === 'election'
+            ));
             let didApplyWrittenPreview = false;
 
             try {

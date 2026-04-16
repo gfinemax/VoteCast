@@ -1,3 +1,39 @@
+DELETE FROM written_votes
+USING agendas
+WHERE agendas.id = written_votes.agenda_id
+  AND agendas.type = 'election';
+
+UPDATE agendas
+SET
+    written_yes = 0,
+    written_no = 0,
+    written_abstain = 0;
+
+WITH written_totals AS (
+    SELECT
+        written_votes.agenda_id,
+        COUNT(*) FILTER (WHERE written_votes.choice = 'yes') AS yes_count,
+        COUNT(*) FILTER (WHERE written_votes.choice = 'no') AS no_count,
+        COUNT(*) FILTER (WHERE written_votes.choice = 'abstain') AS abstain_count
+    FROM written_votes
+    JOIN agendas ON agendas.id = written_votes.agenda_id
+    WHERE agendas.type <> 'election'
+    GROUP BY written_votes.agenda_id
+)
+UPDATE agendas AS agenda
+SET
+    written_yes = COALESCE(written_totals.yes_count, 0),
+    written_no = COALESCE(written_totals.no_count, 0),
+    written_abstain = COALESCE(written_totals.abstain_count, 0)
+FROM written_totals
+WHERE agenda.id = written_totals.agenda_id;
+
+UPDATE agendas
+SET
+    votes_yes = COALESCE(written_yes, 0) + COALESCE(onsite_yes, 0),
+    votes_no = COALESCE(written_no, 0) + COALESCE(onsite_no, 0),
+    votes_abstain = COALESCE(written_abstain, 0) + COALESCE(onsite_abstain, 0);
+
 CREATE OR REPLACE FUNCTION check_in_member(
     p_member_id INTEGER,
     p_meeting_id INTEGER,

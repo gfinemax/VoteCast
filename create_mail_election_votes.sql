@@ -24,9 +24,13 @@ RETURNS VOID AS $$
 DECLARE
     r_vote RECORD;
 BEGIN
-    FOR r_vote IN
-        SELECT agenda_id, choice FROM written_votes
-        WHERE member_id = p_member_id AND meeting_id = p_meeting_id
+    FOR r_vote IN 
+        SELECT written_votes.agenda_id, written_votes.choice
+        FROM written_votes
+        JOIN agendas ON agendas.id = written_votes.agenda_id
+        WHERE written_votes.member_id = p_member_id
+          AND written_votes.meeting_id = p_meeting_id
+          AND agendas.type <> 'election'
     LOOP
         IF r_vote.choice = 'yes' THEN
             UPDATE agendas
@@ -79,6 +83,15 @@ BEGIN
             v_agenda_id := (v_vote->>'agenda_id')::INTEGER;
             v_choice := v_vote->>'choice';
 
+            IF NOT EXISTS (
+                SELECT 1
+                FROM agendas
+                WHERE id = v_agenda_id
+                  AND type <> 'election'
+            ) THEN
+                CONTINUE;
+            END IF;
+
             INSERT INTO written_votes (member_id, meeting_id, agenda_id, choice)
             VALUES (p_member_id, p_meeting_id, v_agenda_id, v_choice);
 
@@ -109,6 +122,15 @@ BEGIN
         LOOP
             v_agenda_id := (v_vote->>'agenda_id')::INTEGER;
             v_choice := v_vote->>'choice';
+
+            IF NOT EXISTS (
+                SELECT 1
+                FROM agendas
+                WHERE id = v_agenda_id
+                  AND type = 'election'
+            ) THEN
+                CONTINUE;
+            END IF;
 
             INSERT INTO mail_election_votes (member_id, meeting_id, agenda_id, choice)
             VALUES (p_member_id, p_meeting_id, v_agenda_id, v_choice)
