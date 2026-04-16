@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { useStore } from '@/lib/store';
-import { getAgendaVoteBuckets } from '@/lib/store';
+import { getAgendaAttendanceDisplayStats, getAgendaVoteBuckets, getMeetingAttendanceStats } from '@/lib/store';
 import { Play, ClipboardList, Monitor, Settings } from 'lucide-react';
 import FullscreenToggle from '@/components/ui/FullscreenToggle';
 import Button from '@/components/ui/Button';
@@ -14,11 +14,35 @@ import AuthStatus from '@/components/ui/AuthStatus';
 
 export default function CommissionPage() {
     const { state, actions } = useStore();
-    const { voteData, currentAgendaId, agendas } = state;
+    const { voteData, currentAgendaId, agendas, attendance, members, mailElectionVotes } = state;
     const currentAgenda = agendas.find(a => a.id === currentAgendaId);
-    const voteBuckets = getAgendaVoteBuckets(currentAgenda);
+    const activeMemberIdSet = React.useMemo(() => new Set(
+        members
+            .filter((member) => member.is_active !== false)
+            .map((member) => member.id)
+    ), [members]);
+    const meetingId = React.useMemo(() => {
+        if (!currentAgenda) return null;
+        if (currentAgenda.type === 'folder') return currentAgenda.id;
+        const currentIndex = agendas.findIndex((agenda) => agenda.id === currentAgendaId);
+        for (let i = currentIndex - 1; i >= 0; i -= 1) {
+            if (agendas[i].type === 'folder') return agendas[i].id;
+        }
+        return null;
+    }, [agendas, currentAgenda, currentAgendaId]);
+    const meetingStats = React.useMemo(() => getMeetingAttendanceStats(attendance, meetingId, activeMemberIdSet), [activeMemberIdSet, attendance, meetingId]);
+    const displayStats = React.useMemo(() => getAgendaAttendanceDisplayStats({
+        agenda: currentAgenda,
+        meetingStats,
+        mailElectionVotes,
+        activeMemberIdSet
+    }), [activeMemberIdSet, currentAgenda, mailElectionVotes, meetingStats]);
+    const voteBuckets = getAgendaVoteBuckets(currentAgenda, {
+        mailElectionVotes,
+        activeMemberIdSet
+    });
 
-    const totalAttendance = (parseInt(voteData.writtenAttendance) || 0) + (parseInt(voteData.directAttendance) || 0);
+    const totalAttendance = displayStats.total;
     const totalVotesCast = voteBuckets.final.yes + voteBuckets.final.no + voteBuckets.final.abstain;
     const isVoteCountValid = totalAttendance === totalVotesCast;
     const isPassed = voteBuckets.final.yes >= (totalAttendance / 2);

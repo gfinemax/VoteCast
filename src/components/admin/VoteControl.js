@@ -2,7 +2,7 @@
 
 import React, { useMemo, useEffect, useState, useCallback, useRef } from 'react';
 import { useStore } from '@/lib/store';
-import { getAgendaVoteBuckets, getAttendanceQuorumTarget, getMeetingAttendanceStats, normalizeAgendaType } from '@/lib/store';
+import { getAgendaAttendanceDisplayStats, getAgendaVoteBuckets, getAttendanceQuorumTarget, getMeetingAttendanceStats, normalizeAgendaType } from '@/lib/store';
 import { CheckCircle2, AlertTriangle, Trash2, Lock, Unlock, RotateCcw, Save, Wand2 } from 'lucide-react';
 import Card from '@/components/ui/Card';
 
@@ -42,7 +42,7 @@ const FastNumericInput = ({ value, onChange, className, disabled, placeholder, i
 export default function VoteControl() {
     const { state, actions } = useStore();
     const { updateAgenda, setDeclarationEditMode, setAgendaTypeLock, updateProjectorData } = actions;
-    const { members, attendance, agendas, currentAgendaId, voteData, projectorMode, projectorData } = state;
+    const { members, attendance, agendas, currentAgendaId, voteData, projectorMode, projectorData, mailElectionVotes } = state;
     const [confirmReadyAgendaId, setConfirmReadyAgendaId] = useState(null);
     const [confirmModalState, setConfirmModalState] = useState({ isOpen: false, type: null }); // type: 'confirm' | 'reset'
     const inactiveMemberIds = Array.isArray(voteData?.inactiveMemberIds) ? voteData.inactiveMemberIds : EMPTY_INACTIVE_MEMBER_IDS;
@@ -81,28 +81,40 @@ export default function VoteControl() {
     }, [agendas, currentAgendaId, currentAgenda]);
 
     // 2. Derive Attendance Data (Real-time)
-    const realtimeStats = useMemo(() => {
+    const baseMeetingStats = useMemo(() => {
         return getMeetingAttendanceStats(attendance, meetingId, activeMemberIdSet);
     }, [activeMemberIdSet, attendance, meetingId]);
 
     // SNAPSHOT HANDLING
     const snapshot = currentAgenda?.vote_snapshot;
     const isConfirmed = !!snapshot;
-    const liveVoteBuckets = useMemo(() => getAgendaVoteBuckets(currentAgenda), [currentAgenda]);
+    const liveVoteBuckets = useMemo(() => getAgendaVoteBuckets(currentAgenda, {
+        mailElectionVotes,
+        activeMemberIdSet
+    }), [activeMemberIdSet, currentAgenda, mailElectionVotes]);
     const hasSplitVoteColumns = liveVoteBuckets.hasSplitVoteColumns;
-    const writtenVoteTotals = liveVoteBuckets.written;
+    const fixedVoteTotals = liveVoteBuckets.fixed;
+    const fixedVoteLabel = liveVoteBuckets.fixedLabel;
     const onsiteVoteTotals = hasSplitVoteColumns ? liveVoteBuckets.onsite : liveVoteBuckets.final;
     const finalVoteTotals = liveVoteBuckets.final;
+    const realtimeStats = useMemo(() => getAgendaAttendanceDisplayStats({
+        agenda: currentAgenda,
+        meetingStats: baseMeetingStats,
+        mailElectionVotes,
+        activeMemberIdSet
+    }), [activeMemberIdSet, baseMeetingStats, currentAgenda, mailElectionVotes]);
 
     // Use Snapshot if confirmed, otherwise Realtime
-    const displayStats = isConfirmed ? snapshot.stats : realtimeStats;
+    const displayStats = isConfirmed
+        ? { ...realtimeStats, ...(snapshot.stats || {}) }
+        : realtimeStats;
 
     // Vote Data Sources
     const votesYes = isConfirmed ? snapshot.votes.yes : finalVoteTotals.yes;
     const votesNo = isConfirmed ? snapshot.votes.no : finalVoteTotals.no;
     const votesAbstain = isConfirmed ? snapshot.votes.abstain : finalVoteTotals.abstain;
     const declaration = isConfirmed ? snapshot.declaration : (currentAgenda?.declaration || '');
-    const totalWrittenVotes = writtenVoteTotals.yes + writtenVoteTotals.no + writtenVoteTotals.abstain;
+    const totalFixedVotes = fixedVoteTotals.yes + fixedVoteTotals.no + fixedVoteTotals.abstain;
     const editableVotesYes = onsiteVoteTotals.yes;
     const editableVotesNo = onsiteVoteTotals.no;
     const editableVotesAbstain = onsiteVoteTotals.abstain;
@@ -151,11 +163,12 @@ export default function VoteControl() {
         const abstainCount = overrides.abstain ?? votesAbstain;
         const criterion = isSpecialVote ? "3분의 2 이상" : "과반수 이상";
         const passed = calculatePass(yesCount, displayStats.total);
+        const fixedSourceText = isElection ? '우편투표 포함' : '서면결의 포함';
 
-        return `"${currentAgenda.title}" 서면결의 포함 찬성(${yesCount})표, 반대(${noCount})표, 기권(${abstainCount})표로
+        return `"${currentAgenda.title}" ${fixedSourceText} 찬성(${yesCount})표, 반대(${noCount})표, 기권(${abstainCount})표로
 전체 참석자(${displayStats.total.toLocaleString()})명중 ${criterion} ${passed ? '찬성으로' : '찬성 미달로'}
 "${currentAgenda.title}"은 ${passed ? '가결' : '부결'}되었음을 선포합니다.`;
-    }, [calculatePass, currentAgenda, displayStats.total, isSpecialVote, votesAbstain, votesNo, votesYes]);
+    }, [calculatePass, currentAgenda, displayStats.total, isElection, isSpecialVote, votesAbstain, votesNo, votesYes]);
 
     // Use GLOBAL state for declaration editing (prevents revert on re-render)
     const declarationEditState = state.declarationEditState?.[currentAgendaId] || { isEditing: false, isAutoCalc: true };
@@ -263,7 +276,7 @@ export default function VoteControl() {
         let newLocal = { ...localVotes, [fieldKey]: value };
 
         if (isAutoCalc) {
-            const currentTotal = hasSplitVoteColumns ? displayStats.total - totalWrittenVotes : displayStats.total;
+            const currentTotal = hasSplitVoteColumns ? displayStats.total - totalFixedVotes : displayStats.total;
             if (fieldKey === 'yes') {
                 const currentAbstain = parseInt(localVotes.abstain) || 0;
                 newLocal.no = Math.max(0, currentTotal - value - currentAbstain);
@@ -291,9 +304,9 @@ export default function VoteControl() {
         const a = parseInt(localVotes.abstain) || 0;
         const appliedTotals = hasSplitVoteColumns
             ? {
-                yes: writtenVoteTotals.yes + y,
-                no: writtenVoteTotals.no + n,
-                abstain: writtenVoteTotals.abstain + a
+                yes: fixedVoteTotals.yes + y,
+                no: fixedVoteTotals.no + n,
+                abstain: fixedVoteTotals.abstain + a
             }
             : { yes: y, no: n, abstain: a };
 
@@ -331,7 +344,7 @@ export default function VoteControl() {
 
     const handleAutoSum = () => {
         if (isConfirmed || !currentAgenda) return;
-        const currentTotal = hasSplitVoteColumns ? displayStats.total - totalWrittenVotes : displayStats.total;
+        const currentTotal = hasSplitVoteColumns ? displayStats.total - totalFixedVotes : displayStats.total;
         const remainder = Math.max(0, currentTotal - (parseInt(localVotes.no) || 0) - (parseInt(localVotes.abstain) || 0));
         handleLocalVoteChange('yes', remainder);
     };
@@ -353,9 +366,9 @@ export default function VoteControl() {
 
         if (isAutoCalc && !isEditingDeclaration) {
             updates.declaration = generateDefaultDeclaration({
-                yes: writtenVoteTotals.yes,
-                no: writtenVoteTotals.no,
-                abstain: writtenVoteTotals.abstain
+                yes: fixedVoteTotals.yes,
+                no: fixedVoteTotals.no,
+                abstain: fixedVoteTotals.abstain
             });
         }
 
@@ -368,9 +381,9 @@ export default function VoteControl() {
         updateAgenda({ id: currentAgenda.id, ...updates });
         if (updates.declaration) {
             syncProjectorDeclaration(updates.declaration, {
-                yes: writtenVoteTotals.yes,
-                no: writtenVoteTotals.no,
-                abstain: writtenVoteTotals.abstain,
+                yes: fixedVoteTotals.yes,
+                no: fixedVoteTotals.no,
+                abstain: fixedVoteTotals.abstain,
                 totalAttendance: displayStats.total
             });
         }
@@ -388,7 +401,7 @@ export default function VoteControl() {
     const executeModalAction = () => {
         if (confirmModalState.type === 'confirm') {
             const snapshotData = {
-                stats: realtimeStats,
+                stats: displayStats,
                 votes: { yes: votesYes, no: votesNo, abstain: votesAbstain },
                 declaration: currentAgenda.declaration, // current value
                 result: isPassed ? 'PASSED' : 'FAILED',
@@ -408,7 +421,7 @@ export default function VoteControl() {
     // Helper for Total Votes Cast
     const totalVotesCast = votesYes + votesNo + votesAbstain;
     const localTotalVotesCast = hasSplitVoteColumns 
-        ? totalWrittenVotes + (parseInt(localVotes.yes) || 0) + (parseInt(localVotes.no) || 0) + (parseInt(localVotes.abstain) || 0)
+        ? totalFixedVotes + (parseInt(localVotes.yes) || 0) + (parseInt(localVotes.no) || 0) + (parseInt(localVotes.abstain) || 0)
         : (parseInt(localVotes.yes) || 0) + (parseInt(localVotes.no) || 0) + (parseInt(localVotes.abstain) || 0);
 
     const displayTotalVotesCast = isLocalDirty ? localTotalVotesCast : totalVotesCast;
@@ -448,8 +461,8 @@ export default function VoteControl() {
             key: 'yes',
             summaryLabel: '전체 찬성',
             inputLabel: '현장 찬성',
-            totalValue: writtenVoteTotals.yes + (parseInt(localVotes.yes) || 0),
-            writtenValue: writtenVoteTotals.yes,
+            totalValue: fixedVoteTotals.yes + (parseInt(localVotes.yes) || 0),
+            writtenValue: fixedVoteTotals.yes,
             onsiteValue: localVotes.yes,
             tone: {
                 rowTint: 'border-emerald-900/50 bg-emerald-900/10',
@@ -464,8 +477,8 @@ export default function VoteControl() {
             key: 'no',
             summaryLabel: '전체 반대',
             inputLabel: '현장 반대',
-            totalValue: writtenVoteTotals.no + (parseInt(localVotes.no) || 0),
-            writtenValue: writtenVoteTotals.no,
+            totalValue: fixedVoteTotals.no + (parseInt(localVotes.no) || 0),
+            writtenValue: fixedVoteTotals.no,
             onsiteValue: localVotes.no,
             tone: {
                 rowTint: 'border-rose-900/50 bg-rose-900/10',
@@ -480,8 +493,8 @@ export default function VoteControl() {
             key: 'abstain',
             summaryLabel: '전체 기권/무효',
             inputLabel: '현장 기권/무효',
-            totalValue: writtenVoteTotals.abstain + (parseInt(localVotes.abstain) || 0),
-            writtenValue: writtenVoteTotals.abstain,
+            totalValue: fixedVoteTotals.abstain + (parseInt(localVotes.abstain) || 0),
+            writtenValue: fixedVoteTotals.abstain,
             onsiteValue: localVotes.abstain,
             tone: {
                 rowTint: 'border-slate-800 bg-slate-800/40',
@@ -628,8 +641,8 @@ export default function VoteControl() {
 
                         {/* 3. Written */}
                         <div className="flex items-center justify-between px-4 py-3 bg-slate-50 border border-slate-200 rounded min-w-[120px]">
-                            <span className="text-sm font-medium text-slate-500 mr-2">서면</span>
-                            <span className="font-mono font-bold text-slate-700 text-2xl">{displayStats.written}</span>
+                            <span className="text-sm font-medium text-slate-500 mr-2">{displayStats.fixedAttendanceLabel}</span>
+                            <span className="font-mono font-bold text-slate-700 text-2xl">{displayStats.fixedAttendanceCount}</span>
                         </div>
 
                         <div className="text-slate-300 font-bold text-lg">=</div>
@@ -670,7 +683,7 @@ export default function VoteControl() {
                                     <div className="flex flex-col pl-6 hidden sm:flex">
                                         <span className="text-xs font-bold text-slate-500 mb-0.5 tracking-wide">투표 구성</span>
                                         <div className="text-base font-medium text-slate-600 mt-0.5">
-                                            서면 <span className="font-bold text-slate-800">{totalWrittenVotes}</span>
+                                            {fixedVoteLabel} <span className="font-bold text-slate-800">{totalFixedVotes}</span>
                                             <span className="text-slate-300 mx-2">+</span>
                                             현장 <span className="font-bold text-slate-800">{(parseInt(localVotes.yes) || 0) + (parseInt(localVotes.no) || 0) + (parseInt(localVotes.abstain) || 0)}</span>
                                         </div>
@@ -738,7 +751,7 @@ export default function VoteControl() {
 
                                 <div className="hidden grid-cols-[88px_minmax(76px,0.7fr)_auto_minmax(180px,1.7fr)_auto_minmax(124px,0.9fr)] gap-4 px-4 pb-3 text-xs font-bold uppercase tracking-wide text-slate-500 lg:grid items-center">
                                     <div className="text-center text-slate-400">구분</div>
-                                    <div className="text-center text-slate-500">서면(고정)</div>
+                                    <div className="text-center text-slate-500">{fixedVoteLabel}(고정)</div>
                                     <div className="w-4"></div>
                                     <div className="text-center text-blue-400">현장 입력</div>
                                     <div className="w-4"></div>
@@ -758,7 +771,7 @@ export default function VoteControl() {
                                             </div>
 
                                             <div className="flex items-center justify-between rounded-xl bg-slate-800/30 px-4 py-3 lg:bg-transparent lg:px-0 lg:py-0 lg:justify-center">
-                                                <span className="text-xs font-bold text-slate-500 lg:hidden">서면(고정)</span>
+                                                <span className="text-xs font-bold text-slate-500 lg:hidden">{fixedVoteLabel}(고정)</span>
                                                 <span className={`font-mono text-2xl md:text-[2rem] font-black tabular-nums ${card.tone.writtenText}`}>{card.writtenValue}</span>
                                             </div>
 

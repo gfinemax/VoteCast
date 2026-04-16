@@ -8,6 +8,7 @@ const INITIAL_DATA = {
     agendas: [],
     members: [],
     attendance: [],
+    mailElectionVotes: [],
     currentMeetingId: null, // Legacy/UI: Selected Folder(General Meeting) for Admin View
     activeMeetingId: null,  // New: GLOBALLY Active Meeting for Admission (controlled by Admin)
     voteData: {
@@ -134,12 +135,20 @@ const normalizeCheckInPayload = (inputOrType = 'direct', proxyName = null, votes
         const writtenVotes = meetingType === 'written' && Array.isArray(inputOrType.writtenVotes)
             ? inputOrType.writtenVotes
             : [];
+        const electionMode = ['none', 'onsite', 'mail'].includes(inputOrType.electionMode)
+            ? inputOrType.electionMode
+            : (inputOrType.hasElection ? 'onsite' : 'none');
+        const electionVotes = electionMode === 'mail' && Array.isArray(inputOrType.electionVotes)
+            ? inputOrType.electionVotes
+            : [];
 
         return {
             meetingType,
-            hasElection: !!inputOrType.hasElection,
+            hasElection: electionMode !== 'none',
+            electionMode,
             proxyName: normalizedProxyName,
-            writtenVotes
+            writtenVotes,
+            electionVotes
         };
     }
 
@@ -148,8 +157,10 @@ const normalizeCheckInPayload = (inputOrType = 'direct', proxyName = null, votes
     return {
         meetingType,
         hasElection: false,
+        electionMode: 'none',
         proxyName: meetingType === 'proxy' ? (String(proxyName || '').trim() || null) : null,
-        writtenVotes: meetingType === 'written' && Array.isArray(votes) ? votes : []
+        writtenVotes: meetingType === 'written' && Array.isArray(votes) ? votes : [],
+        electionVotes: []
     };
 };
 
@@ -180,7 +191,41 @@ const toVoteNumber = (value) => {
     return Number.isNaN(parsed) ? 0 : parsed;
 };
 
-export const getAgendaVoteBuckets = (agenda = {}) => {
+const EMPTY_VOTE_TOTALS = Object.freeze({ yes: 0, no: 0, abstain: 0 });
+
+export const getMailElectionVoteStats = (mailElectionVotes = [], agendaId = null, activeMemberIdSet = null) => {
+    const emptyStats = {
+        yes: 0,
+        no: 0,
+        abstain: 0,
+        totalVotes: 0,
+        participantCount: 0
+    };
+
+    if (!agendaId) return emptyStats;
+
+    const participantIds = new Set();
+    const totals = { ...EMPTY_VOTE_TOTALS };
+
+    mailElectionVotes.forEach((vote) => {
+        if (vote?.agenda_id !== agendaId) return;
+        if (activeMemberIdSet && !activeMemberIdSet.has(vote.member_id)) return;
+        if (!['yes', 'no', 'abstain'].includes(vote?.choice)) return;
+
+        totals[vote.choice] += 1;
+        participantIds.add(vote.member_id);
+    });
+
+    return {
+        ...totals,
+        totalVotes: totals.yes + totals.no + totals.abstain,
+        participantCount: participantIds.size
+    };
+};
+
+export const getAgendaVoteBuckets = (agenda = {}, options = {}) => {
+    const normalizedAgendaType = normalizeAgendaType(agenda?.type);
+    const isElectionAgenda = normalizedAgendaType === 'election';
     const hasSplitVoteColumns = [
         'written_yes',
         'written_no',
@@ -190,13 +235,23 @@ export const getAgendaVoteBuckets = (agenda = {}) => {
         'onsite_abstain'
     ].some((field) => Object.prototype.hasOwnProperty.call(agenda, field));
 
-    const written = hasSplitVoteColumns
+    const mailVoteStats = isElectionAgenda
+        ? getMailElectionVoteStats(options.mailElectionVotes, agenda?.id, options.activeMemberIdSet)
+        : null;
+
+    const fixed = isElectionAgenda
         ? {
-            yes: toVoteNumber(agenda?.written_yes),
-            no: toVoteNumber(agenda?.written_no),
-            abstain: toVoteNumber(agenda?.written_abstain)
+            yes: mailVoteStats?.yes || 0,
+            no: mailVoteStats?.no || 0,
+            abstain: mailVoteStats?.abstain || 0
         }
-        : { yes: 0, no: 0, abstain: 0 };
+        : (hasSplitVoteColumns
+            ? {
+                yes: toVoteNumber(agenda?.written_yes),
+                no: toVoteNumber(agenda?.written_no),
+                abstain: toVoteNumber(agenda?.written_abstain)
+            }
+            : { ...EMPTY_VOTE_TOTALS });
 
     const onsite = hasSplitVoteColumns
         ? {
@@ -212,18 +267,22 @@ export const getAgendaVoteBuckets = (agenda = {}) => {
 
     return {
         hasSplitVoteColumns,
-        written,
+        isElectionAgenda,
+        fixedLabel: isElectionAgenda ? '우편투표' : '서면',
+        fixedParticipantCount: isElectionAgenda ? (mailVoteStats?.participantCount || 0) : null,
+        fixed,
+        written: fixed,
         onsite,
         final: {
-            yes: written.yes + onsite.yes,
-            no: written.no + onsite.no,
-            abstain: written.abstain + onsite.abstain
+            yes: fixed.yes + onsite.yes,
+            no: fixed.no + onsite.no,
+            abstain: fixed.abstain + onsite.abstain
         }
     };
 };
 
-export const withLegacyVoteTotals = (agenda = {}) => {
-    const voteBuckets = getAgendaVoteBuckets(agenda);
+export const withLegacyVoteTotals = (agenda = {}, options = {}) => {
+    const voteBuckets = getAgendaVoteBuckets(agenda, options);
     if (!voteBuckets.hasSplitVoteColumns) return agenda;
 
     return {
@@ -314,6 +373,37 @@ export const getMeetingAttendanceStats = (attendance = [], meetingId = null, act
         election,
         total: direct + proxy + written,
         participantTotal
+    };
+};
+
+export const getAgendaAttendanceDisplayStats = ({
+    agenda = null,
+    meetingStats = null,
+    mailElectionVotes = [],
+    activeMemberIdSet = null
+} = {}) => {
+    const baseStats = meetingStats || getMeetingAttendanceStats([], null, null);
+    const isElectionAgenda = normalizeAgendaType(agenda?.type) === 'election';
+
+    if (!isElectionAgenda || !agenda?.id) {
+        return {
+            ...baseStats,
+            isElectionAgenda,
+            fixedAttendanceLabel: '서면',
+            fixedAttendanceCount: baseStats.written,
+            mailParticipantCount: 0
+        };
+    }
+
+    const mailVoteStats = getMailElectionVoteStats(mailElectionVotes, agenda.id, activeMemberIdSet);
+
+    return {
+        ...baseStats,
+        isElectionAgenda,
+        fixedAttendanceLabel: '우편투표',
+        fixedAttendanceCount: mailVoteStats.participantCount,
+        mailParticipantCount: mailVoteStats.participantCount,
+        total: baseStats.direct + baseStats.proxy + mailVoteStats.participantCount
     };
 };
 
@@ -541,6 +631,42 @@ export function StoreProvider({ children }) {
         return data;
     }, [applyAgendaRowsToState]);
 
+    const refreshMailElectionVotesFromDb = React.useCallback(async () => {
+        const { data, error } = await supabase
+            .from('mail_election_votes')
+            .select('*')
+            .order('created_at', { ascending: true });
+
+        if (error) {
+            if (error.code === '42P01') {
+                console.warn("Table 'mail_election_votes' not found yet. Skipping load.");
+                return [];
+            }
+            console.error('Failed to refresh mail election votes:', error);
+            return null;
+        }
+
+        const rows = data || [];
+        setState((prev) => {
+            if (
+                prev.mailElectionVotes.length === rows.length
+                && prev.mailElectionVotes.every((vote, index) => (
+                    vote.id === rows[index]?.id
+                    && vote.choice === rows[index]?.choice
+                ))
+            ) {
+                return prev;
+            }
+
+            return {
+                ...prev,
+                mailElectionVotes: rows
+            };
+        });
+
+        return rows;
+    }, []);
+
     const reconcileAgendaVoteCountsFromWrittenVotes = React.useCallback(async (agendaRows = null) => {
         const agendasToCheck = Array.isArray(agendaRows) ? agendaRows : stateRef.current.agendas;
         const targetAgendas = agendasToCheck.filter((agenda) =>
@@ -648,7 +774,12 @@ export function StoreProvider({ children }) {
                 const { data: agendas } = await supabase.from('agendas').select('*').order('order_index', { ascending: true });
                 const { data: members } = await supabase.from('members').select('*').order('id', { ascending: true });
                 const { data: attendance } = await supabase.from('attendance').select('*');
+                const { data: mailElectionVotes, error: mailElectionVotesError } = await supabase.from('mail_election_votes').select('*').order('created_at', { ascending: true });
                 let nextAgendas = agendas || [];
+
+                if (mailElectionVotesError && mailElectionVotesError.code !== '42P01') {
+                    console.error('Failed to load mail election votes:', mailElectionVotesError);
+                }
 
                 const didReconcile = await reconcileAgendaVoteCountsFromWrittenVotes(nextAgendas);
                 if (didReconcile) {
@@ -665,7 +796,8 @@ export function StoreProvider({ children }) {
                     ...prev,
                     agendas: nextAgendas,
                     members: members || [],
-                    attendance: (attendance || []).map(normalizeAttendanceRecord)
+                    attendance: (attendance || []).map(normalizeAttendanceRecord),
+                    mailElectionVotes: mailElectionVotes || []
                 }));
 
                 await refreshSystemSettingsFromDb({ defaultMeetingId });
@@ -735,6 +867,9 @@ export function StoreProvider({ children }) {
                 const agendaId = payload.new?.agenda_id || payload.old?.agenda_id;
                 if (!agendaId) return;
                 await syncAgendaForWrittenVote(agendaId);
+            })
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'mail_election_votes' }, async () => {
+                await refreshMailElectionVotesFromDb();
             })
             .subscribe(async (status) => {
                 console.log('[Realtime] Subscription Status:', status);
@@ -828,6 +963,9 @@ export function StoreProvider({ children }) {
                 await reconcileAgendaVoteCountsFromWrittenVotes(targetAgendas);
                 await refreshAgendasFromDb();
             })
+            .on('broadcast', { event: 'mail_election_votes_changed' }, async () => {
+                await refreshMailElectionVotesFromDb();
+            })
             .subscribe();
         attendanceSyncChannelRef.current = attendanceSyncChannel;
 
@@ -837,7 +975,7 @@ export function StoreProvider({ children }) {
             supabase.removeChannel(attendanceSyncChannel);
             attendanceSyncChannelRef.current = null;
         };
-    }, [reconcileAgendaVoteCountsFromWrittenVotes, refreshAgendasFromDb, refreshSystemSettingsFromDb, syncAgendaForWrittenVote]);
+    }, [reconcileAgendaVoteCountsFromWrittenVotes, refreshAgendasFromDb, refreshMailElectionVotesFromDb, refreshSystemSettingsFromDb, syncAgendaForWrittenVote]);
 
     // Visibility Change + Polling Fallback for Attendance
     // Handles mobile browser WebSocket disconnects (tab switch, screen lock, etc.)
@@ -861,6 +999,7 @@ export function StoreProvider({ children }) {
                     return { ...prev, attendance: normalizedAttendance };
                 });
             }
+            await refreshMailElectionVotesFromDb();
         };
 
         const handleVisibilityChange = async () => {
@@ -890,7 +1029,7 @@ export function StoreProvider({ children }) {
             document.removeEventListener('visibilitychange', handleVisibilityChange);
             window.clearInterval(pollId);
         };
-    }, [isInitialized]);
+    }, [isInitialized, refreshMailElectionVotesFromDb]);
 
     // Polling Fallback for Written Vote Reconciliation
     // Same pattern as attendance polling — guarantees written vote counts stay in sync
@@ -933,14 +1072,44 @@ export function StoreProvider({ children }) {
         if (newType === 'special') newType = 'twoThirds';
 
         const vData = stateRef.current.voteData || {};
-        const total = (vData.writtenAttendance || 0) + (vData.directAttendance || 0) + (vData.proxyAttendance || 0);
+        const currentMembers = stateRef.current.members || [];
+        const inactiveMemberIdSet = new Set(getInactiveMemberIds(vData));
+        const activeMemberIdSet = new Set(
+            currentMembers
+                .filter((member) => member.is_active !== false && !inactiveMemberIdSet.has(member.id))
+                .map((member) => member.id)
+        );
+        let targetMeetingId = null;
+        if (targetAgenda.type === 'folder') {
+            targetMeetingId = targetAgenda.id;
+        } else {
+            const targetIndex = stateRef.current.agendas.findIndex((agenda) => agenda.id === targetAgenda.id);
+            for (let i = targetIndex - 1; i >= 0; i -= 1) {
+                if (stateRef.current.agendas[i].type === 'folder') {
+                    targetMeetingId = stateRef.current.agendas[i].id;
+                    break;
+                }
+            }
+        }
+        const meetingStats = getMeetingAttendanceStats(stateRef.current.attendance, targetMeetingId, activeMemberIdSet);
+        const attendanceStats = getAgendaAttendanceDisplayStats({
+            agenda: targetAgenda,
+            meetingStats,
+            mailElectionVotes: stateRef.current.mailElectionVotes,
+            activeMemberIdSet
+        });
+        const total = attendanceStats.total;
         const criterion = newType === 'twoThirds' ? "3분의 2 이상" : "과반수 이상";
-        const voteBuckets = getAgendaVoteBuckets(targetAgenda);
+        const voteBuckets = getAgendaVoteBuckets(targetAgenda, {
+            mailElectionVotes: stateRef.current.mailElectionVotes,
+            activeMemberIdSet
+        });
         const votesYes = voteBuckets.final.yes;
         const votesNo = voteBuckets.final.no;
         const votesAbstain = voteBuckets.final.abstain;
+        const fixedSourceText = voteBuckets.fixedLabel === '우편투표' ? '우편투표 포함' : '서면결의 포함';
 
-        const defaultDecl = total > 0 ? `"${targetAgenda.title}" 서면결의 포함 찬성(${votesYes})표, 반대(${votesNo})표, 기권(${votesAbstain})표로
+        const defaultDecl = total > 0 ? `"${targetAgenda.title}" ${fixedSourceText} 찬성(${votesYes})표, 반대(${votesNo})표, 기권(${votesAbstain})표로
 전체 참석자(${total.toLocaleString()})명중 ${criterion} 찬성으로
 "${targetAgenda.title}"은 가결되었음을 선포합니다.` : "";
 
@@ -1017,8 +1186,10 @@ export function StoreProvider({ children }) {
             const {
                 meetingType,
                 hasElection,
+                electionMode,
                 proxyName: normalizedProxyName,
-                writtenVotes
+                writtenVotes,
+                electionVotes
             } = normalizeCheckInPayload(typeOrPayload, proxyName, votes);
 
             if (!meetingType && !hasElection) {
@@ -1028,6 +1199,7 @@ export function StoreProvider({ children }) {
 
             pendingAttendanceOpsRef.current.add(attendanceKey);
             const writtenVotePayload = meetingType === 'written' ? writtenVotes : [];
+            const electionVotePayload = electionMode === 'mail' ? electionVotes : [];
             let didApplyWrittenPreview = false;
 
             try {
@@ -1076,12 +1248,13 @@ export function StoreProvider({ children }) {
                     p_type: meetingType,
                     p_has_election: hasElection,
                     p_proxy_name: normalizedProxyName,
-                    p_votes: writtenVotePayload.length ? writtenVotePayload : null
+                    p_votes: writtenVotePayload.length ? writtenVotePayload : null,
+                    p_election_votes: electionVotePayload.length ? electionVotePayload : null
                 });
 
                 if (error) {
                     // If RPC fails (e.g., function not found), try fallback only if NO votes
-                    if (error.code === '42883' && !writtenVotePayload.length) { // undefined_function
+                    if (error.code === '42883' && !writtenVotePayload.length && !electionVotePayload.length) { // undefined_function
                         console.warn("RPC 'check_in_member' not found. Falling back to simple insert.");
                         const { error: fallbackError } = await supabase.from('attendance').insert({
                             member_id: memberId,
@@ -1148,6 +1321,15 @@ export function StoreProvider({ children }) {
                     });
                 }
 
+                if (electionVotePayload.length) {
+                    await refreshMailElectionVotesFromDb();
+                    attendanceSyncChannelRef.current?.send({
+                        type: 'broadcast',
+                        event: 'mail_election_votes_changed',
+                        payload: { meetingId }
+                    });
+                }
+
                 await refreshAgendasFromDb();
             } finally {
                 pendingAttendanceOpsRef.current.delete(attendanceKey);
@@ -1172,6 +1354,7 @@ export function StoreProvider({ children }) {
             }
 
             const hadWrittenAttendance = existingRecords.some((record) => record.type === 'written');
+            const hadElectionAttendance = existingRecords.some((record) => record.has_election);
             pendingAttendanceOpsRef.current.add(attendanceKey);
             let writtenVotePayload = [];
             let didApplyWrittenPreview = false;
@@ -1184,6 +1367,10 @@ export function StoreProvider({ children }) {
                         .eq('member_id', memberId)
                         .eq('meeting_id', meetingId);
                     writtenVotePayload = Array.isArray(existingWrittenVotes) ? existingWrittenVotes : [];
+                }
+
+                if (hadElectionAttendance) {
+                    await refreshMailElectionVotesFromDb();
                 }
 
                 setState(prev => ({
@@ -1269,6 +1456,15 @@ export function StoreProvider({ children }) {
                     attendanceSyncChannelRef.current?.send({
                         type: 'broadcast',
                         event: 'written_votes_changed',
+                        payload: { meetingId }
+                    });
+                }
+
+                if (hadElectionAttendance) {
+                    await refreshMailElectionVotesFromDb();
+                    attendanceSyncChannelRef.current?.send({
+                        type: 'broadcast',
+                        event: 'mail_election_votes_changed',
                         payload: { meetingId }
                     });
                 }
@@ -1359,7 +1555,9 @@ export function StoreProvider({ children }) {
         updateAgenda: async (updatedAgenda) => {
             const currentAgenda = stateRef.current.agendas.find(a => a.id === updatedAgenda.id) || {};
             const mergedAgenda = { ...currentAgenda, ...updatedAgenda };
-            const normalizedAgenda = withLegacyVoteTotals(mergedAgenda);
+            const normalizedAgenda = withLegacyVoteTotals(mergedAgenda, {
+                mailElectionVotes: stateRef.current.mailElectionVotes
+            });
             if (areAgendaRecordsEqual(currentAgenda, normalizedAgenda)) {
                 return;
             }
@@ -1829,7 +2027,7 @@ export function StoreProvider({ children }) {
         },
 
         resetHelper: async () => { }
-    }), [broadcastSystemSettingsSync, reconcileAgendaVoteCountsFromWrittenVotes, refreshAgendasFromDb, setAgendaById]); // Actions are stable because they use stateRef to access current state values
+    }), [broadcastSystemSettingsSync, reconcileAgendaVoteCountsFromWrittenVotes, refreshAgendasFromDb, refreshMailElectionVotesFromDb, setAgendaById]); // Actions are stable because they use stateRef to access current state values
 
     return (
         <StoreContext.Provider value={{ state, actions }}>

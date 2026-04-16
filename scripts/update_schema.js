@@ -39,6 +39,16 @@ CREATE TABLE public.attendance (
     has_election boolean not null default false,
     proxy_name text
 );
+
+CREATE TABLE public.mail_election_votes (
+    id uuid primary key default gen_random_uuid(),
+    member_id bigint references public.members(id) on delete cascade,
+    meeting_id bigint references public.agendas(id) on delete cascade,
+    agenda_id bigint references public.agendas(id) on delete cascade,
+    choice text check (choice in ('yes', 'no', 'abstain')),
+    created_at timestamp with time zone default timezone('utc'::text, now()) not null,
+    unique(member_id, meeting_id, agenda_id)
+);
         `);
         // If we can't execute SQL, we must stop and ask user or try to see if we have `rpc`.
     } else {

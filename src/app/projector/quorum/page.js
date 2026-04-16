@@ -2,14 +2,14 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { useStore } from '@/lib/store';
-import { getAttendanceQuorumTarget, getMeetingAttendanceStats, normalizeAgendaType } from '@/lib/store';
+import { getAgendaAttendanceDisplayStats, getAttendanceQuorumTarget, getMeetingAttendanceStats, normalizeAgendaType } from '@/lib/store';
 import { CheckCircle2 } from 'lucide-react';
 
 const EMPTY_INACTIVE_MEMBER_IDS = [];
 
 export default function QuorumProjectorPage() {
     const { state } = useStore();
-    const { agendas, currentAgendaId, attendance, members, voteData } = state;
+    const { agendas, currentAgendaId, attendance, members, voteData, mailElectionVotes } = state;
     const inactiveMemberIds = Array.isArray(voteData?.inactiveMemberIds) ? voteData.inactiveMemberIds : EMPTY_INACTIVE_MEMBER_IDS;
     const activeMemberIdSet = useMemo(() => {
         const inactiveMemberIdSet = new Set(inactiveMemberIds);
@@ -39,6 +39,12 @@ export default function QuorumProjectorPage() {
     const meetingStats = useMemo(() => {
         return getMeetingAttendanceStats(attendance, meetingId, activeMemberIdSet);
     }, [activeMemberIdSet, attendance, meetingId]);
+    const displayStats = useMemo(() => getAgendaAttendanceDisplayStats({
+        agenda: currentAgenda,
+        meetingStats,
+        mailElectionVotes,
+        activeMemberIdSet
+    }), [activeMemberIdSet, currentAgenda, mailElectionVotes, meetingStats]);
 
     useEffect(() => {
         const handleResize = () => {
@@ -58,11 +64,11 @@ export default function QuorumProjectorPage() {
         transformOrigin: 'center center',
     };
 
-    const direct = meetingStats.direct;
-    const written = meetingStats.written;
-    const proxy = meetingStats.proxy;
+    const direct = displayStats.direct;
+    const fixedAttendanceCount = displayStats.fixedAttendanceCount;
+    const proxy = displayStats.proxy;
     const liveTotalMembers = activeMembers.length;
-    const liveTotalAttendance = meetingStats.total;
+    const liveTotalAttendance = displayStats.total;
     const normalizedAgendaType = normalizeAgendaType(currentAgenda?.type);
     const quorumCount = getAttendanceQuorumTarget(normalizedAgendaType, liveTotalMembers);
     const isTotalQuorumReached = liveTotalAttendance >= quorumCount;
@@ -99,7 +105,7 @@ export default function QuorumProjectorPage() {
                             <span className="mx-4 text-slate-700">|</span>
                             <span className="flex items-center text-blue-500/80">대리인참석 <b className="text-blue-400 ml-2 font-mono">{proxy}</b></span>
                             <span className="mx-4 text-slate-700">|</span>
-                            <span className="flex items-center text-orange-500/80">서면 <b className="text-orange-400 ml-2 font-mono">{written}</b></span>
+                            <span className="flex items-center text-orange-500/80">{displayStats.fixedAttendanceLabel} <b className="text-orange-400 ml-2 font-mono">{fixedAttendanceCount}</b></span>
                         </div>
                     </div>
                     <div className="w-full bg-slate-800/50 rounded-3xl p-10 backdrop-blur-sm border border-white/10 shadow-2xl space-y-8">

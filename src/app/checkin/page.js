@@ -2,7 +2,7 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import { useStore } from '@/lib/store';
-import { getMajorityThreshold, getMeetingAttendanceStats, getUniqueAttendanceRecords } from '@/lib/store';
+import { getMajorityThreshold, getMeetingAttendanceStats, getUniqueAttendanceRecords, normalizeAgendaType } from '@/lib/store';
 import { Search, UserCheck, AlertCircle, Clock, Check, RotateCcw, ChevronDown, ChevronUp, User, FileText } from 'lucide-react';
 import FlipNumber from '@/components/ui/FlipNumber';
 import FullscreenToggle from '@/components/ui/FullscreenToggle';
@@ -15,11 +15,24 @@ const MEETING_TYPE_OPTIONS = [
     { value: 'proxy', label: '대리', description: '대리 참석', icon: Clock, tone: 'bg-blue-50 text-blue-700 border-blue-200' },
     { value: 'written', label: '서면', description: '서면 의결권', icon: FileText, tone: 'bg-orange-50 text-orange-700 border-orange-200' }
 ];
+const ELECTION_MODE_OPTIONS = [
+    { value: 'none', label: '없음', description: '선거 불참', tone: 'bg-slate-100 text-slate-700 border-slate-200' },
+    { value: 'onsite', label: '현장', description: '현장 선거 참여', tone: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
+    { value: 'mail', label: '우편투표', description: '우편투표 고정표 입력', tone: 'bg-amber-50 text-amber-700 border-amber-200' }
+];
 
 const buildInitialWrittenVotes = (agendas = []) => {
     const initialVotes = {};
     agendas.forEach((agenda) => {
         initialVotes[agenda.id] = 'yes';
+    });
+    return initialVotes;
+};
+
+const buildInitialElectionVotes = (agendas = []) => {
+    const initialVotes = {};
+    agendas.forEach((agenda) => {
+        initialVotes[agenda.id] = '';
     });
     return initialVotes;
 };
@@ -90,9 +103,10 @@ export default function CheckInPage() {
     const [checkInForm, setCheckInForm] = useState({
         memberId: null,
         meetingType: 'direct',
-        hasElection: false,
+        electionMode: 'none',
         proxyName: '',
-        writtenVotes: {}
+        writtenVotes: {},
+        electionVotes: {}
     });
 
 
@@ -183,9 +197,10 @@ export default function CheckInPage() {
         setCheckInForm({
             memberId: null,
             meetingType: 'direct',
-            hasElection: false,
+            electionMode: 'none',
             proxyName: '',
-            writtenVotes: {}
+            writtenVotes: {},
+            electionVotes: {}
         });
     };
 
@@ -197,9 +212,10 @@ export default function CheckInPage() {
         setCheckInForm({
             memberId: member.id,
             meetingType: 'direct',
-            hasElection: false,
+            electionMode: 'none',
             proxyName: member.proxy || "",
-            writtenVotes: buildInitialWrittenVotes(activeAgendas)
+            writtenVotes: buildInitialWrittenVotes(activeAgendas),
+            electionVotes: buildInitialElectionVotes(electionAgendas)
         });
         setIsCheckInModalOpen(true);
     };
@@ -227,13 +243,19 @@ export default function CheckInPage() {
         }
         return items;
     })();
+    const electionAgendas = activeAgendas.filter((agenda) => normalizeAgendaType(agenda?.type) === 'election');
 
     const selectedCheckInMember = members.find((member) => member.id === checkInForm.memberId) || null;
+    const isMailElectionComplete = (
+        checkInForm.electionMode !== 'mail'
+        || electionAgendas.every((agenda) => ['yes', 'no', 'abstain'].includes(checkInForm.electionVotes?.[agenda.id]))
+    );
 
     const isSubmitDisabled = (
         !checkInForm.memberId
-        || (!checkInForm.hasElection && checkInForm.meetingType === 'none')
+        || (checkInForm.electionMode === 'none' && checkInForm.meetingType === 'none')
         || (checkInForm.meetingType === 'proxy' && !checkInForm.proxyName.trim())
+        || !isMailElectionComplete
     );
 
     const handleConfirmCheckIn = () => {
@@ -247,12 +269,19 @@ export default function CheckInPage() {
             agenda_id: parseInt(agendaId),
             choice: choice
         }));
+        const electionVotesArray = Object.entries(checkInForm.electionVotes || {})
+            .filter(([, choice]) => ['yes', 'no', 'abstain'].includes(choice))
+            .map(([agendaId, choice]) => ({
+                agenda_id: parseInt(agendaId),
+                choice
+            }));
 
         actions.checkInMember(checkInForm.memberId, {
             meetingType: checkInForm.meetingType === 'none' ? null : checkInForm.meetingType,
-            hasElection: checkInForm.hasElection,
+            electionMode: checkInForm.electionMode,
             proxyName: checkInForm.meetingType === 'proxy' ? checkInForm.proxyName.trim() : null,
-            writtenVotes: checkInForm.meetingType === 'written' ? votesArray : []
+            writtenVotes: checkInForm.meetingType === 'written' ? votesArray : [],
+            electionVotes: checkInForm.electionMode === 'mail' ? electionVotesArray : []
         });
 
         closeCheckInModal();
@@ -505,22 +534,32 @@ export default function CheckInPage() {
                             <section className="space-y-3">
                                 <div>
                                     <div className="text-sm font-bold text-slate-800">선거 참여</div>
-                                    <p className="text-xs text-slate-500">총회 의결권과 독립적으로 선택됩니다.</p>
+                                    <p className="text-xs text-slate-500">현장 선거 또는 우편투표 중 하나를 선택할 수 있습니다.</p>
                                 </div>
-                                <button
-                                    onClick={() => setCheckInForm((prev) => ({ ...prev, hasElection: !prev.hasElection }))}
-                                    className={`w-full rounded-2xl border px-4 py-4 transition-all flex items-center justify-between ${checkInForm.hasElection ? 'border-amber-300 bg-amber-50 text-amber-800 shadow-sm' : 'border-slate-200 bg-white text-slate-600'}`}
-                                >
-                                    <div className="text-left">
-                                        <div className="text-sm font-black">선거 참여</div>
-                                        <div className="text-xs font-semibold opacity-80">
-                                            우편 또는 현장 선거 접수를 함께 기록합니다.
-                                        </div>
-                                    </div>
-                                    <div className={`w-12 h-7 rounded-full transition-colors ${checkInForm.hasElection ? 'bg-amber-400' : 'bg-slate-200'} p-1`}>
-                                        <div className={`w-5 h-5 rounded-full bg-white transition-transform ${checkInForm.hasElection ? 'translate-x-5' : 'translate-x-0'}`}></div>
-                                    </div>
-                                </button>
+                                <div className="grid grid-cols-3 gap-2">
+                                    {ELECTION_MODE_OPTIONS.map((option) => {
+                                        const isActive = checkInForm.electionMode === option.value;
+                                        return (
+                                            <button
+                                                key={option.value}
+                                                onClick={() => setCheckInForm((prev) => ({
+                                                    ...prev,
+                                                    electionMode: option.value,
+                                                    electionVotes: option.value === 'mail'
+                                                        ? (Object.keys(prev.electionVotes || {}).length ? prev.electionVotes : buildInitialElectionVotes(electionAgendas))
+                                                        : prev.electionVotes
+                                                }))}
+                                                className={`rounded-2xl border px-3 py-3 text-left transition-all ${isActive ? option.tone + ' ring-2 ring-offset-1 ring-slate-300 shadow-sm' : 'border-slate-200 bg-white text-slate-600'}`}
+                                            >
+                                                <div className="flex items-center justify-between mb-2">
+                                                    <span className="text-sm font-black">{option.label}</span>
+                                                    {isActive && <Check size={16} />}
+                                                </div>
+                                                <div className="text-[11px] font-semibold opacity-80 break-keep">{option.description}</div>
+                                            </button>
+                                        );
+                                    })}
+                                </div>
                             </section>
 
                             {checkInForm.meetingType === 'proxy' && (
@@ -587,12 +626,69 @@ export default function CheckInPage() {
                                 </section>
                             )}
 
+                            {checkInForm.electionMode === 'mail' && (
+                                <section className="space-y-3">
+                                    <div className="flex items-center justify-between gap-3">
+                                        <div>
+                                            <div className="text-sm font-bold text-slate-800">우편투표 입력</div>
+                                            <p className="text-xs text-slate-500">선거 안건별 찬성, 반대, 기권을 선택합니다.</p>
+                                        </div>
+                                        <button
+                                            onClick={() => setCheckInForm((prev) => {
+                                                const nextVotes = { ...prev.electionVotes };
+                                                electionAgendas.forEach((agenda) => {
+                                                    nextVotes[agenda.id] = 'yes';
+                                                });
+                                                return { ...prev, electionVotes: nextVotes };
+                                            })}
+                                            className="px-3 py-1.5 bg-amber-100 text-amber-700 rounded-lg text-xs font-bold hover:bg-amber-200 transition-colors"
+                                        >
+                                            전체 찬성
+                                        </button>
+                                    </div>
+
+                                    <div className="space-y-4">
+                                        {electionAgendas.length === 0 ? (
+                                            <p className="text-center text-slate-400 py-6">우편투표 대상 선거 안건이 없습니다.</p>
+                                        ) : (
+                                            electionAgendas.map((agenda) => (
+                                                <div key={agenda.id} className="flex flex-col gap-2">
+                                                    <span className="text-sm font-bold text-slate-700 break-keep leading-tight">
+                                                        {agenda.title}
+                                                    </span>
+                                                    <div className="flex bg-slate-100 rounded-lg p-1">
+                                                        <button
+                                                            onClick={() => setCheckInForm((prev) => ({ ...prev, electionVotes: { ...prev.electionVotes, [agenda.id]: 'yes' } }))}
+                                                            className={`flex-1 py-2 rounded-md text-sm font-bold transition-all ${checkInForm.electionVotes[agenda.id] === 'yes' ? 'bg-white text-emerald-600 shadow-sm ring-1 ring-slate-200' : 'text-slate-400 hover:text-slate-600'}`}
+                                                        >
+                                                            찬성
+                                                        </button>
+                                                        <button
+                                                            onClick={() => setCheckInForm((prev) => ({ ...prev, electionVotes: { ...prev.electionVotes, [agenda.id]: 'no' } }))}
+                                                            className={`flex-1 py-2 rounded-md text-sm font-bold transition-all ${checkInForm.electionVotes[agenda.id] === 'no' ? 'bg-white text-red-500 shadow-sm ring-1 ring-slate-200' : 'text-slate-400 hover:text-slate-600'}`}
+                                                        >
+                                                            반대
+                                                        </button>
+                                                        <button
+                                                            onClick={() => setCheckInForm((prev) => ({ ...prev, electionVotes: { ...prev.electionVotes, [agenda.id]: 'abstain' } }))}
+                                                            className={`flex-1 py-2 rounded-md text-sm font-bold transition-all ${checkInForm.electionVotes[agenda.id] === 'abstain' ? 'bg-white text-slate-600 shadow-sm ring-1 ring-slate-200' : 'text-slate-400 hover:text-slate-600'}`}
+                                                        >
+                                                            기권
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            ))
+                                        )}
+                                    </div>
+                                </section>
+                            )}
+
                             <section className="rounded-2xl border border-slate-200 bg-slate-50 p-4 space-y-2">
                                 <div className="text-sm font-bold text-slate-800">저장 결과</div>
                                 <div className="flex flex-wrap gap-2">
                                     {getAttendanceBadges({
                                         type: checkInForm.meetingType === 'none' ? null : checkInForm.meetingType,
-                                        has_election: checkInForm.hasElection
+                                        has_election: checkInForm.electionMode !== 'none'
                                     }).map((badge) => {
                                         const Icon = badge.icon;
                                         return (
@@ -601,7 +697,10 @@ export default function CheckInPage() {
                                             </span>
                                         );
                                     })}
-                                    {!checkInForm.hasElection && checkInForm.meetingType === 'none' && (
+                                    {!isMailElectionComplete && (
+                                        <span className="text-xs font-semibold text-red-500">우편투표를 선택한 경우 모든 선거 안건에 응답해야 합니다.</span>
+                                    )}
+                                    {checkInForm.electionMode === 'none' && checkInForm.meetingType === 'none' && (
                                         <span className="text-xs font-semibold text-red-500">총회 상태 또는 선거 참여를 하나 이상 선택해야 합니다.</span>
                                     )}
                                 </div>

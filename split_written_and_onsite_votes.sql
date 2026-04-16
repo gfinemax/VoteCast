@@ -9,6 +9,15 @@ ADD COLUMN IF NOT EXISTS onsite_abstain INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE attendance
 ADD COLUMN IF NOT EXISTS has_election BOOLEAN NOT NULL DEFAULT FALSE;
 
+CREATE TABLE IF NOT EXISTS mail_election_votes (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    member_id INTEGER NOT NULL REFERENCES members(id) ON DELETE CASCADE,
+    meeting_id INTEGER NOT NULL REFERENCES agendas(id) ON DELETE CASCADE,
+    agenda_id INTEGER NOT NULL REFERENCES agendas(id) ON DELETE CASCADE,
+    choice TEXT NOT NULL CHECK (choice IN ('yes', 'no', 'abstain')),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
+);
+
 WITH ranked_written_votes AS (
     SELECT
         id,
@@ -27,6 +36,10 @@ WHERE id IN (
 
 CREATE UNIQUE INDEX IF NOT EXISTS uq_written_votes_member_meeting_agenda
 ON written_votes(member_id, meeting_id, agenda_id);
+CREATE INDEX IF NOT EXISTS idx_mail_election_votes_member ON mail_election_votes(member_id);
+CREATE INDEX IF NOT EXISTS idx_mail_election_votes_agenda ON mail_election_votes(agenda_id);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_mail_election_votes_member_meeting_agenda
+ON mail_election_votes(member_id, meeting_id, agenda_id);
 
 UPDATE agendas
 SET
@@ -69,7 +82,8 @@ CREATE OR REPLACE FUNCTION check_in_member(
     p_type TEXT DEFAULT NULL,
     p_has_election BOOLEAN DEFAULT FALSE,
     p_proxy_name TEXT DEFAULT NULL,
-    p_votes JSONB DEFAULT NULL
+    p_votes JSONB DEFAULT NULL,
+    p_election_votes JSONB DEFAULT NULL
 )
 RETURNS VOID AS $$
 DECLARE
@@ -110,6 +124,19 @@ BEGIN
             END IF;
         END LOOP;
     END IF;
+
+    IF p_election_votes IS NOT NULL THEN
+        FOR v_vote IN SELECT * FROM jsonb_array_elements(p_election_votes)
+        LOOP
+            v_agenda_id := (v_vote->>'agenda_id')::INTEGER;
+            v_choice := v_vote->>'choice';
+
+            INSERT INTO mail_election_votes (member_id, meeting_id, agenda_id, choice)
+            VALUES (p_member_id, p_meeting_id, v_agenda_id, v_choice)
+            ON CONFLICT (member_id, meeting_id, agenda_id)
+            DO UPDATE SET choice = EXCLUDED.choice;
+        END LOOP;
+    END IF;
 END;
 $$ LANGUAGE plpgsql;
 
@@ -147,6 +174,7 @@ BEGIN
     END LOOP;
 
     DELETE FROM written_votes WHERE member_id = p_member_id AND meeting_id = p_meeting_id;
+    DELETE FROM mail_election_votes WHERE member_id = p_member_id AND meeting_id = p_meeting_id;
     DELETE FROM attendance WHERE member_id = p_member_id AND meeting_id = p_meeting_id;
 END;
 $$ LANGUAGE plpgsql;

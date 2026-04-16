@@ -2,7 +2,7 @@
 
 import React, { useEffect, useMemo } from 'react';
 import { useStore } from '@/lib/store';
-import { getAgendaVoteBuckets, getAttendanceQuorumTarget, getMeetingAttendanceStats, normalizeAgendaType } from '@/lib/store';
+import { getAgendaAttendanceDisplayStats, getAgendaVoteBuckets, getAttendanceQuorumTarget, getMeetingAttendanceStats, normalizeAgendaType } from '@/lib/store';
 import { supabase } from '@/lib/supabase';
 import { CheckCircle2, Settings } from 'lucide-react';
 import dynamic from 'next/dynamic';
@@ -32,7 +32,7 @@ const parseResultStatsFromDeclaration = (declaration = '') => {
 
 export default function ProjectorPage() {
     const { state } = useStore();
-    const { projectorMode, agendas, currentAgendaId, voteData, attendance, members } = state;
+    const { projectorMode, agendas, currentAgendaId, voteData, attendance, members, mailElectionVotes } = state;
     const inactiveMemberIds = Array.isArray(voteData?.inactiveMemberIds) ? voteData.inactiveMemberIds : EMPTY_INACTIVE_MEMBER_IDS;
     const activeMemberIdSet = useMemo(() => {
         const inactiveMemberIdSet = new Set(inactiveMemberIds);
@@ -120,18 +120,24 @@ export default function ProjectorPage() {
     const meetingStats = useMemo(() => {
         return getMeetingAttendanceStats(attendance, meetingId, activeMemberIdSet);
     }, [activeMemberIdSet, attendance, meetingId]);
+    const displayStats = useMemo(() => getAgendaAttendanceDisplayStats({
+        agenda: currentAgenda,
+        meetingStats,
+        mailElectionVotes,
+        activeMemberIdSet
+    }), [activeMemberIdSet, currentAgenda, mailElectionVotes, meetingStats]);
 
     // Stats for WAITING layer
     const waitingStats = useMemo(() => {
         const liveTotalMembers = activeMembers.length;
-        const liveTotalAttendance = meetingStats.total;
+        const liveTotalAttendance = displayStats.total;
         const normalizedAgendaType = normalizeAgendaType(currentAgenda?.type);
         const quorumCount = getAttendanceQuorumTarget(normalizedAgendaType, liveTotalMembers);
         const isTotalQuorumReached = liveTotalAttendance >= quorumCount;
         const isElection = normalizedAgendaType === 'election';
         const directTarget = Math.ceil(liveTotalMembers * 0.2);
-        const isDirectSatisfied = !isElection || (meetingStats.direct >= directTarget);
-        const directPercent = liveTotalMembers > 0 ? (meetingStats.direct / liveTotalMembers) * 100 : 0;
+        const isDirectSatisfied = !isElection || (displayStats.direct >= directTarget);
+        const directPercent = liveTotalMembers > 0 ? (displayStats.direct / liveTotalMembers) * 100 : 0;
         const isReadyToOpen = isTotalQuorumReached && isDirectSatisfied;
 
         return {
@@ -144,16 +150,21 @@ export default function ProjectorPage() {
             directTarget,
             isDirectSatisfied,
             directPercent,
-            isReadyToOpen
+            isReadyToOpen,
+            fixedAttendanceLabel: displayStats.fixedAttendanceLabel,
+            fixedAttendanceCount: displayStats.fixedAttendanceCount
         };
-    }, [activeMembers.length, meetingStats, currentAgenda]);
+    }, [activeMembers.length, currentAgenda, displayStats]);
 
     // Stats for RESULT layer
     const resultStats = useMemo(() => {
         // CHECK SNAPSHOT
         const snapshot = currentAgenda?.vote_snapshot;
         const isConfirmed = !!snapshot;
-        const liveVoteBuckets = getAgendaVoteBuckets(currentAgenda);
+        const liveVoteBuckets = getAgendaVoteBuckets(currentAgenda, {
+            mailElectionVotes,
+            activeMemberIdSet
+        });
         const isResultSnapshot = projectorMode === 'RESULT' && voteData?.resultAgendaId === currentAgenda?.id;
         const projectorDeclaration = isResultSnapshot
             ? String(voteData?.resultDeclaration || voteData?.customDeclaration || '').trim()
@@ -164,9 +175,9 @@ export default function ProjectorPage() {
                 (voteData?.resultTotalAttendance > 0
                     ? voteData.resultTotalAttendance
                     : null)
-                ?? meetingStats.total
+                ?? displayStats.total
             )
-            : (isConfirmed ? snapshot.stats.total : meetingStats.total);
+            : (isConfirmed ? snapshot.stats.total : displayStats.total);
         const baseVotesYes = isResultSnapshot
             ? (
                 (voteData?.resultVotesYes > 0
@@ -231,7 +242,7 @@ export default function ProjectorPage() {
             customDeclaration,
             isSpecialVote
         };
-    }, [currentAgenda, meetingStats, projectorMode, voteData]);
+    }, [activeMemberIdSet, currentAgenda, displayStats, mailElectionVotes, projectorMode, voteData]);
 
 
 
@@ -343,11 +354,11 @@ export default function ProjectorPage() {
                                 <span className="absolute left-full bottom-[2vh] ml-[1vw] text-[min(2.5vw,3vh)] text-slate-500 font-light whitespace-nowrap">명</span>
                             </div>
                             <div className="flex items-center text-[min(1.5vw,2vh)] text-slate-400 font-medium font-mono mt-[2vh]">
-                                <span className="text-emerald-400">참석 {meetingStats.direct}</span>
+                                <span className="text-emerald-400">참석 {displayStats.direct}</span>
                                 <span className="mx-[1vw] text-slate-700">|</span>
-                                <span className="text-blue-400">대리 {meetingStats.proxy}</span>
+                                <span className="text-blue-400">대리 {displayStats.proxy}</span>
                                 <span className="mx-[1vw] text-slate-700">|</span>
-                                <span className="text-orange-400">서면 {meetingStats.written}</span>
+                                <span className="text-orange-400">{waitingStats.fixedAttendanceLabel} {waitingStats.fixedAttendanceCount}</span>
                             </div>
                         </div>
 
@@ -380,7 +391,7 @@ export default function ProjectorPage() {
                                     </div>
                                     <div className="w-full h-[1.5vh] bg-slate-700/50 rounded-full overflow-hidden relative shadow-inner">
                                         <div className="absolute top-0 bottom-0 left-[20%] w-0.5 bg-emerald-500/50 z-20 border-r border-black/10"></div>
-                                        <div className={`h-full transition-all duration-1000 ease-out ${waitingStats.isDirectSatisfied ? 'bg-gradient-to-r from-emerald-600 to-emerald-400' : 'bg-gradient-to-r from-red-900 to-red-600'}`} style={{ width: `${Math.min(100, (meetingStats.direct / (waitingStats.liveTotalMembers || 1)) * 100)}%` }}></div>
+                                        <div className={`h-full transition-all duration-1000 ease-out ${waitingStats.isDirectSatisfied ? 'bg-gradient-to-r from-emerald-600 to-emerald-400' : 'bg-gradient-to-r from-red-900 to-red-600'}`} style={{ width: `${Math.min(100, (displayStats.direct / (waitingStats.liveTotalMembers || 1)) * 100)}%` }}></div>
                                     </div>
                                 </div>
                             )}

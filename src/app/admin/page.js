@@ -3,7 +3,7 @@
 import React from 'react';
 import Link from 'next/link';
 import { useStore } from '@/lib/store';
-import { getAgendaVoteBuckets, getMeetingAttendanceStats } from '@/lib/store';
+import { getAgendaAttendanceDisplayStats, getAgendaVoteBuckets, getMeetingAttendanceStats } from '@/lib/store';
 import { Settings, Users } from 'lucide-react';
 import FullscreenToggle from '@/components/ui/FullscreenToggle';
 import DashboardLayout from '@/components/admin/DashboardLayout';
@@ -15,7 +15,7 @@ import AuthStatus from '@/components/ui/AuthStatus';
 
 export default function AdminPage() {
     const { state, actions } = useStore();
-    const { voteData, currentAgendaId, agendas, projectorMode, attendance, members } = state;
+    const { voteData, currentAgendaId, agendas, projectorMode, attendance, members, mailElectionVotes } = state;
     const inactiveMemberIds = React.useMemo(
         () => Array.isArray(voteData?.inactiveMemberIds) ? voteData.inactiveMemberIds : [],
         [voteData?.inactiveMemberIds]
@@ -45,6 +45,12 @@ export default function AdminPage() {
     const meetingStats = React.useMemo(() => {
         return getMeetingAttendanceStats(attendance, meetingId, activeMemberIdSet);
     }, [activeMemberIdSet, attendance, meetingId]);
+    const displayStats = React.useMemo(() => getAgendaAttendanceDisplayStats({
+        agenda: currentAgenda,
+        meetingStats,
+        mailElectionVotes,
+        activeMemberIdSet
+    }), [activeMemberIdSet, currentAgenda, mailElectionVotes, meetingStats]);
 
     // Pass Logic based on Vote Type
     const normalizeType = (type) => {
@@ -54,9 +60,12 @@ export default function AdminPage() {
     };
     const currentAgendaType = normalizeType(currentAgenda?.type);
     const isSpecialVote = currentAgendaType === 'twoThirds';
-    const totalAttendance = meetingStats.total;
+    const totalAttendance = displayStats.total;
     const passThreshold = isSpecialVote ? Math.ceil(totalAttendance * (2 / 3)) : (totalAttendance / 2);
-    const voteBuckets = getAgendaVoteBuckets(currentAgenda);
+    const voteBuckets = getAgendaVoteBuckets(currentAgenda, {
+        mailElectionVotes,
+        activeMemberIdSet
+    });
     const votesYes = voteBuckets.final.yes;
     const votesNo = voteBuckets.final.no;
     const votesAbstain = voteBuckets.final.abstain;

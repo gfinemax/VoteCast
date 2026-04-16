@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useStore } from '@/lib/store';
-import { getAgendaVoteBuckets, getAttendanceQuorumTarget, getKeyboardNavigableAgendaIds, getMeetingAttendanceStats, normalizeAgendaType } from '@/lib/store';
+import { getAgendaAttendanceDisplayStats, getAgendaVoteBuckets, getAttendanceQuorumTarget, getKeyboardNavigableAgendaIds, getMeetingAttendanceStats, normalizeAgendaType } from '@/lib/store';
 import { Monitor, CheckCircle2, Play, Settings } from 'lucide-react';
 import AlertModal from '@/components/ui/AlertModal';
 import { useProjector } from '@/components/admin/ProjectorContext';
@@ -36,7 +36,7 @@ const getAgendaPresentation = (agenda, agendas, pageOverride) => {
 
 export default function LiveMonitor({ mode = 'admin' }) {
     const { state, actions } = useStore();
-    const { projectorMode, agendas, currentAgendaId, voteData, attendance, members, projectorConnectedCount } = state;
+    const { projectorMode, agendas, currentAgendaId, voteData, attendance, members, projectorConnectedCount, mailElectionVotes } = state;
     const inactiveMemberIds = Array.isArray(voteData?.inactiveMemberIds) ? voteData.inactiveMemberIds : EMPTY_INACTIVE_MEMBER_IDS;
     const activeMemberIdSet = useMemo(() => {
         const inactiveMemberIdSet = new Set(inactiveMemberIds);
@@ -102,6 +102,12 @@ export default function LiveMonitor({ mode = 'admin' }) {
     const meetingStats = useMemo(() => {
         return getMeetingAttendanceStats(attendance, meetingId, activeMemberIdSet);
     }, [activeMemberIdSet, attendance, meetingId]);
+    const displayStats = useMemo(() => getAgendaAttendanceDisplayStats({
+        agenda: currentAgenda,
+        meetingStats,
+        mailElectionVotes,
+        activeMemberIdSet
+    }), [activeMemberIdSet, currentAgenda, mailElectionVotes, meetingStats]);
 
     const { currentPage } = useMemo(
         () => getAgendaPresentation(currentAgenda, agendas, voteData?.presentationPage),
@@ -147,9 +153,12 @@ export default function LiveMonitor({ mode = 'admin' }) {
     // Calculate result stats (Snapshot support)
     const snapshot = currentAgenda?.vote_snapshot;
     const isConfirmed = !!snapshot;
-    const liveVoteBuckets = getAgendaVoteBuckets(currentAgenda);
+    const liveVoteBuckets = getAgendaVoteBuckets(currentAgenda, {
+        mailElectionVotes,
+        activeMemberIdSet
+    });
 
-    const totalAttendance = isConfirmed ? snapshot.stats.total : meetingStats.total;
+    const totalAttendance = isConfirmed ? snapshot.stats.total : displayStats.total;
     const votesYes = isConfirmed ? snapshot.votes.yes : liveVoteBuckets.final.yes;
     const votesNo = isConfirmed ? snapshot.votes.no : liveVoteBuckets.final.no;
     const votesAbstain = isConfirmed ? snapshot.votes.abstain : liveVoteBuckets.final.abstain;
@@ -177,7 +186,7 @@ export default function LiveMonitor({ mode = 'admin' }) {
     const isTotalQuorumReached = totalAttendance >= quorumCount;
     const isElection = normalizedType === 'election';
     const directTarget = Math.ceil(liveTotalMembers * 0.2);
-    const directAttendance = meetingStats.direct;
+    const directAttendance = displayStats.direct;
     const isDirectSatisfied = !isElection || (directAttendance >= directTarget);
     const isReadyToOpen = isTotalQuorumReached && isDirectSatisfied;
     const quorumLabel = isSpecialVote ? '3분의 2' : '과반수';
@@ -383,11 +392,11 @@ export default function LiveMonitor({ mode = 'admin' }) {
                                     <span className="absolute left-full bottom-1 ml-0.5 text-[6px] text-slate-500 font-light whitespace-nowrap">명</span>
                                 </div>
                                 <div className="flex items-center text-[4px] text-slate-400 font-medium font-mono gap-1">
-                                    <span className="text-emerald-400">참석 {meetingStats.direct}</span>
+                                    <span className="text-emerald-400">참석 {displayStats.direct}</span>
                                     <span className="text-slate-700">|</span>
-                                    <span className="text-blue-400">대리 {meetingStats.proxy}</span>
+                                    <span className="text-blue-400">대리 {displayStats.proxy}</span>
                                     <span className="text-slate-700">|</span>
-                                    <span className="text-orange-400">서면 {meetingStats.written}</span>
+                                    <span className="text-orange-400">{displayStats.fixedAttendanceLabel} {displayStats.fixedAttendanceCount}</span>
                                 </div>
                             </div>
 
