@@ -146,7 +146,7 @@ export default function AgendaList() {
                 targetIndex = lastItem ? lastItem.order_index : 0;
             }
 
-            await actions.addAgenda({ title: newAgendaTitle, type: 'general' }, targetIndex);
+            await actions.addAgenda({ title: newAgendaTitle, type: 'majority' }, targetIndex);
             setNewAgendaTitle("");
             setAddingAgendaFolderId(null);
         } catch (error) {

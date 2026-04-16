@@ -251,9 +251,17 @@ export default function VoteControl() {
 
 
     // Handlers
-    const handleTypeChange = (newType) => {
-        if (currentAgenda && !isConfirmed && !isTypeLocked) { // Cannot change type if confirmed or locked
-            actions.updateAgenda({ id: currentAgenda.id, type: newType });
+    const handleTypeChange = async (newType) => {
+        if (!currentAgenda) return;
+        if (isConfirmed) return;
+        if (isTypeLocked) {
+            alert('투표 유형 잠금이 켜져 있어 변경할 수 없습니다. 왼쪽 자물쇠 버튼을 눌러 잠금을 해제하세요.');
+            return;
+        }
+
+        const result = await actions.updateAgenda({ id: currentAgenda.id, type: newType });
+        if (result?.ok === false) {
+            alert(result.error?.message || '안건 유형 변경 저장에 실패했습니다.');
         }
     };
 
@@ -544,7 +552,13 @@ export default function VoteControl() {
                     </h3>
 
                     {/* Vote Type Selector - Single Line Unified Toolbar */}
-                    <div className="flex items-center rounded-lg border border-slate-200 bg-white p-0.5 shadow-sm">
+                    <div className="flex items-center gap-2">
+                        {isTypeLocked && !isConfirmed && (
+                            <span className="rounded-full bg-amber-100 px-2 py-1 text-xs font-semibold text-amber-700">
+                                유형 잠금
+                            </span>
+                        )}
+                        <div className="flex items-center rounded-lg border border-slate-200 bg-white p-0.5 shadow-sm">
                         <button
                             type="button"
                             onClick={toggleTypeLock}
@@ -586,6 +600,7 @@ export default function VoteControl() {
                                     </div>
                                 );
                             })}
+                        </div>
                         </div>
                     </div>
                 </div>

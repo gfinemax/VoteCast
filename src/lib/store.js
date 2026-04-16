@@ -323,6 +323,13 @@ export const normalizeAgendaType = (type) => {
     if (type === 'special') return 'twoThirds';
     return type || 'majority';
 };
+const normalizeAgendaTypeForDb = (type) => {
+    const normalized = normalizeAgendaType(type);
+    if (['majority', 'twoThirds', 'election', 'folder'].includes(normalized)) {
+        return normalized;
+    }
+    return 'majority';
+};
 export const getAttendanceQuorumTarget = (type, totalMembers) => {
     return normalizeAgendaType(type) === 'twoThirds'
         ? Math.ceil((Number(totalMembers) || 0) * (2 / 3))
@@ -1479,8 +1486,8 @@ export function StoreProvider({ children }) {
             // Optimistic ID (temp) - ensuring it doesn't collide with real IDs (usually small integers)
             const tempId = Date.now();
 
-            let autoType = newAgenda.type || 'majority';
-            if (newAgenda.title && newAgenda.title.includes('선출')) {
+            let autoType = normalizeAgendaTypeForDb(newAgenda.type || 'majority');
+            if (newAgenda.title && (newAgenda.title.includes('선출') || newAgenda.title.includes('선거'))) {
                 autoType = 'election';
             }
 
@@ -1554,12 +1561,15 @@ export function StoreProvider({ children }) {
 
         updateAgenda: async (updatedAgenda) => {
             const currentAgenda = stateRef.current.agendas.find(a => a.id === updatedAgenda.id) || {};
-            const mergedAgenda = { ...currentAgenda, ...updatedAgenda };
+            const normalizedUpdatedAgenda = Object.prototype.hasOwnProperty.call(updatedAgenda, 'type')
+                ? { ...updatedAgenda, type: normalizeAgendaTypeForDb(updatedAgenda.type) }
+                : updatedAgenda;
+            const mergedAgenda = { ...currentAgenda, ...normalizedUpdatedAgenda };
             const normalizedAgenda = withLegacyVoteTotals(mergedAgenda, {
                 mailElectionVotes: stateRef.current.mailElectionVotes
             });
             if (areAgendaRecordsEqual(currentAgenda, normalizedAgenda)) {
-                return;
+                return { ok: true, skipped: true };
             }
 
             setState(prev => ({
@@ -1570,7 +1580,7 @@ export function StoreProvider({ children }) {
             // Only send explicitly changed fields to the DB (NOT all agenda fields).
             // This prevents accidental overwrites of written_yes/no/abstain columns,
             // which are managed exclusively by the check_in_member RPC and reconcile logic.
-            const { id, ...passedFields } = updatedAgenda;
+            const { id, ...passedFields } = normalizedUpdatedAgenda;
             const dbFields = { ...passedFields };
 
             // When onsite vote fields change, include the derived votes_* totals
@@ -1595,7 +1605,14 @@ export function StoreProvider({ children }) {
             const { error } = await supabase.from('agendas').update(dbFields).eq('id', id);
             if (error) {
                 console.error("FAILED to update Agenda:", error);
+                setState(prev => ({
+                    ...prev,
+                    agendas: prev.agendas.map(a => a.id === id ? currentAgenda : a)
+                }));
+                return { ok: false, error };
             }
+
+            return { ok: true };
         },
 
         deleteAgenda: async (id) => {
