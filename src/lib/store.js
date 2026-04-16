@@ -110,6 +110,49 @@ const normalizeMemberPayload = (member = {}) => ({
     proxy: String(member.proxy || '').trim()
 });
 
+const normalizeAttendanceBoolean = (value) => (
+    value === true
+    || value === 'true'
+    || value === 1
+    || value === '1'
+);
+
+const normalizeAttendanceRecord = (record = {}) => ({
+    ...record,
+    type: record?.type || null,
+    proxy_name: record?.proxy_name || null,
+    has_election: normalizeAttendanceBoolean(record?.has_election)
+});
+
+const normalizeCheckInPayload = (inputOrType = 'direct', proxyName = null, votes = null) => {
+    if (inputOrType && typeof inputOrType === 'object' && !Array.isArray(inputOrType)) {
+        const rawMeetingType = String(inputOrType.meetingType || inputOrType.type || '').trim();
+        const meetingType = ['direct', 'proxy', 'written'].includes(rawMeetingType) ? rawMeetingType : null;
+        const normalizedProxyName = meetingType === 'proxy'
+            ? (String(inputOrType.proxyName || '').trim() || null)
+            : null;
+        const writtenVotes = meetingType === 'written' && Array.isArray(inputOrType.writtenVotes)
+            ? inputOrType.writtenVotes
+            : [];
+
+        return {
+            meetingType,
+            hasElection: !!inputOrType.hasElection,
+            proxyName: normalizedProxyName,
+            writtenVotes
+        };
+    }
+
+    const meetingType = ['direct', 'proxy', 'written'].includes(inputOrType) ? inputOrType : null;
+
+    return {
+        meetingType,
+        hasElection: false,
+        proxyName: meetingType === 'proxy' ? (String(proxyName || '').trim() || null) : null,
+        writtenVotes: meetingType === 'written' && Array.isArray(votes) ? votes : []
+    };
+};
+
 const sortMembersById = (members = []) => (
     [...members].sort((left, right) => (Number(left?.id) || 0) - (Number(right?.id) || 0))
 );
@@ -254,19 +297,23 @@ export const getUniqueAttendanceRecords = (attendance = [], meetingId = null, ac
 
 export const getMeetingAttendanceStats = (attendance = [], meetingId = null, activeMemberIdSet = null) => {
     if (!meetingId) {
-        return { direct: 0, proxy: 0, written: 0, total: 0 };
+        return { direct: 0, proxy: 0, written: 0, election: 0, total: 0, participantTotal: 0 };
     }
 
     const uniqueRecords = getUniqueAttendanceRecords(attendance, meetingId, activeMemberIdSet);
     const direct = uniqueRecords.filter((record) => record.type === 'direct').length;
     const proxy = uniqueRecords.filter((record) => record.type === 'proxy').length;
     const written = uniqueRecords.filter((record) => record.type === 'written').length;
+    const election = uniqueRecords.filter((record) => record.has_election).length;
+    const participantTotal = uniqueRecords.filter((record) => record.type || record.has_election).length;
 
     return {
         direct,
         proxy,
         written,
-        total: uniqueRecords.length
+        election,
+        total: direct + proxy + written,
+        participantTotal
     };
 };
 
@@ -618,7 +665,7 @@ export function StoreProvider({ children }) {
                     ...prev,
                     agendas: nextAgendas,
                     members: members || [],
-                    attendance: attendance || []
+                    attendance: (attendance || []).map(normalizeAttendanceRecord)
                 }));
 
                 await refreshSystemSettingsFromDb({ defaultMeetingId });
@@ -664,7 +711,7 @@ export function StoreProvider({ children }) {
                     );
                     return {
                         ...prev,
-                        attendance: [...cleanList, payload.new]
+                        attendance: [...cleanList, normalizeAttendanceRecord(payload.new)]
                     };
                 });
             })
@@ -679,7 +726,9 @@ export function StoreProvider({ children }) {
                 console.log('[Realtime] Attendance UPDATE:', payload.new);
                 setState(prev => ({
                     ...prev,
-                    attendance: prev.attendance.map(a => a.id === payload.new.id ? payload.new : a)
+                    attendance: prev.attendance.map((a) => (
+                        a.id === payload.new.id ? normalizeAttendanceRecord(payload.new) : a
+                    ))
                 }));
             })
             .on('postgres_changes', { event: '*', schema: 'public', table: 'written_votes' }, async (payload) => {
@@ -735,8 +784,9 @@ export function StoreProvider({ children }) {
         // Receives inline data — no DB refetch needed on the receiver side
         const attendanceSyncChannel = supabase.channel('attendance_sync')
             .on('broadcast', { event: 'attendance_insert' }, (msg) => {
-                const record = msg.payload?.record;
-                if (!record) return;
+                const rawRecord = msg.payload?.record;
+                if (!rawRecord) return;
+                const record = normalizeAttendanceRecord(rawRecord);
                 console.log('[Broadcast] Attendance INSERT received:', record.member_id);
                 setState(prev => {
                     const cleanList = prev.attendance.filter(a =>
@@ -802,12 +852,13 @@ export function StoreProvider({ children }) {
             const { data } = await supabase.from('attendance').select('*');
             if (data) {
                 setState(prev => {
+                    const normalizedAttendance = data.map(normalizeAttendanceRecord);
                     // Skip update if nothing changed (avoid unnecessary re-renders)
-                    if (prev.attendance.length === data.length &&
-                        prev.attendance.every((a, i) => a.id === data[i]?.id)) {
+                    if (prev.attendance.length === normalizedAttendance.length &&
+                        prev.attendance.every((a, i) => a.id === normalizedAttendance[i]?.id)) {
                         return prev;
                     }
-                    return { ...prev, attendance: data };
+                    return { ...prev, attendance: normalizedAttendance };
                 });
             }
         };
@@ -943,7 +994,7 @@ export function StoreProvider({ children }) {
             }
         },
 
-        checkInMember: async (memberId, type = 'direct', proxyName = null, votes = null) => {
+        checkInMember: async (memberId, typeOrPayload = 'direct', proxyName = null, votes = null) => {
             // USE ACTIVE MEETING ID (Global)
             const meetingId = stateRef.current.activeMeetingId;
             if (!meetingId) {
@@ -963,21 +1014,34 @@ export function StoreProvider({ children }) {
                 return;
             }
 
+            const {
+                meetingType,
+                hasElection,
+                proxyName: normalizedProxyName,
+                writtenVotes
+            } = normalizeCheckInPayload(typeOrPayload, proxyName, votes);
+
+            if (!meetingType && !hasElection) {
+                console.error("Check-in payload must include a meeting type or election participation.");
+                return;
+            }
+
             pendingAttendanceOpsRef.current.add(attendanceKey);
-            const writtenVotePayload = type === 'written' && Array.isArray(votes) ? votes : [];
+            const writtenVotePayload = meetingType === 'written' ? writtenVotes : [];
             let didApplyWrittenPreview = false;
 
             try {
                 // Optimistic Update (Attendance Only)
                 const tempId = Date.now();
-                const newRecord = {
+                const newRecord = normalizeAttendanceRecord({
                     id: tempId,
                     member_id: memberId,
                     meeting_id: meetingId,
-                    type,
-                    proxy_name: proxyName,
+                    type: meetingType,
+                    has_election: hasElection,
+                    proxy_name: normalizedProxyName,
                     created_at: new Date().toISOString()
-                };
+                });
 
                 setState(prev => ({
                     ...prev,
@@ -1009,20 +1073,22 @@ export function StoreProvider({ children }) {
                 const { error } = await supabase.rpc('check_in_member', {
                     p_member_id: memberId,
                     p_meeting_id: meetingId,
-                    p_type: type,
-                    p_proxy_name: proxyName,
-                    p_votes: votes // Can be null
+                    p_type: meetingType,
+                    p_has_election: hasElection,
+                    p_proxy_name: normalizedProxyName,
+                    p_votes: writtenVotePayload.length ? writtenVotePayload : null
                 });
 
                 if (error) {
                     // If RPC fails (e.g., function not found), try fallback only if NO votes
-                    if (error.code === '42883' && !votes) { // undefined_function
+                    if (error.code === '42883' && !writtenVotePayload.length) { // undefined_function
                         console.warn("RPC 'check_in_member' not found. Falling back to simple insert.");
                         const { error: fallbackError } = await supabase.from('attendance').insert({
                             member_id: memberId,
                             meeting_id: meetingId,
-                            type,
-                            proxy_name: proxyName
+                            type: meetingType,
+                            has_election: hasElection,
+                            proxy_name: normalizedProxyName
                         });
                         if (fallbackError) {
                             console.error("Fallback Check-in Failed:", fallbackError);
@@ -1068,7 +1134,7 @@ export function StoreProvider({ children }) {
 
 
 
-                if (type === 'written') {
+                if (meetingType === 'written') {
                     // Reconcile as safety net (in case deployed RPC doesn't update agendas)
                     const meetingAgendaIds = getAgendaIdsForMeeting(stateRef.current.agendas, meetingId);
                     const meetingAgendas = stateRef.current.agendas.filter((agenda) => meetingAgendaIds.includes(agenda.id));

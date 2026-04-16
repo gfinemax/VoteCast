@@ -3,14 +3,69 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useStore } from '@/lib/store';
 import { getMajorityThreshold, getMeetingAttendanceStats, getUniqueAttendanceRecords } from '@/lib/store';
-import { Search, UserCheck, UserX, AlertCircle, Clock, Check, RotateCcw, ChevronDown, ChevronUp, User, FileText, Maximize, Minimize } from 'lucide-react';
+import { Search, UserCheck, AlertCircle, Clock, Check, RotateCcw, ChevronDown, ChevronUp, User, FileText } from 'lucide-react';
 import FlipNumber from '@/components/ui/FlipNumber';
 import FullscreenToggle from '@/components/ui/FullscreenToggle';
-import Button from '@/components/ui/Button';
-import Card from '@/components/ui/Card';
 import AuthStatus from '@/components/ui/AuthStatus';
 
 const EMPTY_INACTIVE_MEMBER_IDS = [];
+const MEETING_TYPE_OPTIONS = [
+    { value: 'none', label: '없음', description: '총회 불참', icon: Check, tone: 'bg-slate-100 text-slate-700 border-slate-200' },
+    { value: 'direct', label: '본인', description: '직접 참석', icon: User, tone: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
+    { value: 'proxy', label: '대리', description: '대리 참석', icon: Clock, tone: 'bg-blue-50 text-blue-700 border-blue-200' },
+    { value: 'written', label: '서면', description: '서면 의결권', icon: FileText, tone: 'bg-orange-50 text-orange-700 border-orange-200' }
+];
+
+const buildInitialWrittenVotes = (agendas = []) => {
+    const initialVotes = {};
+    agendas.forEach((agenda) => {
+        initialVotes[agenda.id] = 'yes';
+    });
+    return initialVotes;
+};
+
+const getAttendanceBadges = (record) => {
+    if (!record) return [];
+
+    const badges = [];
+    if (record.has_election) {
+        badges.push({
+            key: 'election',
+            label: '선거',
+            icon: Check,
+            className: 'bg-amber-100 text-amber-700'
+        });
+    }
+
+    if (record.type === 'direct') {
+        badges.push({
+            key: 'direct',
+            label: '본인',
+            icon: User,
+            className: 'bg-emerald-100 text-emerald-700'
+        });
+    }
+
+    if (record.type === 'proxy') {
+        badges.push({
+            key: 'proxy',
+            label: '대리',
+            icon: Clock,
+            className: 'bg-blue-100 text-blue-700'
+        });
+    }
+
+    if (record.type === 'written') {
+        badges.push({
+            key: 'written',
+            label: '서면',
+            icon: FileText,
+            className: 'bg-orange-100 text-orange-700'
+        });
+    }
+
+    return badges;
+};
 
 export default function CheckInPage() {
     const { state, actions } = useStore();
@@ -31,6 +86,14 @@ export default function CheckInPage() {
     const [searchTerm, setSearchTerm] = useState("");
 
     const [isStatsOpen, setIsStatsOpen] = useState(false);
+    const [isCheckInModalOpen, setIsCheckInModalOpen] = useState(false);
+    const [checkInForm, setCheckInForm] = useState({
+        memberId: null,
+        meetingType: 'direct',
+        hasElection: false,
+        proxyName: '',
+        writtenVotes: {}
+    });
 
 
     // Identify Folders (General Meetings)
@@ -56,9 +119,11 @@ export default function CheckInPage() {
         if (!activeMeetingId) return {
             total: activeMembers.length, // Show total anyway
             checkedIn: 0,
+            participantCount: 0,
             directCount: 0,
             proxyCount: 0,
             writtenCount: 0,
+            electionCount: 0,
             rate: 0,
             directTarget: Math.ceil(activeMembers.length * 0.2),
             majorityTarget: getMajorityThreshold(activeMembers.length),
@@ -72,7 +137,9 @@ export default function CheckInPage() {
         const directCount = meetingStats.direct;
         const proxyCount = meetingStats.proxy;
         const writtenCount = meetingStats.written;
+        const electionCount = meetingStats.election;
         const checkedInCount = meetingStats.total;
+        const participantCount = meetingStats.participantTotal;
 
         // Total Members in DB
         const total = activeMembers.length;
@@ -86,9 +153,11 @@ export default function CheckInPage() {
         return {
             total,
             checkedIn: checkedInCount,
+            participantCount,
             directCount,
             proxyCount,
             writtenCount,
+            electionCount,
             rate,
             directTarget,
             majorityTarget,
@@ -109,12 +178,30 @@ export default function CheckInPage() {
     }, [activeMembers, searchTerm]);
 
 
-    const handleCheckIn = (memberId, type, proxyName = null) => {
+    const closeCheckInModal = () => {
+        setIsCheckInModalOpen(false);
+        setCheckInForm({
+            memberId: null,
+            meetingType: 'direct',
+            hasElection: false,
+            proxyName: '',
+            writtenVotes: {}
+        });
+    };
+
+    const handleOpenCheckInModal = (member) => {
         if (!activeMeetingId) {
             alert("⚠️ 현재 입장 접수 중인 총회가 없습니다.\n관리자에게 문의하세요.");
             return;
         }
-        actions.checkInMember(memberId, type, proxyName);
+        setCheckInForm({
+            memberId: member.id,
+            meetingType: 'direct',
+            hasElection: false,
+            proxyName: member.proxy || "",
+            writtenVotes: buildInitialWrittenVotes(activeAgendas)
+        });
+        setIsCheckInModalOpen(true);
     };
 
     const handleCancelCheckIn = (memberId) => {
@@ -122,29 +209,12 @@ export default function CheckInPage() {
         setCancelMemberId(memberId);
         setIsCancelModalOpen(true);
     };
-
-    // Proxy Modal State
-    const [isProxyModalOpen, setIsProxyModalOpen] = useState(false);
-    const [proxyMemberId, setProxyMemberId] = useState(null);
-    const [proxyNameInput, setProxyNameInput] = useState("");
     const [isCancelModalOpen, setIsCancelModalOpen] = useState(false);
     const [cancelMemberId, setCancelMemberId] = useState(null);
 
-    const handleOpenProxyModal = (member) => {
-        setProxyMemberId(member.id);
-        setProxyNameInput(member.proxy || ""); // Pre-fill if exists
-        setIsProxyModalOpen(true);
-    };
-
-
-    // Written Vote Modal State
-    const [isWrittenVoteModalOpen, setIsWrittenVoteModalOpen] = useState(false);
-    const [writtenVoteMemberId, setWrittenVoteMemberId] = useState(null);
-    const [writtenVotes, setWrittenVotes] = useState({}); // { agendaId: 'yes' | 'no' | 'abstain' }
-
     // Derive Active Agendas (Items inside the current Active Meeting Folder)
     // Assumption: Agendas are ordered. Meeting is a folder. Items follow it until next folder.
-    const activeAgendas = useMemo(() => {
+    const activeAgendas = (() => {
         if (!activeMeetingId || agendas.length === 0) return [];
 
         const folderIndex = agendas.findIndex(a => a.id === activeMeetingId);
@@ -156,48 +226,36 @@ export default function CheckInPage() {
             items.push(agendas[i]);
         }
         return items;
-    }, [agendas, activeMeetingId]);
+    })();
 
-    const handleOpenWrittenVoteModal = (member) => {
-        setWrittenVoteMemberId(member.id);
+    const selectedCheckInMember = members.find((member) => member.id === checkInForm.memberId) || null;
 
-        // Initialize Default Votes (All Yes)
-        const initialVotes = {};
-        activeAgendas.forEach(a => {
-            initialVotes[a.id] = 'yes';
-        });
-        setWrittenVotes(initialVotes);
+    const isSubmitDisabled = (
+        !checkInForm.memberId
+        || (!checkInForm.hasElection && checkInForm.meetingType === 'none')
+        || (checkInForm.meetingType === 'proxy' && !checkInForm.proxyName.trim())
+    );
 
-        setIsWrittenVoteModalOpen(true);
-    };
-
-    const handleConfirmWrittenVote = () => {
-        if (!writtenVoteMemberId) return;
+    const handleConfirmCheckIn = () => {
+        if (!checkInForm.memberId) return;
         if (!activeMeetingId) {
             alert("⚠️ 현재 입장 접수 중인 총회가 없습니다.\n관리자에게 문의하세요.");
             return;
         }
 
-        // Convert Map to Array for API
-        const votesArray = Object.entries(writtenVotes).map(([agendaId, choice]) => ({
+        const votesArray = Object.entries(checkInForm.writtenVotes || {}).map(([agendaId, choice]) => ({
             agenda_id: parseInt(agendaId),
             choice: choice
         }));
 
-        actions.checkInMember(writtenVoteMemberId, 'written', null, votesArray);
+        actions.checkInMember(checkInForm.memberId, {
+            meetingType: checkInForm.meetingType === 'none' ? null : checkInForm.meetingType,
+            hasElection: checkInForm.hasElection,
+            proxyName: checkInForm.meetingType === 'proxy' ? checkInForm.proxyName.trim() : null,
+            writtenVotes: checkInForm.meetingType === 'written' ? votesArray : []
+        });
 
-        setIsWrittenVoteModalOpen(false);
-        setWrittenVoteMemberId(null);
-        setWrittenVotes({});
-    };
-
-    const handleConfirmProxy = () => {
-        if (proxyMemberId && proxyNameInput.trim()) {
-            handleCheckIn(proxyMemberId, 'proxy', proxyNameInput.trim());
-            setIsProxyModalOpen(false);
-            setProxyNameInput("");
-            setProxyMemberId(null);
-        }
+        closeCheckInModal();
     };
 
     const handleConfirmCancelCheckIn = () => {
@@ -267,7 +325,7 @@ export default function CheckInPage() {
                             {/* Collapsible Detail Stats */}
                             {isStatsOpen && (
                                 <div className="mt-1 space-y-3 border-t border-slate-100 pt-2 animate-in slide-in-from-top-2 duration-200">
-                                    <div className="grid grid-cols-3 gap-2 text-center">
+                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-center">
                                         <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-2">
                                             <div className="text-sm text-emerald-700 font-bold mb-1">직접</div>
                                             <div className="text-3xl font-black text-emerald-800 leading-none">{stats.directCount}</div>
@@ -280,6 +338,15 @@ export default function CheckInPage() {
                                             <div className="text-sm text-orange-700 font-bold mb-1">서면</div>
                                             <div className="text-3xl font-black text-orange-800 leading-none">{stats.writtenCount}</div>
                                         </div>
+                                        <div className="bg-amber-50 border border-amber-100 rounded-xl p-2">
+                                            <div className="text-sm text-amber-700 font-bold mb-1">선거</div>
+                                            <div className="text-3xl font-black text-amber-800 leading-none">{stats.electionCount}</div>
+                                        </div>
+                                    </div>
+
+                                    <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-600 flex items-center justify-between">
+                                        <span>복합 포함 전체 처리</span>
+                                        <span className="text-slate-900">{stats.participantCount}명</span>
                                     </div>
 
                                     {/* Progress Bars (Target) */}
@@ -290,7 +357,7 @@ export default function CheckInPage() {
                                                 <span className={stats.isDirectMet ? "text-emerald-600" : ""}>{stats.directCount}/{stats.directTarget}</span>
                                             </div>
                                             <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
-                                                <div className={`h-full ${stats.isDirectMet ? 'bg-emerald-500' : 'bg-slate-300'}`} style={{ width: `${Math.min(100, (stats.directCount / stats.directTarget) * 100)}%` }}></div>
+                                                <div className={`h-full ${stats.isDirectMet ? 'bg-emerald-500' : 'bg-slate-300'}`} style={{ width: `${Math.min(100, (stats.directCount / (stats.directTarget || 1)) * 100)}%` }}></div>
                                             </div>
                                         </div>
                                         <div className="space-y-1.5">
@@ -330,35 +397,25 @@ export default function CheckInPage() {
                         const isCheckedIn = !!record;
                         const checkInType = record?.type;
                         const displayProxyName = record?.proxy_name || member.proxy;
+                        const badges = getAttendanceBadges(record);
 
                         return (
                             <div key={member.id} className="p-2 rounded-xl border border-slate-200 bg-white shadow-sm transition-all hover:border-blue-300">
                                 <div className="flex justify-between items-center">
                                     {/* Member Info (Compact Left) */}
                                     <div className="flex flex-col">
-                                        <div className="flex items-center gap-2 mb-1">
+                                        <div className="flex flex-wrap items-center gap-2 mb-1">
                                             <div className={`text-2xl font-black leading-none ${isCheckedIn ? 'text-emerald-700' : 'text-slate-700'}`}>
                                                 {member.unit}
                                             </div>
-                                            {isCheckedIn && (
-                                                <>
-                                                    {checkInType === 'direct' && (
-                                                        <span className="px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 text-[11px] font-bold flex items-center gap-1">
-                                                            <User size={12} /> 본인
-                                                        </span>
-                                                    )}
-                                                    {checkInType === 'proxy' && (
-                                                        <span className="px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 text-[11px] font-bold flex items-center gap-1">
-                                                            <Clock size={12} /> 대리
-                                                        </span>
-                                                    )}
-                                                    {checkInType === 'written' && (
-                                                        <span className="px-1.5 py-0.5 rounded bg-orange-100 text-orange-700 text-[11px] font-bold flex items-center gap-1">
-                                                            <FileText size={12} /> 서면
-                                                        </span>
-                                                    )}
-                                                </>
-                                            )}
+                                            {isCheckedIn && badges.map((badge) => {
+                                                const Icon = badge.icon;
+                                                return (
+                                                    <span key={badge.key} className={`px-1.5 py-0.5 rounded text-[11px] font-bold flex items-center gap-1 ${badge.className}`}>
+                                                        <Icon size={12} /> {badge.label}
+                                                    </span>
+                                                );
+                                            })}
                                         </div>
                                         <div className="text-base font-bold text-slate-800 flex items-center leading-tight">
                                             {member.name}
@@ -369,32 +426,14 @@ export default function CheckInPage() {
                                     {/* Actions (Right) */}
                                     <div className="flex gap-1.5 shrink-0">
                                         {!isCheckedIn ? (
-                                            <>
-                                                <button
-                                                    onClick={() => handleCheckIn(member.id, 'direct')}
-                                                    disabled={!activeMeetingId}
-                                                    className="flex flex-col items-center justify-center w-10 h-10 md:w-12 md:h-12 rounded-lg bg-emerald-500 active:bg-emerald-600 text-white shadow-sm disabled:opacity-30 disabled:cursor-not-allowed transition-all active:scale-95"
-                                                >
-                                                    <UserCheck size={16} className="md:w-[18px] md:h-[18px] mb-0.5" />
-                                                    <span className="text-[10px] md:text-[11px] font-bold leading-none">본인</span>
-                                                </button>
-                                                <button
-                                                    onClick={() => handleOpenProxyModal(member)}
-                                                    disabled={!activeMeetingId}
-                                                    className="flex flex-col items-center justify-center w-10 h-10 md:w-12 md:h-12 rounded-lg bg-blue-500 active:bg-blue-600 text-white shadow-sm disabled:opacity-30 disabled:cursor-not-allowed transition-all active:scale-95"
-                                                >
-                                                    <UserCheck size={16} className="md:w-[18px] md:h-[18px] mb-0.5" />
-                                                    <span className="text-[10px] md:text-[11px] font-bold leading-none">대리</span>
-                                                </button>
-                                                <button
-                                                    onClick={() => handleOpenWrittenVoteModal(member)}
-                                                    disabled={!activeMeetingId}
-                                                    className="flex flex-col items-center justify-center w-10 h-10 md:w-12 md:h-12 rounded-lg bg-orange-400 active:bg-orange-500 text-white shadow-sm disabled:opacity-30 disabled:cursor-not-allowed transition-all active:scale-95"
-                                                >
-                                                    <UserCheck size={16} className="md:w-[18px] md:h-[18px] mb-0.5" />
-                                                    <span className="text-[10px] md:text-[11px] font-bold leading-none">서면</span>
-                                                </button>
-                                            </>
+                                            <button
+                                                onClick={() => handleOpenCheckInModal(member)}
+                                                disabled={!activeMeetingId}
+                                                className="min-w-[4.25rem] h-10 md:h-12 px-3 rounded-lg bg-slate-900 active:bg-slate-950 text-white shadow-sm disabled:opacity-30 disabled:cursor-not-allowed transition-all active:scale-95 flex items-center justify-center gap-1.5"
+                                            >
+                                                <UserCheck size={16} className="md:w-[18px] md:h-[18px]" />
+                                                <span className="text-[11px] md:text-sm font-bold leading-none">접수</span>
+                                            </button>
                                         ) : (
                                             <div className="flex items-center gap-1.5">
                                                 <button
@@ -412,40 +451,177 @@ export default function CheckInPage() {
                     })}
                 </div>
             </main>
-            {/* Proxy Input Modal */}
-            {isProxyModalOpen && (
-                <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center px-4 animate-in fade-in duration-200">
-                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-xs overflow-hidden animate-in zoom-in-95 duration-200">
-                        <div className="p-5">
-                            <h3 className="text-lg font-bold text-slate-800 mb-1">대리인 성명 입력</h3>
-                            <p className="text-sm text-slate-500 mb-4">대리 참석자의 성명을 입력해주세요.</p>
-                            <input
-                                autoFocus
-                                className="w-full px-4 py-3 rounded-xl border-2 border-slate-200 focus:border-blue-500 focus:ring-0 outline-none text-lg font-bold text-slate-800 placeholder:text-slate-300 transition-colors"
-                                placeholder="성명 입력"
-                                value={proxyNameInput}
-                                onChange={(e) => setProxyNameInput(e.target.value)}
-                                onKeyDown={(e) => {
-                                    if (e.key === 'Enter' && proxyNameInput.trim()) {
-                                        handleConfirmProxy();
-                                    }
-                                }}
-                            />
+            {isCheckInModalOpen && selectedCheckInMember && (
+                <div className="fixed inset-0 z-50 bg-black/60 flex items-end md:items-center justify-center animate-in fade-in duration-200">
+                    <div className="bg-white rounded-t-3xl md:rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden animate-in slide-in-from-bottom-8 md:zoom-in-95 duration-200 flex flex-col max-h-[92vh]">
+                        <div className="p-5 border-b border-slate-100 bg-slate-50">
+                            <div className="flex items-start justify-between gap-3">
+                                <div>
+                                    <h3 className="text-lg font-bold text-slate-800">입장 및 선거 접수</h3>
+                                    <p className="text-sm text-slate-500">
+                                        {selectedCheckInMember.unit} {selectedCheckInMember.name}
+                                    </p>
+                                </div>
+                                <div className="rounded-full bg-amber-100 px-3 py-1 text-xs font-bold text-amber-700">
+                                    선거 복합 지원
+                                </div>
+                            </div>
                         </div>
-                        <div className="flex border-t border-slate-100">
+
+                        <div className="flex-1 overflow-y-auto p-5 space-y-5">
+                            <section className="space-y-3">
+                                <div>
+                                    <div className="text-sm font-bold text-slate-800">총회 의결권</div>
+                                    <p className="text-xs text-slate-500">본인, 대리, 서면 중 하나를 선택하거나 총회 불참으로 둘 수 있습니다.</p>
+                                </div>
+                                <div className="grid grid-cols-2 gap-2">
+                                    {MEETING_TYPE_OPTIONS.map((option) => {
+                                        const Icon = option.icon;
+                                        const isActive = checkInForm.meetingType === option.value;
+                                        return (
+                                            <button
+                                                key={option.value}
+                                                onClick={() => setCheckInForm((prev) => ({
+                                                    ...prev,
+                                                    meetingType: option.value,
+                                                    writtenVotes: option.value === 'written'
+                                                        ? (Object.keys(prev.writtenVotes || {}).length ? prev.writtenVotes : buildInitialWrittenVotes(activeAgendas))
+                                                        : prev.writtenVotes
+                                                }))}
+                                                className={`rounded-2xl border px-4 py-3 text-left transition-all ${isActive ? option.tone + ' ring-2 ring-offset-1 ring-slate-300 shadow-sm' : 'border-slate-200 bg-white text-slate-600'}`}
+                                            >
+                                                <div className="flex items-center justify-between mb-2">
+                                                    <Icon size={18} />
+                                                    {isActive && <Check size={16} />}
+                                                </div>
+                                                <div className="text-sm font-black">{option.label}</div>
+                                                <div className="text-[11px] font-semibold opacity-80">{option.description}</div>
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            </section>
+
+                            <section className="space-y-3">
+                                <div>
+                                    <div className="text-sm font-bold text-slate-800">선거 참여</div>
+                                    <p className="text-xs text-slate-500">총회 의결권과 독립적으로 선택됩니다.</p>
+                                </div>
+                                <button
+                                    onClick={() => setCheckInForm((prev) => ({ ...prev, hasElection: !prev.hasElection }))}
+                                    className={`w-full rounded-2xl border px-4 py-4 transition-all flex items-center justify-between ${checkInForm.hasElection ? 'border-amber-300 bg-amber-50 text-amber-800 shadow-sm' : 'border-slate-200 bg-white text-slate-600'}`}
+                                >
+                                    <div className="text-left">
+                                        <div className="text-sm font-black">선거 참여</div>
+                                        <div className="text-xs font-semibold opacity-80">
+                                            우편 또는 현장 선거 접수를 함께 기록합니다.
+                                        </div>
+                                    </div>
+                                    <div className={`w-12 h-7 rounded-full transition-colors ${checkInForm.hasElection ? 'bg-amber-400' : 'bg-slate-200'} p-1`}>
+                                        <div className={`w-5 h-5 rounded-full bg-white transition-transform ${checkInForm.hasElection ? 'translate-x-5' : 'translate-x-0'}`}></div>
+                                    </div>
+                                </button>
+                            </section>
+
+                            {checkInForm.meetingType === 'proxy' && (
+                                <section className="space-y-2">
+                                    <div className="text-sm font-bold text-slate-800">대리인 성명</div>
+                                    <input
+                                        autoFocus
+                                        className="w-full px-4 py-3 rounded-xl border-2 border-slate-200 focus:border-blue-500 focus:ring-0 outline-none text-base font-bold text-slate-800 placeholder:text-slate-300 transition-colors"
+                                        placeholder="대리인 성명 입력"
+                                        value={checkInForm.proxyName}
+                                        onChange={(e) => setCheckInForm((prev) => ({ ...prev, proxyName: e.target.value }))}
+                                    />
+                                </section>
+                            )}
+
+                            {checkInForm.meetingType === 'written' && (
+                                <section className="space-y-3">
+                                    <div className="flex items-center justify-between gap-3">
+                                        <div>
+                                            <div className="text-sm font-bold text-slate-800">서면 결의</div>
+                                            <p className="text-xs text-slate-500">안건별 찬반을 지정하면 즉시 반영됩니다.</p>
+                                        </div>
+                                        <button
+                                            onClick={() => setCheckInForm((prev) => ({ ...prev, writtenVotes: buildInitialWrittenVotes(activeAgendas) }))}
+                                            className="px-3 py-1.5 bg-emerald-100 text-emerald-700 rounded-lg text-xs font-bold hover:bg-emerald-200 transition-colors"
+                                        >
+                                            전체 찬성
+                                        </button>
+                                    </div>
+
+                                    <div className="space-y-4">
+                                        {activeAgendas.length === 0 ? (
+                                            <p className="text-center text-slate-400 py-6">투표할 안건이 없습니다.</p>
+                                        ) : (
+                                            activeAgendas.map((agenda) => (
+                                                <div key={agenda.id} className="flex flex-col gap-2">
+                                                    <span className="text-sm font-bold text-slate-700 break-keep leading-tight">
+                                                        {agenda.title}
+                                                    </span>
+                                                    <div className="flex bg-slate-100 rounded-lg p-1">
+                                                        <button
+                                                            onClick={() => setCheckInForm((prev) => ({ ...prev, writtenVotes: { ...prev.writtenVotes, [agenda.id]: 'yes' } }))}
+                                                            className={`flex-1 py-2 rounded-md text-sm font-bold transition-all ${checkInForm.writtenVotes[agenda.id] === 'yes' ? 'bg-white text-emerald-600 shadow-sm ring-1 ring-slate-200' : 'text-slate-400 hover:text-slate-600'}`}
+                                                        >
+                                                            찬성
+                                                        </button>
+                                                        <button
+                                                            onClick={() => setCheckInForm((prev) => ({ ...prev, writtenVotes: { ...prev.writtenVotes, [agenda.id]: 'no' } }))}
+                                                            className={`flex-1 py-2 rounded-md text-sm font-bold transition-all ${checkInForm.writtenVotes[agenda.id] === 'no' ? 'bg-white text-red-500 shadow-sm ring-1 ring-slate-200' : 'text-slate-400 hover:text-slate-600'}`}
+                                                        >
+                                                            반대
+                                                        </button>
+                                                        <button
+                                                            onClick={() => setCheckInForm((prev) => ({ ...prev, writtenVotes: { ...prev.writtenVotes, [agenda.id]: 'abstain' } }))}
+                                                            className={`flex-1 py-2 rounded-md text-sm font-bold transition-all ${checkInForm.writtenVotes[agenda.id] === 'abstain' ? 'bg-white text-slate-600 shadow-sm ring-1 ring-slate-200' : 'text-slate-400 hover:text-slate-600'}`}
+                                                        >
+                                                            기권
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            ))
+                                        )}
+                                    </div>
+                                </section>
+                            )}
+
+                            <section className="rounded-2xl border border-slate-200 bg-slate-50 p-4 space-y-2">
+                                <div className="text-sm font-bold text-slate-800">저장 결과</div>
+                                <div className="flex flex-wrap gap-2">
+                                    {getAttendanceBadges({
+                                        type: checkInForm.meetingType === 'none' ? null : checkInForm.meetingType,
+                                        has_election: checkInForm.hasElection
+                                    }).map((badge) => {
+                                        const Icon = badge.icon;
+                                        return (
+                                            <span key={badge.key} className={`px-2 py-1 rounded-lg text-xs font-bold flex items-center gap-1 ${badge.className}`}>
+                                                <Icon size={12} /> {badge.label}
+                                            </span>
+                                        );
+                                    })}
+                                    {!checkInForm.hasElection && checkInForm.meetingType === 'none' && (
+                                        <span className="text-xs font-semibold text-red-500">총회 상태 또는 선거 참여를 하나 이상 선택해야 합니다.</span>
+                                    )}
+                                </div>
+                            </section>
+                        </div>
+
+                        <div className="flex border-t border-slate-100 bg-white">
                             <button
-                                onClick={() => setIsProxyModalOpen(false)}
+                                onClick={closeCheckInModal}
                                 className="flex-1 py-4 text-base font-bold text-slate-500 hover:bg-slate-50 active:bg-slate-100 transition-colors"
                             >
                                 취소
                             </button>
                             <div className="w-[1px] bg-slate-100"></div>
                             <button
-                                onClick={handleConfirmProxy}
-                                disabled={!proxyNameInput.trim()}
-                                className="flex-1 py-4 text-base font-bold text-blue-600 hover:bg-blue-50 active:bg-blue-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                                onClick={handleConfirmCheckIn}
+                                disabled={isSubmitDisabled}
+                                className="flex-1 py-4 text-base font-bold text-slate-900 hover:bg-slate-100 active:bg-slate-200 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                             >
-                                확인
+                                확인 (접수 처리)
                             </button>
                         </div>
                     </div>
@@ -477,88 +653,6 @@ export default function CheckInPage() {
                                 className="flex-1 py-4 text-base font-bold text-red-600 hover:bg-red-50 active:bg-red-100 transition-colors"
                             >
                                 확인
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* Written Vote Input Modal */}
-            {isWrittenVoteModalOpen && (
-                <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center px-4 animate-in fade-in duration-200">
-                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden animate-in zoom-in-95 duration-200 flex flex-col max-h-[90vh]">
-                        {/* Header */}
-                        <div className="p-5 border-b border-slate-100 bg-slate-50 flex justify-between items-center">
-                            <div>
-                                <h3 className="text-lg font-bold text-slate-800">서면 결의 입력</h3>
-                                <p className="text-sm text-slate-500">
-                                    {members.find(m => m.id === writtenVoteMemberId)?.unit} {members.find(m => m.id === writtenVoteMemberId)?.name}
-                                </p>
-                            </div>
-                            <button
-                                onClick={() => {
-                                    // Batch Set All to YES
-                                    const newVotes = {};
-                                    activeAgendas.forEach(agenda => {
-                                        newVotes[agenda.id] = 'yes';
-                                    });
-                                    setWrittenVotes(newVotes);
-                                }}
-                                className="px-3 py-1.5 bg-emerald-100 text-emerald-700 rounded-lg text-xs font-bold hover:bg-emerald-200 transition-colors"
-                            >
-                                전체 찬성
-                            </button>
-                        </div>
-
-                        {/* Agenda List */}
-                        <div className="flex-1 overflow-y-auto p-5 space-y-4">
-                            {activeAgendas.length === 0 ? (
-                                <p className="text-center text-slate-400 py-10">투표할 안건이 없습니다.</p>
-                            ) : (
-                                activeAgendas.map(agenda => (
-                                    <div key={agenda.id} className="flex flex-col gap-2">
-                                        <span className="text-sm font-bold text-slate-700 break-keep leading-tight">
-                                            {agenda.title}
-                                        </span>
-                                        <div className="flex bg-slate-100 rounded-lg p-1">
-                                            <button
-                                                onClick={() => setWrittenVotes(prev => ({ ...prev, [agenda.id]: 'yes' }))}
-                                                className={`flex-1 py-2 rounded-md text-sm font-bold transition-all ${writtenVotes[agenda.id] === 'yes' ? 'bg-white text-emerald-600 shadow-sm ring-1 ring-slate-200' : 'text-slate-400 hover:text-slate-600'}`}
-                                            >
-                                                찬성
-                                            </button>
-                                            <button
-                                                onClick={() => setWrittenVotes(prev => ({ ...prev, [agenda.id]: 'no' }))}
-                                                className={`flex-1 py-2 rounded-md text-sm font-bold transition-all ${writtenVotes[agenda.id] === 'no' ? 'bg-white text-red-500 shadow-sm ring-1 ring-slate-200' : 'text-slate-400 hover:text-slate-600'}`}
-                                            >
-                                                반대
-                                            </button>
-                                            <button
-                                                onClick={() => setWrittenVotes(prev => ({ ...prev, [agenda.id]: 'abstain' }))}
-                                                className={`flex-1 py-2 rounded-md text-sm font-bold transition-all ${writtenVotes[agenda.id] === 'abstain' ? 'bg-white text-slate-600 shadow-sm ring-1 ring-slate-200' : 'text-slate-400 hover:text-slate-600'}`}
-                                            >
-                                                기권
-                                            </button>
-                                        </div>
-                                    </div>
-                                ))
-                            )}
-                        </div>
-
-                        {/* Footer */}
-                        <div className="flex border-t border-slate-100 bg-white">
-                            <button
-                                onClick={() => setIsWrittenVoteModalOpen(false)}
-                                className="flex-1 py-4 text-base font-bold text-slate-500 hover:bg-slate-50 active:bg-slate-100 transition-colors"
-                            >
-                                취소
-                            </button>
-                            <div className="w-[1px] bg-slate-100"></div>
-                            <button
-                                onClick={handleConfirmWrittenVote}
-                                className="flex-1 py-4 text-base font-bold text-orange-600 hover:bg-orange-50 active:bg-orange-100 transition-colors"
-                            >
-                                확인 (입장 처리)
                             </button>
                         </div>
                     </div>

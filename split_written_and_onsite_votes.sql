@@ -6,6 +6,9 @@ ADD COLUMN IF NOT EXISTS onsite_yes INTEGER NOT NULL DEFAULT 0,
 ADD COLUMN IF NOT EXISTS onsite_no INTEGER NOT NULL DEFAULT 0,
 ADD COLUMN IF NOT EXISTS onsite_abstain INTEGER NOT NULL DEFAULT 0;
 
+ALTER TABLE attendance
+ADD COLUMN IF NOT EXISTS has_election BOOLEAN NOT NULL DEFAULT FALSE;
+
 WITH ranked_written_votes AS (
     SELECT
         id,
@@ -63,7 +66,8 @@ SET
 CREATE OR REPLACE FUNCTION check_in_member(
     p_member_id INTEGER,
     p_meeting_id INTEGER,
-    p_type TEXT,
+    p_type TEXT DEFAULT NULL,
+    p_has_election BOOLEAN DEFAULT FALSE,
     p_proxy_name TEXT DEFAULT NULL,
     p_votes JSONB DEFAULT NULL
 )
@@ -73,10 +77,10 @@ DECLARE
     v_agenda_id INTEGER;
     v_choice TEXT;
 BEGIN
-    INSERT INTO attendance (member_id, meeting_id, type, proxy_name)
-    VALUES (p_member_id, p_meeting_id, p_type, p_proxy_name);
+    INSERT INTO attendance (member_id, meeting_id, type, has_election, proxy_name)
+    VALUES (p_member_id, p_meeting_id, p_type, COALESCE(p_has_election, FALSE), p_proxy_name);
 
-    IF p_votes IS NOT NULL THEN
+    IF p_type = 'written' AND p_votes IS NOT NULL THEN
         FOR v_vote IN SELECT * FROM jsonb_array_elements(p_votes)
         LOOP
             v_agenda_id := (v_vote->>'agenda_id')::INTEGER;

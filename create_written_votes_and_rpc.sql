@@ -8,6 +8,9 @@ CREATE TABLE IF NOT EXISTS written_votes (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
 );
 
+ALTER TABLE attendance
+ADD COLUMN IF NOT EXISTS has_election BOOLEAN NOT NULL DEFAULT FALSE;
+
 CREATE INDEX IF NOT EXISTS idx_written_votes_member ON written_votes(member_id);
 CREATE INDEX IF NOT EXISTS idx_written_votes_agenda ON written_votes(agenda_id);
 CREATE UNIQUE INDEX IF NOT EXISTS uq_written_votes_member_meeting_agenda
@@ -26,7 +29,8 @@ ADD COLUMN IF NOT EXISTS onsite_abstain INTEGER NOT NULL DEFAULT 0;
 CREATE OR REPLACE FUNCTION check_in_member(
     p_member_id INTEGER,
     p_meeting_id INTEGER,
-    p_type TEXT,
+    p_type TEXT DEFAULT NULL,
+    p_has_election BOOLEAN DEFAULT FALSE,
     p_proxy_name TEXT DEFAULT NULL,
     p_votes JSONB DEFAULT NULL
 )
@@ -37,11 +41,11 @@ DECLARE
     v_choice TEXT;
 BEGIN
     -- Insert Attendance
-    INSERT INTO attendance (member_id, meeting_id, type, proxy_name)
-    VALUES (p_member_id, p_meeting_id, p_type, p_proxy_name);
+    INSERT INTO attendance (member_id, meeting_id, type, has_election, proxy_name)
+    VALUES (p_member_id, p_meeting_id, p_type, COALESCE(p_has_election, FALSE), p_proxy_name);
 
     -- Process Votes if provided
-    IF p_votes IS NOT NULL THEN
+    IF p_type = 'written' AND p_votes IS NOT NULL THEN
         FOR v_vote IN SELECT * FROM jsonb_array_elements(p_votes)
         LOOP
             v_agenda_id := (v_vote->>'agenda_id')::INTEGER;

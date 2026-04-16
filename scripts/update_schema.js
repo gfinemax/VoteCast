@@ -35,7 +35,8 @@ CREATE TABLE public.attendance (
     created_at timestamp with time zone default timezone('utc'::text, now()) not null,
     member_id bigint references public.members(id),
     meeting_id bigint references public.agendas(id), -- This assumes Folder ID is an Agenda ID
-    type text check (type in ('direct', 'proxy', 'written')),
+    type text check (type is null or type in ('direct', 'proxy', 'written')),
+    has_election boolean not null default false,
     proxy_name text
 );
         `);
