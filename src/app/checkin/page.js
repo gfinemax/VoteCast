@@ -3,7 +3,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useStore } from '@/lib/store';
 import { getMajorityThreshold, getMeetingAttendanceStats, getUniqueAttendanceRecords, normalizeAgendaType } from '@/lib/store';
-import { Search, UserCheck, AlertCircle, Clock, Check, RotateCcw, ChevronDown, ChevronUp, User, FileText } from 'lucide-react';
+import { Search, UserCheck, AlertCircle, Clock, Check, RotateCcw, ChevronDown, ChevronUp, User, FileText, Pencil, Loader2 } from 'lucide-react';
 import FlipNumber from '@/components/ui/FlipNumber';
 import FullscreenToggle from '@/components/ui/FullscreenToggle';
 import AuthStatus from '@/components/ui/AuthStatus';
@@ -100,6 +100,9 @@ export default function CheckInPage() {
 
     const [isStatsOpen, setIsStatsOpen] = useState(false);
     const [isCheckInModalOpen, setIsCheckInModalOpen] = useState(false);
+    const [checkInModalMode, setCheckInModalMode] = useState('create');
+    const [isCheckInModalLoading, setIsCheckInModalLoading] = useState(false);
+    const [isCheckInSubmitting, setIsCheckInSubmitting] = useState(false);
     const [checkInForm, setCheckInForm] = useState({
         memberId: null,
         meetingType: 'direct',
@@ -194,6 +197,9 @@ export default function CheckInPage() {
 
     const closeCheckInModal = () => {
         setIsCheckInModalOpen(false);
+        setCheckInModalMode('create');
+        setIsCheckInModalLoading(false);
+        setIsCheckInSubmitting(false);
         setCheckInForm({
             memberId: null,
             meetingType: 'direct',
@@ -209,6 +215,8 @@ export default function CheckInPage() {
             alert("⚠️ 현재 입장 접수 중인 총회가 없습니다.\n관리자에게 문의하세요.");
             return;
         }
+        setCheckInModalMode('create');
+        setIsCheckInModalLoading(false);
         setCheckInForm({
             memberId: member.id,
             meetingType: 'direct',
@@ -218,6 +226,44 @@ export default function CheckInPage() {
             electionVotes: buildInitialElectionVotes(electionAgendas)
         });
         setIsCheckInModalOpen(true);
+    };
+
+    const handleOpenEditCheckInModal = async (member, record) => {
+        if (!activeMeetingId || !record) return;
+
+        setCheckInModalMode('edit');
+        setIsCheckInModalLoading(true);
+        setCheckInForm({
+            memberId: member.id,
+            meetingType: record.type || 'none',
+            electionMode: record.has_election ? 'onsite' : 'none',
+            proxyName: record.proxy_name || member.proxy || '',
+            writtenVotes: {},
+            electionVotes: {}
+        });
+        setIsCheckInModalOpen(true);
+
+        try {
+            const detail = await actions.getCheckInDetails(member.id);
+            if (!detail) {
+                throw new Error('기존 접수 정보를 불러오지 못했습니다.');
+            }
+
+            setCheckInForm({
+                memberId: member.id,
+                meetingType: detail.meetingType || 'none',
+                electionMode: detail.electionMode || 'none',
+                proxyName: detail.proxyName || member.proxy || '',
+                writtenVotes: detail.writtenVotes || {},
+                electionVotes: detail.electionVotes || {}
+            });
+        } catch (error) {
+            console.error('Failed to load check-in detail:', error);
+            alert(error.message || '기존 접수 정보를 불러오지 못했습니다.');
+            closeCheckInModal();
+        } finally {
+            setIsCheckInModalLoading(false);
+        }
     };
 
     const handleCancelCheckIn = (memberId) => {
@@ -247,6 +293,10 @@ export default function CheckInPage() {
     const electionAgendas = activeAgendas.filter((agenda) => normalizeAgendaType(agenda?.type) === 'election');
 
     const selectedCheckInMember = members.find((member) => member.id === checkInForm.memberId) || null;
+    const isWrittenComplete = (
+        checkInForm.meetingType !== 'written'
+        || writtenAgendas.every((agenda) => ['yes', 'no', 'abstain'].includes(checkInForm.writtenVotes?.[agenda.id]))
+    );
     const isMailElectionComplete = (
         checkInForm.electionMode !== 'mail'
         || electionAgendas.every((agenda) => ['yes', 'no', 'abstain'].includes(checkInForm.electionVotes?.[agenda.id]))
@@ -256,10 +306,13 @@ export default function CheckInPage() {
         !checkInForm.memberId
         || (checkInForm.electionMode === 'none' && checkInForm.meetingType === 'none')
         || (checkInForm.meetingType === 'proxy' && !checkInForm.proxyName.trim())
+        || !isWrittenComplete
         || !isMailElectionComplete
+        || isCheckInModalLoading
+        || isCheckInSubmitting
     );
 
-    const handleConfirmCheckIn = () => {
+    const handleConfirmCheckIn = async () => {
         if (!checkInForm.memberId) return;
         if (!activeMeetingId) {
             alert("⚠️ 현재 입장 접수 중인 총회가 없습니다.\n관리자에게 문의하세요.");
@@ -282,15 +335,31 @@ export default function CheckInPage() {
                 choice
             }));
 
-        actions.checkInMember(checkInForm.memberId, {
+        setIsCheckInSubmitting(true);
+        const payload = {
             meetingType: checkInForm.meetingType === 'none' ? null : checkInForm.meetingType,
             electionMode: checkInForm.electionMode,
             proxyName: checkInForm.meetingType === 'proxy' ? checkInForm.proxyName.trim() : null,
             writtenVotes: checkInForm.meetingType === 'written' ? votesArray : [],
             electionVotes: checkInForm.electionMode === 'mail' ? electionVotesArray : []
-        });
+        };
 
-        closeCheckInModal();
+        try {
+            const result = checkInModalMode === 'edit'
+                ? await actions.replaceCheckInMember(checkInForm.memberId, payload)
+                : await actions.checkInMember(checkInForm.memberId, payload);
+
+            if (result?.ok === false) {
+                throw (result.error || new Error(checkInModalMode === 'edit' ? '접수 수정에 실패했습니다.' : '접수 처리에 실패했습니다.'));
+            }
+
+            closeCheckInModal();
+        } catch (error) {
+            console.error('Failed to save check-in:', error);
+            alert(error.message || (checkInModalMode === 'edit' ? '접수 수정에 실패했습니다.' : '접수 처리에 실패했습니다.'));
+        } finally {
+            setIsCheckInSubmitting(false);
+        }
     };
 
     const handleConfirmCancelCheckIn = () => {
@@ -472,6 +541,12 @@ export default function CheckInPage() {
                                         ) : (
                                             <div className="flex items-center gap-1.5">
                                                 <button
+                                                    onClick={() => handleOpenEditCheckInModal(member, record)}
+                                                    className="w-10 h-10 md:w-12 md:h-12 rounded-lg bg-white border border-slate-200 text-slate-400 active:text-blue-600 active:bg-blue-50 flex items-center justify-center transition-colors shadow-sm"
+                                                >
+                                                    <Pencil size={18} className="md:w-5 md:h-5" />
+                                                </button>
+                                                <button
                                                     onClick={() => handleCancelCheckIn(member.id)}
                                                     className="w-10 h-10 md:w-12 md:h-12 rounded-lg bg-white border border-slate-200 text-slate-400 active:text-red-500 active:bg-red-50 flex items-center justify-center transition-colors shadow-sm"
                                                 >
@@ -492,7 +567,7 @@ export default function CheckInPage() {
                         <div className="p-5 border-b border-slate-100 bg-slate-50">
                             <div className="flex items-start justify-between gap-3">
                                 <div>
-                                    <h3 className="text-lg font-bold text-slate-800">입장 및 선거 접수</h3>
+                                    <h3 className="text-lg font-bold text-slate-800">{checkInModalMode === 'edit' ? '입장 및 선거 수정' : '입장 및 선거 접수'}</h3>
                                     <p className="text-sm text-slate-500">
                                         {selectedCheckInMember.unit} {selectedCheckInMember.name}
                                     </p>
@@ -504,6 +579,12 @@ export default function CheckInPage() {
                         </div>
 
                         <div className="flex-1 overflow-y-auto p-5 space-y-5">
+                            {isCheckInModalLoading && (
+                                <section className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-5 flex items-center gap-3 text-sm font-semibold text-slate-600">
+                                    <Loader2 size={18} className="animate-spin" />
+                                    기존 접수 정보를 불러오는 중입니다.
+                                </section>
+                            )}
                             <section className="space-y-3">
                                 <div>
                                     <div className="text-sm font-bold text-slate-800">총회 의결권</div>
@@ -706,6 +787,9 @@ export default function CheckInPage() {
                                     {!isMailElectionComplete && (
                                         <span className="text-xs font-semibold text-red-500">우편투표를 선택한 경우 모든 선거 안건에 응답해야 합니다.</span>
                                     )}
+                                    {!isWrittenComplete && (
+                                        <span className="text-xs font-semibold text-red-500">서면결의를 선택한 경우 모든 총회 안건에 응답해야 합니다.</span>
+                                    )}
                                     {checkInForm.electionMode === 'none' && checkInForm.meetingType === 'none' && (
                                         <span className="text-xs font-semibold text-red-500">총회 상태 또는 선거 참여를 하나 이상 선택해야 합니다.</span>
                                     )}
@@ -726,7 +810,7 @@ export default function CheckInPage() {
                                 disabled={isSubmitDisabled}
                                 className="flex-1 py-4 text-base font-bold text-slate-900 hover:bg-slate-100 active:bg-slate-200 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                             >
-                                확인 (접수 처리)
+                                {isCheckInSubmitting ? '저장 중...' : (checkInModalMode === 'edit' ? '확인 (수정 저장)' : '확인 (접수 처리)')}
                             </button>
                         </div>
                     </div>

@@ -713,6 +713,39 @@ export function StoreProvider({ children }) {
         return data;
     }, [applyAgendaRowsToState]);
 
+    const refreshAttendanceFromDb = React.useCallback(async () => {
+        const { data, error } = await supabase
+            .from('attendance')
+            .select('*');
+
+        if (error) {
+            console.error('Failed to refresh attendance:', error);
+            return null;
+        }
+
+        const rows = (data || []).map(normalizeAttendanceRecord);
+        setState((prev) => {
+            if (
+                prev.attendance.length === rows.length
+                && prev.attendance.every((record, index) => (
+                    record.id === rows[index]?.id
+                    && record.type === rows[index]?.type
+                    && record.has_election === rows[index]?.has_election
+                    && record.proxy_name === rows[index]?.proxy_name
+                ))
+            ) {
+                return prev;
+            }
+
+            return {
+                ...prev,
+                attendance: rows
+            };
+        });
+
+        return rows;
+    }, []);
+
     const refreshMailElectionVotesFromDb = React.useCallback(async () => {
         const { data, error } = await supabase
             .from('mail_election_votes')
@@ -1256,19 +1289,19 @@ export function StoreProvider({ children }) {
             const meetingId = stateRef.current.activeMeetingId;
             if (!meetingId) {
                 console.error("No active meeting open for admission.");
-                return; // Block check-in if no meeting is active
+                return { ok: false, error: new Error('활성 총회가 없습니다.') }; // Block check-in if no meeting is active
             }
 
             const attendanceKey = `${meetingId}:${memberId}`;
             if (pendingAttendanceOpsRef.current.has(attendanceKey)) {
-                return;
+                return { ok: false, error: new Error('이미 처리 중입니다.') };
             }
 
             const hasExistingAttendance = stateRef.current.attendance.some((record) =>
                 record.member_id === memberId && record.meeting_id === meetingId
             );
             if (hasExistingAttendance) {
-                return;
+                return { ok: false, error: new Error('이미 접수된 조합원입니다. 수정 버튼을 사용하세요.') };
             }
 
             const {
@@ -1282,7 +1315,7 @@ export function StoreProvider({ children }) {
 
             if (!meetingType && !hasElection) {
                 console.error("Check-in payload must include a meeting type or election participation.");
-                return;
+                return { ok: false, error: new Error('총회 상태 또는 선거 참여를 하나 이상 선택해야 합니다.') };
             }
 
             pendingAttendanceOpsRef.current.add(attendanceKey);
@@ -1371,10 +1404,10 @@ export function StoreProvider({ children }) {
                                 attendanceSyncChannelRef.current?.send({
                                     type: 'broadcast',
                                     event: 'written_votes_preview',
-                                    payload: { meetingId, votes: writtenVotePayload, delta: -1 }
-                                });
-                            }
-                            return;
+                                        payload: { meetingId, votes: writtenVotePayload, delta: -1 }
+                                    });
+                                }
+                            return { ok: false, error: fallbackError };
                         }
                     } else {
                         console.error("Check-in Transaction Failed:", error);
@@ -1394,7 +1427,7 @@ export function StoreProvider({ children }) {
                                 payload: { meetingId, votes: writtenVotePayload, delta: -1 }
                             });
                         }
-                        return;
+                        return { ok: false, error };
                     }
                 }
 
@@ -1424,6 +1457,171 @@ export function StoreProvider({ children }) {
                 }
 
                 await refreshAgendasFromDb();
+                return { ok: true };
+            } finally {
+                pendingAttendanceOpsRef.current.delete(attendanceKey);
+            }
+        },
+
+        getCheckInDetails: async (memberId) => {
+            const meetingId = stateRef.current.activeMeetingId;
+            if (!meetingId || !memberId) {
+                return null;
+            }
+
+            const attendanceRecord = getUniqueAttendanceRecords(stateRef.current.attendance, meetingId, null)
+                .find((record) => record.member_id === memberId) || null;
+
+            const [{ data: writtenVoteRows, error: writtenVoteError }, { data: electionVoteRows, error: electionVoteError }] = await Promise.all([
+                supabase
+                    .from('written_votes')
+                    .select('agenda_id, choice')
+                    .eq('member_id', memberId)
+                    .eq('meeting_id', meetingId),
+                supabase
+                    .from('mail_election_votes')
+                    .select('agenda_id, choice')
+                    .eq('member_id', memberId)
+                    .eq('meeting_id', meetingId)
+            ]);
+
+            if (writtenVoteError) {
+                throw writtenVoteError;
+            }
+            if (electionVoteError && electionVoteError.code !== '42P01') {
+                throw electionVoteError;
+            }
+
+            const writtenVotes = {};
+            (writtenVoteRows || []).forEach((vote) => {
+                if (vote?.agenda_id && ['yes', 'no', 'abstain'].includes(vote?.choice)) {
+                    writtenVotes[vote.agenda_id] = vote.choice;
+                }
+            });
+
+            const electionVotes = {};
+            (electionVoteRows || []).forEach((vote) => {
+                if (vote?.agenda_id && ['yes', 'no', 'abstain'].includes(vote?.choice)) {
+                    electionVotes[vote.agenda_id] = vote.choice;
+                }
+            });
+
+            return {
+                attendanceRecord,
+                meetingType: attendanceRecord?.type || 'none',
+                electionMode: attendanceRecord?.has_election
+                    ? ((electionVoteRows || []).length ? 'mail' : 'onsite')
+                    : 'none',
+                proxyName: attendanceRecord?.proxy_name || '',
+                writtenVotes,
+                electionVotes
+            };
+        },
+
+        replaceCheckInMember: async (memberId, typeOrPayload = 'direct', proxyName = null, votes = null) => {
+            const meetingId = stateRef.current.activeMeetingId;
+            if (!meetingId) {
+                console.error("No active meeting open for admission.");
+                return { ok: false, error: new Error('활성 총회가 없습니다.') };
+            }
+
+            const attendanceKey = `${meetingId}:${memberId}`;
+            if (pendingAttendanceOpsRef.current.has(attendanceKey)) {
+                return { ok: false, error: new Error('이미 처리 중입니다.') };
+            }
+
+            const existingRecords = stateRef.current.attendance.filter((record) =>
+                record.member_id === memberId && record.meeting_id === meetingId
+            );
+            if (!existingRecords.length) {
+                return { ok: false, error: new Error('수정할 기존 접수 내역이 없습니다.') };
+            }
+
+            const {
+                meetingType,
+                hasElection,
+                electionMode,
+                proxyName: normalizedProxyName,
+                writtenVotes,
+                electionVotes
+            } = normalizeCheckInPayload(typeOrPayload, proxyName, votes);
+
+            if (!meetingType && !hasElection) {
+                return { ok: false, error: new Error('총회 상태 또는 선거 참여를 하나 이상 선택해야 합니다.') };
+            }
+
+            const agendaTypeById = new Map(stateRef.current.agendas.map((agenda) => [agenda.id, normalizeAgendaType(agenda?.type)]));
+            const writtenVotePayload = (meetingType === 'written' ? writtenVotes : []).filter((vote) => (
+                agendaTypeById.get(vote?.agenda_id) && agendaTypeById.get(vote.agenda_id) !== 'election'
+            ));
+            const electionVotePayload = (electionMode === 'mail' ? electionVotes : []).filter((vote) => (
+                agendaTypeById.get(vote?.agenda_id) === 'election'
+            ));
+
+            pendingAttendanceOpsRef.current.add(attendanceKey);
+
+            try {
+                let error = null;
+                const { error: replaceError } = await supabase.rpc('replace_check_in_member', {
+                    p_member_id: memberId,
+                    p_meeting_id: meetingId,
+                    p_type: meetingType,
+                    p_has_election: hasElection,
+                    p_proxy_name: normalizedProxyName,
+                    p_votes: writtenVotePayload.length ? writtenVotePayload : null,
+                    p_election_votes: electionVotePayload.length ? electionVotePayload : null
+                });
+                error = replaceError;
+
+                if (error && error.code === '42883') {
+                    const { error: cancelError } = await supabase.rpc('cancel_check_in_member', {
+                        p_member_id: memberId,
+                        p_meeting_id: meetingId
+                    });
+                    if (!cancelError) {
+                        const { error: checkInError } = await supabase.rpc('check_in_member', {
+                            p_member_id: memberId,
+                            p_meeting_id: meetingId,
+                            p_type: meetingType,
+                            p_has_election: hasElection,
+                            p_proxy_name: normalizedProxyName,
+                            p_votes: writtenVotePayload.length ? writtenVotePayload : null,
+                            p_election_votes: electionVotePayload.length ? electionVotePayload : null
+                        });
+                        error = checkInError;
+                    } else {
+                        error = cancelError;
+                    }
+                }
+
+                if (error) {
+                    console.error('Replace Check-in Failed:', error);
+                    return { ok: false, error };
+                }
+
+                await Promise.all([
+                    refreshAttendanceFromDb(),
+                    refreshAgendasFromDb(),
+                    refreshMailElectionVotesFromDb()
+                ]);
+
+                attendanceSyncChannelRef.current?.send({
+                    type: 'broadcast',
+                    event: 'attendance_replace',
+                    payload: { memberId, meetingId }
+                });
+                attendanceSyncChannelRef.current?.send({
+                    type: 'broadcast',
+                    event: 'written_votes_changed',
+                    payload: { meetingId }
+                });
+                attendanceSyncChannelRef.current?.send({
+                    type: 'broadcast',
+                    event: 'mail_election_votes_changed',
+                    payload: { meetingId }
+                });
+
+                return { ok: true };
             } finally {
                 pendingAttendanceOpsRef.current.delete(attendanceKey);
             }
@@ -2130,7 +2328,7 @@ export function StoreProvider({ children }) {
         },
 
         resetHelper: async () => { }
-    }), [broadcastSystemSettingsSync, reconcileAgendaVoteCountsFromWrittenVotes, refreshAgendasFromDb, refreshMailElectionVotesFromDb, setAgendaById]); // Actions are stable because they use stateRef to access current state values
+    }), [broadcastSystemSettingsSync, reconcileAgendaVoteCountsFromWrittenVotes, refreshAgendasFromDb, refreshAttendanceFromDb, refreshMailElectionVotesFromDb, setAgendaById]); // Actions are stable because they use stateRef to access current state values
 
     return (
         <StoreContext.Provider value={{ state, actions }}>
