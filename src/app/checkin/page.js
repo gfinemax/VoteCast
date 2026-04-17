@@ -32,7 +32,7 @@ const buildInitialWrittenVotes = (agendas = []) => {
 const buildInitialElectionVotes = (agendas = []) => {
     const initialVotes = {};
     agendas.forEach((agenda) => {
-        initialVotes[agenda.id] = '';
+        initialVotes[agenda.id] = 'yes';
     });
     return initialVotes;
 };
@@ -106,7 +106,7 @@ export default function CheckInPage() {
     const [checkInForm, setCheckInForm] = useState({
         memberId: null,
         meetingType: 'direct',
-        electionMode: 'none',
+        electionMode: 'onsite',
         proxyName: '',
         writtenVotes: {},
         electionVotes: {}
@@ -203,7 +203,7 @@ export default function CheckInPage() {
         setCheckInForm({
             memberId: null,
             meetingType: 'direct',
-            electionMode: 'none',
+            electionMode: 'onsite',
             proxyName: '',
             writtenVotes: {},
             electionVotes: {}
@@ -220,7 +220,7 @@ export default function CheckInPage() {
         setCheckInForm({
             memberId: member.id,
             meetingType: 'direct',
-            electionMode: 'none',
+            electionMode: 'onsite',
             proxyName: member.proxy || "",
             writtenVotes: buildInitialWrittenVotes(writtenAgendas),
             electionVotes: buildInitialElectionVotes(electionAgendas)
@@ -797,20 +797,19 @@ export default function CheckInPage() {
                             </section>
                         </div>
 
-                        <div className="flex border-t border-slate-100 bg-white">
+                        <div className="flex items-center gap-3 border-t border-slate-100 bg-white/80 backdrop-blur-xl px-5 py-4 w-full">
                             <button
                                 onClick={closeCheckInModal}
-                                className="flex-1 py-4 text-base font-bold text-slate-500 hover:bg-slate-50 active:bg-slate-100 transition-colors"
+                                className="flex-1 rounded-2xl border-none bg-slate-100/80 px-4 py-4 text-[15px] font-bold text-slate-600 shadow-sm transition-all hover:bg-slate-200/80 active:bg-slate-300 active:scale-95 flex items-center justify-center"
                             >
                                 취소
                             </button>
-                            <div className="w-[1px] bg-slate-100"></div>
                             <button
                                 onClick={handleConfirmCheckIn}
                                 disabled={isSubmitDisabled}
-                                className="flex-1 py-4 text-base font-bold text-slate-900 hover:bg-slate-100 active:bg-slate-200 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                                className="flex-[2] rounded-2xl border-none bg-gradient-to-r from-blue-600 to-indigo-600 px-4 py-4 text-[16px] font-black text-white shadow-[0_8px_16px_-6px_rgba(79,70,229,0.5)] transition-all hover:from-blue-500 hover:to-indigo-500 hover:shadow-[0_12px_20px_-6px_rgba(79,70,229,0.6)] active:scale-95 disabled:pointer-events-none disabled:from-slate-200 disabled:to-slate-200 disabled:text-slate-400 disabled:shadow-none flex items-center justify-center"
                             >
-                                {isCheckInSubmitting ? '저장 중...' : (checkInModalMode === 'edit' ? '확인 (수정 저장)' : '확인 (접수 처리)')}
+                                {isCheckInSubmitting ? '저장 중...' : (checkInModalMode === 'edit' ? '확인 (수정 완료)' : '확인 (접수 완료)')}
                             </button>
                         </div>
                     </div>
