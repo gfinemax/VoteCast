@@ -114,3 +114,25 @@ body {
   transform-origin: top;
   backface-visibility: hidden;
 }
+
+.vote-panel-shell {
+  overflow: hidden;
+  transition: height 320ms cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: height;
+}
+
+.vote-panel-enter {
+  animation: vote-panel-enter 280ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes vote-panel-enter {
+  0% {
+    opacity: 0;
+    transform: translateY(10px) scale(0.99);
+  }
+
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}

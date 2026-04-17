@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useMemo, useEffect, useState, useCallback, useRef } from 'react';
+import React, { useMemo, useEffect, useLayoutEffect, useState, useCallback, useRef } from 'react';
 import { useStore } from '@/lib/store';
 import { getAgendaAttendanceDisplayStats, getAgendaVoteBuckets, getAttendanceQuorumTarget, getElectionAgendaValidationStats, getMeetingAttendanceStats, normalizeAgendaType } from '@/lib/store';
 import { CheckCircle2, AlertTriangle, Trash2, Lock, Unlock, RotateCcw, Save, Wand2 } from 'lucide-react';
@@ -185,6 +185,15 @@ export default function VoteControl() {
         : (declaration || '');
     const isTypeLocked = !!agendaTypeLocks[currentAgendaId];
     const primaryOnsiteInputRef = useRef(null);
+    const votePanelContentRef = useRef(null);
+    const votePanelAnimationFrameRef = useRef(null);
+    const votePanelAnimationTimeoutRef = useRef(null);
+    const previousVotePanelHeightRef = useRef(null);
+    const votePanelLayoutVariant = hasSplitVoteColumns
+        ? (isElection ? 'split-election' : 'split-standard')
+        : 'simple';
+    const previousVotePanelLayoutRef = useRef(votePanelLayoutVariant);
+    const [animatedVotePanelHeight, setAnimatedVotePanelHeight] = useState(null);
 
     const setIsEditingDeclaration = (value) => {
         if (!currentAgendaId) return;
@@ -248,6 +257,79 @@ export default function VoteControl() {
             window.cancelAnimationFrame(frameId);
         };
     }, [currentAgendaId, hasSplitVoteColumns, isConfirmed]);
+
+    useEffect(() => {
+        if (typeof ResizeObserver === 'undefined') return undefined;
+        const node = votePanelContentRef.current;
+        if (!node) return undefined;
+
+        const observer = new ResizeObserver((entries) => {
+            const entry = entries[0];
+            if (!entry) return;
+            previousVotePanelHeightRef.current = entry.contentRect.height;
+        });
+
+        observer.observe(node);
+        return () => observer.disconnect();
+    }, [currentAgendaId, hasSplitVoteColumns]);
+
+    useLayoutEffect(() => {
+        const node = votePanelContentRef.current;
+        if (!node || typeof window === 'undefined') return undefined;
+
+        const nextHeight = node.getBoundingClientRect().height;
+        const previousHeight = previousVotePanelHeightRef.current;
+        const didLayoutModeChange = previousVotePanelLayoutRef.current !== votePanelLayoutVariant;
+
+        if (
+            didLayoutModeChange
+            && previousHeight !== null
+            && Math.abs(previousHeight - nextHeight) > 1
+        ) {
+            if (votePanelAnimationFrameRef.current) {
+                window.cancelAnimationFrame(votePanelAnimationFrameRef.current);
+            }
+            if (votePanelAnimationTimeoutRef.current) {
+                window.clearTimeout(votePanelAnimationTimeoutRef.current);
+            }
+
+            setAnimatedVotePanelHeight(previousHeight);
+
+            votePanelAnimationFrameRef.current = window.requestAnimationFrame(() => {
+                votePanelAnimationFrameRef.current = window.requestAnimationFrame(() => {
+                    setAnimatedVotePanelHeight(nextHeight);
+                });
+            });
+
+            votePanelAnimationTimeoutRef.current = window.setTimeout(() => {
+                setAnimatedVotePanelHeight(null);
+                votePanelAnimationTimeoutRef.current = null;
+            }, 340);
+        }
+
+        previousVotePanelHeightRef.current = nextHeight;
+        previousVotePanelLayoutRef.current = votePanelLayoutVariant;
+
+        return () => {
+            if (votePanelAnimationFrameRef.current) {
+                window.cancelAnimationFrame(votePanelAnimationFrameRef.current);
+                votePanelAnimationFrameRef.current = null;
+            }
+        };
+    }, [currentAgendaId, votePanelLayoutVariant]);
+
+    useEffect(() => {
+        return () => {
+            if (typeof window !== 'undefined') {
+                if (votePanelAnimationFrameRef.current) {
+                    window.cancelAnimationFrame(votePanelAnimationFrameRef.current);
+                }
+                if (votePanelAnimationTimeoutRef.current) {
+                    window.clearTimeout(votePanelAnimationTimeoutRef.current);
+                }
+            }
+        };
+    }, []);
 
 
     // Handlers
@@ -453,6 +535,7 @@ export default function VoteControl() {
         || isOnsiteVoteOverflow
         || displayTotalVotesCast !== electionValidation.expectedTotalVotes
     );
+    const splitVoteTargetTotal = Math.max(0, displayStats.total - totalFixedVotes);
     const canConfirmDecision = isReadyToConfirm && !isLocalDirty && isVoteCountValid && !hasElectionValidationIssue;
     const voteTypeOptions = [
         {
@@ -702,6 +785,14 @@ export default function VoteControl() {
                     </h3>
                 </div>
                 <Card className={`p-4 ${isConfirmed ? 'bg-slate-50' : 'bg-white'}`}>
+                    <div
+                        className="vote-panel-shell"
+                        style={animatedVotePanelHeight !== null ? { height: `${animatedVotePanelHeight}px` } : undefined}
+                    >
+                        <div
+                            ref={votePanelContentRef}
+                            className="space-y-3"
+                        >
                     {hasSplitVoteColumns ? (
                         <div className="space-y-3">
                             {/* Summary Dashboard Component */}
@@ -743,63 +834,107 @@ export default function VoteControl() {
                                 </div>
                             </div>
 
-                            {isElection && (
-                                <div className={`rounded-2xl border px-4 py-3 ${
-                                    hasElectionValidationIssue
-                                        ? 'border-amber-200 bg-amber-50'
-                                        : 'border-emerald-200 bg-emerald-50'
+                            <div className={`rounded-2xl border px-4 py-3 transition-colors duration-300 min-h-[188px] ${
+                                isElection
+                                    ? (hasElectionValidationIssue ? 'border-amber-200 bg-amber-50' : 'border-emerald-200 bg-emerald-50')
+                                    : 'border-slate-200 bg-slate-50'
+                            }`}>
+                                <div className={`text-sm font-bold ${
+                                    isElection
+                                        ? (hasElectionValidationIssue ? 'text-amber-800' : 'text-emerald-700')
+                                        : 'text-slate-700'
                                 }`}>
-                                    <div className={`text-sm font-bold ${hasElectionValidationIssue ? 'text-amber-800' : 'text-emerald-700'}`}>
-                                        선거 안건 검증
-                                    </div>
-                                    <div className="mt-2 flex flex-wrap gap-2 text-xs font-semibold">
-                                        <span className="rounded-full bg-white/80 px-3 py-1 text-slate-700 border border-slate-200">
-                                            우편투표 예상 {electionValidation.expectedMailVoteCount}명
-                                        </span>
-                                        <span className="rounded-full bg-white/80 px-3 py-1 text-slate-700 border border-slate-200">
-                                            우편투표 입력 {electionValidation.actualMailVoteCount}명
-                                        </span>
-                                        <span className="rounded-full bg-white/80 px-3 py-1 text-slate-700 border border-slate-200">
-                                            현장 입력 가능 {electionValidation.onsiteEligibleCount}명
-                                        </span>
-                                        <span className="rounded-full bg-white/80 px-3 py-1 text-slate-700 border border-slate-200">
-                                            선거 기준 총표 {electionValidation.expectedTotalVotes}표
-                                        </span>
-                                    </div>
-                                    <div className="mt-3 space-y-2 text-sm">
-                                        {isElectionMailMissing && (
-                                            <div className="flex items-start gap-2 text-amber-800">
-                                                <AlertTriangle size={16} className="mt-0.5 shrink-0" />
-                                                <span>우편투표 접수 예정 인원 중 이 안건에 미입력된 인원이 {electionValidation.missingMailVoteCount}명 있습니다.</span>
-                                            </div>
-                                        )}
-                                        {hasElectionMailOverlap && (
-                                            <div className="flex items-start gap-2 text-amber-800">
-                                                <AlertTriangle size={16} className="mt-0.5 shrink-0" />
-                                                <span>현장 참석자와 우편투표 입력이 중복된 인원이 {electionValidation.overlapMailVoteCount}명 있습니다. 현장 입력 가능 인원이 자동으로 줄어듭니다.</span>
-                                            </div>
-                                        )}
-                                        {isOnsiteVoteOverflow && (
-                                            <div className="flex items-start gap-2 text-amber-800">
-                                                <AlertTriangle size={16} className="mt-0.5 shrink-0" />
-                                                <span>현장 입력 합계가 {onsiteVotesCast}표로, 입력 가능 인원 {electionValidation.onsiteEligibleCount}명을 초과했습니다.</span>
-                                            </div>
-                                        )}
-                                        {displayTotalVotesCast !== electionValidation.expectedTotalVotes && (
-                                            <div className="flex items-start gap-2 text-amber-800">
-                                                <AlertTriangle size={16} className="mt-0.5 shrink-0" />
-                                                <span>선거 기준 총 투표수는 {electionValidation.expectedTotalVotes}표여야 하나 현재 {displayTotalVotesCast}표입니다.</span>
-                                            </div>
-                                        )}
-                                        {!hasElectionValidationIssue && (
-                                            <div className="flex items-start gap-2 text-emerald-700">
-                                                <CheckCircle2 size={16} className="mt-0.5 shrink-0" />
-                                                <span>우편투표와 현장 입력 구성이 선거 기준과 일치합니다.</span>
-                                            </div>
-                                        )}
-                                    </div>
+                                    {isElection ? '선거 안건 검증' : (isSpecialVote ? '해산/규약 안건 안내' : '일반 안건 안내')}
                                 </div>
-                            )}
+                                <div className="mt-2 flex flex-wrap gap-2 text-xs font-semibold">
+                                    {isElection ? (
+                                        <>
+                                            <span className="rounded-full bg-white/80 px-3 py-1 text-slate-700 border border-slate-200">
+                                                우편투표 예상 {electionValidation.expectedMailVoteCount}명
+                                            </span>
+                                            <span className="rounded-full bg-white/80 px-3 py-1 text-slate-700 border border-slate-200">
+                                                우편투표 입력 {electionValidation.actualMailVoteCount}명
+                                            </span>
+                                            <span className="rounded-full bg-white/80 px-3 py-1 text-slate-700 border border-slate-200">
+                                                현장 입력 가능 {electionValidation.onsiteEligibleCount}명
+                                            </span>
+                                            <span className="rounded-full bg-white/80 px-3 py-1 text-slate-700 border border-slate-200">
+                                                선거 기준 총표 {electionValidation.expectedTotalVotes}표
+                                            </span>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <span className="rounded-full bg-white/90 px-3 py-1 text-slate-700 border border-slate-200">
+                                                {fixedVoteLabel}(고정) {totalFixedVotes}표
+                                            </span>
+                                            <span className="rounded-full bg-white/90 px-3 py-1 text-slate-700 border border-slate-200">
+                                                현장 입력 목표 {splitVoteTargetTotal}표
+                                            </span>
+                                            <span className="rounded-full bg-white/90 px-3 py-1 text-slate-700 border border-slate-200">
+                                                참석 기준 총표 {displayStats.total}표
+                                            </span>
+                                            <span className="rounded-full bg-white/90 px-3 py-1 text-slate-700 border border-slate-200">
+                                                의결 기준 {isSpecialVote ? '출석자 3분의 2 이상' : '출석자 과반수'}
+                                            </span>
+                                        </>
+                                    )}
+                                </div>
+                                <div className="mt-3 space-y-2 text-sm">
+                                    {isElection ? (
+                                        <>
+                                            {isElectionMailMissing && (
+                                                <div className="flex items-start gap-2 text-amber-800">
+                                                    <AlertTriangle size={16} className="mt-0.5 shrink-0" />
+                                                    <span>우편투표 접수 예정 인원 중 이 안건에 미입력된 인원이 {electionValidation.missingMailVoteCount}명 있습니다.</span>
+                                                </div>
+                                            )}
+                                            {hasElectionMailOverlap && (
+                                                <div className="flex items-start gap-2 text-amber-800">
+                                                    <AlertTriangle size={16} className="mt-0.5 shrink-0" />
+                                                    <span>현장 참석자와 우편투표 입력이 중복된 인원이 {electionValidation.overlapMailVoteCount}명 있습니다. 현장 입력 가능 인원이 자동으로 줄어듭니다.</span>
+                                                </div>
+                                            )}
+                                            {isOnsiteVoteOverflow && (
+                                                <div className="flex items-start gap-2 text-amber-800">
+                                                    <AlertTriangle size={16} className="mt-0.5 shrink-0" />
+                                                    <span>현장 입력 합계가 {onsiteVotesCast}표로, 입력 가능 인원 {electionValidation.onsiteEligibleCount}명을 초과했습니다.</span>
+                                                </div>
+                                            )}
+                                            {displayTotalVotesCast !== electionValidation.expectedTotalVotes && (
+                                                <div className="flex items-start gap-2 text-amber-800">
+                                                    <AlertTriangle size={16} className="mt-0.5 shrink-0" />
+                                                    <span>선거 기준 총 투표수는 {electionValidation.expectedTotalVotes}표여야 하나 현재 {displayTotalVotesCast}표입니다.</span>
+                                                </div>
+                                            )}
+                                            {!hasElectionValidationIssue && (
+                                                <div className="flex items-start gap-2 text-emerald-700">
+                                                    <CheckCircle2 size={16} className="mt-0.5 shrink-0" />
+                                                    <span>우편투표와 현장 입력 구성이 선거 기준과 일치합니다.</span>
+                                                </div>
+                                            )}
+                                        </>
+                                    ) : (
+                                        <>
+                                            <div className="flex items-start gap-2 text-slate-600">
+                                                <CheckCircle2 size={16} className="mt-0.5 shrink-0 text-slate-400" />
+                                                <span>{fixedVoteLabel} 고정표와 현장 입력표를 합쳐 현재 참석 인원 기준으로 집계합니다.</span>
+                                            </div>
+                                            <div className="flex items-start gap-2 text-slate-600">
+                                                <CheckCircle2 size={16} className="mt-0.5 shrink-0 text-slate-400" />
+                                                <span>{isSpecialVote ? '해산/규약 안건은 출석자 3분의 2 이상 찬성이 필요합니다.' : '일반 안건은 출석자 과반수 찬성이 필요합니다.'}</span>
+                                            </div>
+                                            <div className={`flex items-start gap-2 ${isVoteCountValid ? 'text-emerald-700' : 'text-amber-700'}`}>
+                                                {isVoteCountValid ? (
+                                                    <CheckCircle2 size={16} className="mt-0.5 shrink-0" />
+                                                ) : (
+                                                    <AlertTriangle size={16} className="mt-0.5 shrink-0" />
+                                                )}
+                                                <span>{isVoteCountValid ? '현재 총 투표수와 참석자 수가 일치합니다.' : `현재 총 투표수는 참석자 수보다 ${displayStats.total - displayTotalVotesCast}표 부족합니다.`}</span>
+                                            </div>
+                                        </>
+                                    )}
+                                </div>
+                            </div>
 
                             <div className="rounded-2xl border border-slate-800 bg-slate-900 px-4 py-3 shadow-[0_12px_40px_-15px_rgba(0,0,0,0.5)]">
                                 <div className="mb-2 flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between border-b border-slate-800 pb-2">
@@ -1013,6 +1148,8 @@ export default function VoteControl() {
                             </div>
                         </div>
                     )}
+                        </div>
+                    </div>
                 </Card>
             </section>
 

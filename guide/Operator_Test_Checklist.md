@@ -1,4 +1,4 @@
-# VoteCast 운영자 테스트 체크리스트
+![1776378310351](image/Operator_Test_Checklist/1776378310351.png)![1776378313545](image/Operator_Test_Checklist/1776378313545.png)![1776378325434](image/Operator_Test_Checklist/1776378325434.png)![1776378337518](image/Operator_Test_Checklist/1776378337518.png)![1776378338270](image/Operator_Test_Checklist/1776378338270.png)![1776378338506](image/Operator_Test_Checklist/1776378338506.png)![1776378339182](image/Operator_Test_Checklist/1776378339182.png)![1776378339947](image/Operator_Test_Checklist/1776378339947.png)![1776378340521](image/Operator_Test_Checklist/1776378340521.png)![1776378363101](image/Operator_Test_Checklist/1776378363101.png)# VoteCast 운영자 테스트 체크리스트
 
 목적: 실제 총회 운영 전에 `체크인`, `총회 관리자`, `프로젝터` 화면이 현재 규칙대로 동작하는지 빠르게 점검한다.
 

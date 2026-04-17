@@ -44,6 +44,8 @@ const INITIAL_DATA = {
 
 const WINDOW_SYNC_CHANNEL = 'votecast-system-settings-sync';
 const WINDOW_SYNC_STORAGE_KEY = '__votecast_system_settings_sync__';
+const WINDOW_AGENDAS_SYNC_CHANNEL = 'votecast-agendas-sync';
+const WINDOW_AGENDAS_SYNC_STORAGE_KEY = '__votecast_agendas_sync__';
 const normalizeProjectorModeValue = (mode) => mode === 'ADJUSTING' ? 'RESULT' : (mode || 'IDLE');
 
 const applyWrittenVoteDeltaToAgendaList = (agendas = [], votes = [], delta = 1) => {
@@ -515,6 +517,7 @@ export function StoreProvider({ children }) {
     const pendingAttendanceOpsRef = useRef(new Set());
     const windowSyncIdRef = useRef(`window-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
     const broadcastChannelRef = useRef(null);
+    const agendaBroadcastChannelRef = useRef(null);
     const attendanceSyncChannelRef = useRef(null);
 
     useEffect(() => {
@@ -616,6 +619,29 @@ export function StoreProvider({ children }) {
         }
     }, [createSystemSettingsSnapshot]);
 
+    const broadcastAgendaRowsSync = React.useCallback((rows = []) => {
+        if (typeof window === 'undefined') return;
+
+        const message = {
+            senderId: windowSyncIdRef.current,
+            sentAt: Date.now(),
+            agendas: rows
+        };
+
+        try {
+            agendaBroadcastChannelRef.current?.postMessage(message);
+        } catch (error) {
+            console.error('Failed to post agenda BroadcastChannel sync message:', error);
+        }
+
+        try {
+            window.localStorage.setItem(WINDOW_AGENDAS_SYNC_STORAGE_KEY, JSON.stringify(message));
+            window.localStorage.removeItem(WINDOW_AGENDAS_SYNC_STORAGE_KEY);
+        } catch (error) {
+            console.error('Failed to write agenda localStorage sync message:', error);
+        }
+    }, []);
+
     useEffect(() => {
         if (!isInitialized || typeof window === 'undefined') return undefined;
         if (!window.location.pathname.startsWith('/projector')) return undefined;
@@ -697,6 +723,43 @@ export function StoreProvider({ children }) {
             return { ...prev, agendas: mergedAgendas };
         });
     }, []);
+
+    useEffect(() => {
+        if (typeof window === 'undefined') return undefined;
+
+        const applyIncomingAgendaSync = (message) => {
+            if (!Array.isArray(message?.agendas)) return;
+            if (message.senderId === windowSyncIdRef.current) return;
+
+            applyAgendaRowsToState(message.agendas);
+        };
+
+        if ('BroadcastChannel' in window) {
+            const channel = new BroadcastChannel(WINDOW_AGENDAS_SYNC_CHANNEL);
+            agendaBroadcastChannelRef.current = channel;
+            channel.onmessage = (event) => applyIncomingAgendaSync(event.data);
+        }
+
+        const handleStorage = (event) => {
+            if (event.key !== WINDOW_AGENDAS_SYNC_STORAGE_KEY || !event.newValue) return;
+
+            try {
+                applyIncomingAgendaSync(JSON.parse(event.newValue));
+            } catch (error) {
+                console.error('Failed to parse agenda localStorage sync message:', error);
+            }
+        };
+
+        window.addEventListener('storage', handleStorage);
+
+        return () => {
+            window.removeEventListener('storage', handleStorage);
+            if (agendaBroadcastChannelRef.current) {
+                agendaBroadcastChannelRef.current.close();
+                agendaBroadcastChannelRef.current = null;
+            }
+        };
+    }, [applyAgendaRowsToState]);
 
     const refreshAgendasFromDb = React.useCallback(async () => {
         const { data, error } = await supabase
@@ -1856,10 +1919,19 @@ export function StoreProvider({ children }) {
                 return { ok: true, skipped: true };
             }
 
+            let nextAgendas = null;
             setState(prev => ({
                 ...prev,
-                agendas: prev.agendas.map(a => a.id === updatedAgenda.id ? { ...a, ...normalizedAgenda } : a)
+                agendas: (() => {
+                    nextAgendas = prev.agendas.map((agenda) => (
+                        agenda.id === updatedAgenda.id ? { ...agenda, ...normalizedAgenda } : agenda
+                    ));
+                    return nextAgendas;
+                })()
             }));
+            if (nextAgendas) {
+                broadcastAgendaRowsSync(nextAgendas);
+            }
 
             // Only send explicitly changed fields to the DB (NOT all agenda fields).
             // This prevents accidental overwrites of written_yes/no/abstain columns,
@@ -1889,11 +1961,49 @@ export function StoreProvider({ children }) {
             const { error } = await supabase.from('agendas').update(dbFields).eq('id', id);
             if (error) {
                 console.error("FAILED to update Agenda:", error);
+                let revertedAgendas = null;
                 setState(prev => ({
                     ...prev,
-                    agendas: prev.agendas.map(a => a.id === id ? currentAgenda : a)
+                    agendas: (() => {
+                        revertedAgendas = prev.agendas.map((agenda) => (
+                            agenda.id === id ? currentAgenda : agenda
+                        ));
+                        return revertedAgendas;
+                    })()
                 }));
+                if (revertedAgendas) {
+                    broadcastAgendaRowsSync(revertedAgendas);
+                }
                 return { ok: false, error };
+            }
+
+            if (Object.prototype.hasOwnProperty.call(normalizedUpdatedAgenda, 'type')) {
+                const { data: refreshedAgenda, error: refreshError } = await supabase
+                    .from('agendas')
+                    .select('*')
+                    .eq('id', id)
+                    .single();
+
+                if (refreshError) {
+                    console.error('FAILED to refresh agenda after type update:', refreshError);
+                } else if (refreshedAgenda) {
+                    const normalizedRefreshedAgenda = normalizeAgendaRecord(refreshedAgenda, {
+                        mailElectionVotes: stateRef.current.mailElectionVotes
+                    });
+                    let refreshedAgendas = null;
+                    setState(prev => ({
+                        ...prev,
+                        agendas: (() => {
+                            refreshedAgendas = prev.agendas.map((agenda) => (
+                                agenda.id === id ? normalizedRefreshedAgenda : agenda
+                            ));
+                            return refreshedAgendas;
+                        })()
+                    }));
+                    if (refreshedAgendas) {
+                        broadcastAgendaRowsSync(refreshedAgendas);
+                    }
+                }
             }
 
             return { ok: true };
@@ -2328,7 +2438,7 @@ export function StoreProvider({ children }) {
         },
 
         resetHelper: async () => { }
-    }), [broadcastSystemSettingsSync, reconcileAgendaVoteCountsFromWrittenVotes, refreshAgendasFromDb, refreshAttendanceFromDb, refreshMailElectionVotesFromDb, setAgendaById]); // Actions are stable because they use stateRef to access current state values
+    }), [broadcastAgendaRowsSync, broadcastSystemSettingsSync, reconcileAgendaVoteCountsFromWrittenVotes, refreshAgendasFromDb, refreshAttendanceFromDb, refreshMailElectionVotesFromDb, setAgendaById]); // Actions are stable because they use stateRef to access current state values
 
     return (
         <StoreContext.Provider value={{ state, actions }}>
