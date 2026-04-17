@@ -797,7 +797,7 @@ export default function CheckInPage() {
                             </section>
                         </div>
 
-                        <div className="flex items-center gap-3 border-t border-slate-100 bg-white/80 backdrop-blur-xl px-5 py-4 w-full">
+                        <div className="flex items-center gap-3 border-t border-slate-200/60 bg-white/90 backdrop-blur-2xl px-5 py-4 pb-5 md:pb-4 w-full shadow-[0_-12px_36px_-6px_rgba(0,0,0,0.12)] relative z-10">
                             <button
                                 onClick={closeCheckInModal}
                                 className="flex-1 rounded-2xl border-none bg-slate-100/80 px-4 py-4 text-[15px] font-bold text-slate-600 shadow-sm transition-all hover:bg-slate-200/80 active:bg-slate-300 active:scale-95 flex items-center justify-center"
