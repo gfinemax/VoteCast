@@ -4,7 +4,7 @@ import React, { useEffect, useMemo } from 'react';
 import { useStore } from '@/lib/store';
 import { getAgendaAttendanceDisplayStats, getAgendaVoteBuckets, getAttendanceQuorumTarget, getMeetingAttendanceStats, normalizeAgendaType } from '@/lib/store';
 import { supabase } from '@/lib/supabase';
-import { CheckCircle2, Settings } from 'lucide-react';
+import { CheckCircle2, Settings, Crown, Award } from 'lucide-react';
 import dynamic from 'next/dynamic';
 
 const PDFViewer = dynamic(() => import('@/components/PDFViewer'), { ssr: false });
@@ -439,9 +439,20 @@ export default function ProjectorPage() {
                                 {resultStats.customDeclaration ? (
                                     <div className="text-[min(3vw,4vh)] font-serif leading-relaxed text-slate-800 font-medium break-keep whitespace-pre-wrap px-[2vw]">
                                         {resultStats.customDeclaration.split(/(가결|부결|당선|낙선)/g).map((part, i) => {
-                                            if (part === '가결' || part === '당선') {
-                                                const label = part === '가결' ? '가 결' : '당 선';
-                                                return <span key={i} className="inline-block mx-3 px-[1.5vw] py-[0.5vh] bg-emerald-600 text-white rounded-lg font-sans font-black tracking-widest border-2 border-emerald-700 shadow-lg align-middle text-[min(3.5vw,5vh)] uppercase">{label}</span>;
+                                            if (part === '가결') {
+                                                return <span key={i} className="inline-block mx-3 px-[1.5vw] py-[0.5vh] bg-emerald-600 text-white rounded-lg font-sans font-black tracking-widest border-2 border-emerald-700 shadow-lg align-middle text-[min(3.5vw,5vh)] uppercase">가 결</span>;
+                                            }
+                                            if (part === '당선') {
+                                                return (
+                                                    <span key={i} className="inline-flex relative mx-3 px-[2vw] py-[1vh] rounded-2xl bg-gradient-to-br from-amber-300 via-yellow-400 to-amber-600 border-[3px] border-yellow-200 text-amber-950 font-black tracking-[0.3em] align-middle shadow-[0_10px_30px_-5px_rgba(245,158,11,0.6)] text-[min(3.5vw,5vh)] overflow-hidden items-center justify-center translate-y-[-0.2em]">
+                                                        {/* Animated Shimmer */}
+                                                        <span className="absolute inset-0 bg-gradient-to-r from-transparent via-white to-transparent opacity-60 w-[50%] -skew-x-12 animate-[shimmer_3s_infinite]"></span>
+                                                        <span className="relative z-10 flex items-center gap-[1vw]">
+                                                            <Crown className="w-[min(3.5vw,5vh)] h-[min(3.5vw,5vh)] text-amber-900 fill-amber-700 filter drop-shadow-sm" />
+                                                            <span className="filter drop-shadow-[0_2px_1px_rgba(255,255,255,0.7)] translate-x-[0.1em]">당 선</span>
+                                                        </span>
+                                                    </span>
+                                                );
                                             }
                                             if (part === '부결' || part === '낙선') {
                                                 const label = part === '부결' ? '부 결' : '낙 선';
@@ -459,11 +470,26 @@ export default function ProjectorPage() {
 
                                 {(!resultStats.customDeclaration || !resultStats.customDeclaration.includes('선포')) && (
                                     <div className="flex items-center gap-[3vw] mt-[3vh]">
-                                        <div className={`px-[2.5vw] py-[0.8vh] rounded-xl shadow-lg border-2 ${resultStats.isPassed ? 'bg-emerald-600 border-emerald-700' : 'bg-red-600 border-red-700'}`}>
-                                            <span className="text-[min(4vw,5.5vh)] font-black text-white tracking-[0.5em]">
-                                                {resultStats.isElection ? (resultStats.isPassed ? '당 선' : '낙 선') : (resultStats.isPassed ? '가 결' : '부 결')}
-                                            </span>
-                                        </div>
+                                        {resultStats.isElection && resultStats.isPassed ? (
+                                            <div className="relative inline-flex items-center justify-center">
+                                                <div className="absolute inset-0 bg-gradient-to-r from-amber-400 via-yellow-200 to-amber-500 rounded-2xl blur-xl opacity-60 animate-pulse"></div>
+                                                <div className="relative px-[3.5vw] py-[1.2vh] rounded-2xl bg-gradient-to-br from-amber-300 via-yellow-400 to-amber-600 border-[3px] border-yellow-100 shadow-[0_15px_40px_-5px_rgba(245,158,11,0.6)] overflow-hidden flex items-center justify-center transform hover:scale-105 transition-transform">
+                                                    <div className="absolute top-0 left-[-100%] w-[50%] h-full bg-gradient-to-r from-transparent via-white to-transparent opacity-60 transform -skew-x-12 animate-[shimmer_3s_infinite]"></div>
+                                                    <div className="flex items-center gap-[1.5vw] z-10 drop-shadow-md">
+                                                        <Award className="w-[min(5vw,7vh)] h-[min(5vw,7vh)] text-amber-900 fill-amber-700 drop-shadow-sm" />
+                                                        <span className="text-[min(5vw,7vh)] font-black text-amber-950 tracking-[0.4em] translate-x-[0.2em] filter drop-shadow-[0_2px_2px_rgba(255,255,255,0.8)]">
+                                                            당 선
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ) : (
+                                            <div className={`px-[2.5vw] py-[0.8vh] rounded-xl shadow-lg border-2 ${resultStats.isPassed ? 'bg-emerald-600 border-emerald-700' : 'bg-red-600 border-red-700'}`}>
+                                                <span className="text-[min(4vw,5.5vh)] font-black text-white tracking-[0.5em]">
+                                                    {resultStats.isElection ? '낙 선' : (resultStats.isPassed ? '가 결' : '부 결')}
+                                                </span>
+                                            </div>
+                                        )}
                                         <span className="text-[min(3.5vw,4.5vh)] font-serif font-black text-slate-900">되었음을 선포합니다.</span>
                                     </div>
                                 )}
