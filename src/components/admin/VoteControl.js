@@ -539,7 +539,7 @@ ${resultReason} 하여 ${resultSubject}〔${resultSuffix}〕되었음을 선포�
     const hasElectionValidationIssue = isElection && (
         isElectionMailMissing
         || hasElectionMailOverlap
-        || isOnsiteVoteOverflow
+        || isOnsiteOverflow
         || displayTotalVotesCast !== electionValidation.expectedTotalVotes
     );
     const splitVoteTargetTotal = Math.max(0, displayStats.total - totalFixedVotes);
