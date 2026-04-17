@@ -173,7 +173,7 @@ export default function VoteControl() {
             ? `후보자는 ${resultSuffix} 되었음을 선포합니다.`
             : `${resultSuffix} 되었음을 선포합니다.`;
         return `"${currentAgenda.title}"은 ${fixedSourceText} 전체 참석자 ${displayStats.total.toLocaleString()}명 중
-찬성 ${yesCount}표, 반대 ${noCount}표, 기권 ${abstainCount}표로 ${resultReason}
+찬성 ${yesCount}표, 반대 ${noCount}표, 기권 ${abstainCount}표인 ${resultReason}
 ${resultLine}`;
     }, [calculatePass, currentAgenda, displayStats.total, isElection, isSpecialVote, votesAbstain, votesNo, votesYes]);
 

@@ -1293,7 +1293,7 @@ export function StoreProvider({ children }) {
         const votesAbstain = voteBuckets.final.abstain;
         const fixedSourceText = voteBuckets.fixedLabel === '우편투표' ? '우편투표 포함' : '서면결의 포함';
 
-        const defaultDecl = total > 0 ? `"${targetAgenda.title}" ${fixedSourceText} 찬성(${votesYes})표, 반대(${votesNo})표, 기권(${votesAbstain})표로
+        const defaultDecl = total > 0 ? `"${targetAgenda.title}" ${fixedSourceText} 찬성(${votesYes})표, 반대(${votesNo})표, 기권(${votesAbstain})표인
 전체 참석자(${total.toLocaleString()})명중 ${criterion} 찬성으로
 "${targetAgenda.title}"은 가결되었음을 선포합니다.` : "";
 
