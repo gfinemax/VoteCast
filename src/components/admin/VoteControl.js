@@ -535,7 +535,7 @@ ${resultReason} 하여 ${resultSubject}〔${resultSuffix}〕되었음을 선포�
     });
     const isElectionMailMissing = isElection && electionValidation.missingMailVoteCount > 0;
     const hasElectionMailOverlap = isElection && electionValidation.overlapMailVoteCount > 0;
-    const isOnsiteVoteOverflow = hasSplitVoteColumns && isElection && onsiteVotesCast > electionValidation.onsiteEligibleCount;
+    const isOnsiteOverflow = hasSplitVoteColumns && onsiteVotesCast > (displayStats.direct + displayStats.proxy);
     const hasElectionValidationIssue = isElection && (
         isElectionMailMissing
         || hasElectionMailOverlap
@@ -543,7 +543,8 @@ ${resultReason} 하여 ${resultSubject}〔${resultSuffix}〕되었음을 선포�
         || displayTotalVotesCast !== electionValidation.expectedTotalVotes
     );
     const splitVoteTargetTotal = Math.max(0, displayStats.total - totalFixedVotes);
-    const canConfirmDecision = isReadyToConfirm && !isLocalDirty && isVoteCountValid && !hasElectionValidationIssue;
+    const isApplyDisabled = !isVoteCountValid || isOnsiteOverflow || (isElection && hasElectionValidationIssue);
+    const canConfirmDecision = isReadyToConfirm && !isLocalDirty && !isApplyDisabled;
     const voteTypeOptions = [
         {
             value: 'majority',
@@ -956,7 +957,12 @@ ${resultReason} 하여 ${resultSubject}〔${resultSuffix}〕되었음을 선포�
                                         {isLocalDirty && (
                                             <button
                                                 onClick={handleApplyLocalVotes}
-                                                className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold rounded-lg bg-blue-600 text-white shadow-md hover:bg-blue-700 transition-colors animate-pulse mr-2"
+                                                disabled={isApplyDisabled}
+                                                className={`flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold rounded-lg text-white shadow-md transition-all mr-2 ${
+                                                    isApplyDisabled 
+                                                        ? 'bg-slate-700 text-slate-500 cursor-not-allowed opacity-50' 
+                                                        : 'bg-blue-600 hover:bg-blue-700 animate-pulse'
+                                                }`}
                                             >
                                                 <Save size={14} /> 입력 완료 (선포문구 반영)
                                             </button>
@@ -1080,7 +1086,12 @@ ${resultReason} 하여 ${resultSubject}〔${resultSuffix}〕되었음을 선포�
                                         {isLocalDirty && (
                                             <button
                                                 onClick={handleApplyLocalVotes}
-                                                className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold rounded-lg bg-blue-600 text-white shadow-md hover:bg-blue-700 transition-colors animate-pulse"
+                                                disabled={isApplyDisabled}
+                                                className={`flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold rounded-lg text-white shadow-md transition-all ${
+                                                    isApplyDisabled 
+                                                        ? 'bg-slate-200 text-slate-400 cursor-not-allowed' 
+                                                        : 'bg-blue-600 hover:bg-blue-700 animate-pulse'
+                                                }`}
                                             >
                                                 <Save size={14} /> 입력 완료 (선포문구 반영)
                                             </button>
