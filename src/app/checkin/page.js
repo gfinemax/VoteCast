@@ -533,7 +533,7 @@ export default function CheckInPage() {
                                             <button
                                                 onClick={() => handleOpenCheckInModal(member)}
                                                 disabled={!activeMeetingId}
-                                                className="min-w-[4.25rem] h-10 md:h-12 px-3 rounded-lg bg-slate-900 active:bg-slate-950 text-white shadow-sm disabled:opacity-30 disabled:cursor-not-allowed transition-all active:scale-95 flex items-center justify-center gap-1.5"
+                                                className="min-w-[4.25rem] h-10 md:h-12 px-3 rounded-lg bg-slate-600 hover:bg-slate-700 active:bg-slate-800 text-white shadow-sm disabled:opacity-30 disabled:cursor-not-allowed transition-all active:scale-95 flex items-center justify-center gap-1.5"
                                             >
                                                 <UserCheck size={16} className="md:w-[18px] md:h-[18px]" />
                                                 <span className="text-[11px] md:text-sm font-bold leading-none">접수</span>
