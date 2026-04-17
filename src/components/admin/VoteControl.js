@@ -163,11 +163,18 @@ export default function VoteControl() {
         const abstainCount = overrides.abstain ?? votesAbstain;
         const criterion = isSpecialVote ? "3분의 2 이상" : "과반수 이상";
         const passed = calculatePass(yesCount, displayStats.total);
-        const fixedSourceText = isElection ? '우편투표 포함' : '서면결의 포함';
+        const fixedSourceText = isElection ? '우편투표 포함' : '서면결의서 포함';
 
-        return `"${currentAgenda.title}" ${fixedSourceText} 찬성(${yesCount})표, 반대(${noCount})표, 기권(${abstainCount})표로
-전체 참석자(${displayStats.total.toLocaleString()})명중 ${criterion} ${passed ? '찬성으로' : '찬성 미달로'}
-"${currentAgenda.title}"은 ${passed ? '가결' : '부결'}되었음을 선포합니다.`;
+        const resultReason = passed ? '찬성으로' : '찬성 미달로';
+        const resultSubject = isElection ? '후보자' : `"${currentAgenda.title}"은`;
+        const resultSuffix = isElection ? (passed ? '당선' : '낙선') : (passed ? '가결' : '부결');
+
+        // New Template: "{안건명}"는 우편투표를 포함하여 전체 참석자 {참석자수}명 중
+        // 찬성 {찬성}표, 반대 {반대}표, 기권 {기권}표로
+        // {결과사유}하여 {주체}〔{결과}〕되었음을 선포합니다.
+        return `"${currentAgenda.title}"는 ${fixedSourceText} 전체 참석자 ${displayStats.total.toLocaleString()}명 중
+찬성 ${yesCount}표, 반대 ${noCount}표, 기권 ${abstainCount}표로
+${resultReason} 하여 ${resultSubject}〔${resultSuffix}〕되었음을 선포합니다.`;
     }, [calculatePass, currentAgenda, displayStats.total, isElection, isSpecialVote, votesAbstain, votesNo, votesYes]);
 
     // Use GLOBAL state for declaration editing (prevents revert on re-render)

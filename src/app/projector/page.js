@@ -13,10 +13,11 @@ const parseResultStatsFromDeclaration = (declaration = '') => {
     const text = String(declaration || '').replace(/\s+/g, ' ');
     if (!text) return null;
 
-    const yesMatch = text.match(/찬성\((\d+)\)표/);
-    const noMatch = text.match(/반대\((\d+)\)표/);
-    const abstainMatch = text.match(/(?:기권\/무효|기권)\((\d+)\)표/);
-    const totalMatch = text.match(/전체 참석자\((\d+)\)명/);
+    // Matches both "찬성(N)표" and "찬성 N표"
+    const yesMatch = text.match(/찬성(?:\(|\s)(\d+)\)?표/);
+    const noMatch = text.match(/반대(?:\(|\s)(\d+)\)?표/);
+    const abstainMatch = text.match(/(?:기권\/무효|기권)(?:\(|\s)(\d+)\)?표/);
+    const totalMatch = text.match(/전체 참석자(?:\(|\s)(\d+)\)?명/);
 
     if (!yesMatch && !noMatch && !abstainMatch && !totalMatch) {
         return null;
@@ -240,7 +241,8 @@ export default function ProjectorPage() {
             isPassed,
             agendaTitle,
             customDeclaration,
-            isSpecialVote
+            isSpecialVote,
+            isElection: normalizeAgendaType(currentAgenda?.type) === 'election'
         };
     }, [activeMemberIdSet, currentAgenda, displayStats, mailElectionVotes, projectorMode, voteData]);
 
@@ -436,9 +438,15 @@ export default function ProjectorPage() {
                             <div className="flex-1 min-h-0 flex flex-col items-center justify-center w-full overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:'none'] [scrollbar-width:'none']">
                                 {resultStats.customDeclaration ? (
                                     <div className="text-[min(3vw,4vh)] font-serif leading-relaxed text-slate-800 font-medium break-keep whitespace-pre-wrap px-[2vw]">
-                                        {resultStats.customDeclaration.split(/(가결|부결)/g).map((part, i) => {
-                                            if (part === '가결') return <span key={i} className="inline-block mx-3 px-[1.5vw] py-[0.5vh] bg-emerald-600 text-white rounded-lg font-sans font-black tracking-widest border-2 border-emerald-700 shadow-lg align-middle text-[min(3.5vw,5vh)] uppercase">가 결</span>;
-                                            if (part === '부결') return <span key={i} className="inline-block mx-2 px-[1.2vw] py-0 bg-red-600 text-white rounded font-sans font-black tracking-wide border border-red-700 shadow align-middle text-[min(3.5vw,5vh)]">부 결</span>;
+                                        {resultStats.customDeclaration.split(/(가결|부결|당선|낙선)/g).map((part, i) => {
+                                            if (part === '가결' || part === '당선') {
+                                                const label = part === '가결' ? '가 결' : '당 선';
+                                                return <span key={i} className="inline-block mx-3 px-[1.5vw] py-[0.5vh] bg-emerald-600 text-white rounded-lg font-sans font-black tracking-widest border-2 border-emerald-700 shadow-lg align-middle text-[min(3.5vw,5vh)] uppercase">{label}</span>;
+                                            }
+                                            if (part === '부결' || part === '낙선') {
+                                                const label = part === '부결' ? '부 결' : '낙 선';
+                                                return <span key={i} className="inline-block mx-2 px-[1.2vw] py-0 bg-red-600 text-white rounded font-sans font-black tracking-wide border border-red-700 shadow align-middle text-[min(3.5vw,5vh)]">{label}</span>;
+                                            }
                                             return part;
                                         })}
                                     </div>
@@ -452,7 +460,9 @@ export default function ProjectorPage() {
                                 {(!resultStats.customDeclaration || !resultStats.customDeclaration.includes('선포')) && (
                                     <div className="flex items-center gap-[3vw] mt-[3vh]">
                                         <div className={`px-[2.5vw] py-[0.8vh] rounded-xl shadow-lg border-2 ${resultStats.isPassed ? 'bg-emerald-600 border-emerald-700' : 'bg-red-600 border-red-700'}`}>
-                                            <span className="text-[min(4vw,5.5vh)] font-black text-white tracking-[0.5em]">{resultStats.isPassed ? '가 결' : '부 결'}</span>
+                                            <span className="text-[min(4vw,5.5vh)] font-black text-white tracking-[0.5em]">
+                                                {resultStats.isElection ? (resultStats.isPassed ? '당 선' : '낙 선') : (resultStats.isPassed ? '가 결' : '부 결')}
+                                            </span>
                                         </div>
                                         <span className="text-[min(3.5vw,4.5vh)] font-serif font-black text-slate-900">되었음을 선포합니다.</span>
                                     </div>
