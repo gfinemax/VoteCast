@@ -10,15 +10,15 @@ import AuthStatus from '@/components/ui/AuthStatus';
 
 const EMPTY_INACTIVE_MEMBER_IDS = [];
 const MEETING_TYPE_OPTIONS = [
-    { value: 'none', label: '없음', description: '총회 불참', icon: Check, tone: 'bg-slate-100 text-slate-700 border-slate-200' },
     { value: 'direct', label: '본인', description: '직접 참석', icon: User, tone: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
     { value: 'proxy', label: '대리', description: '대리 참석', icon: Clock, tone: 'bg-blue-50 text-blue-700 border-blue-200' },
-    { value: 'written', label: '서면', description: '서면 의결권', icon: FileText, tone: 'bg-orange-50 text-orange-700 border-orange-200' }
+    { value: 'written', label: '서면결의서', description: '서면 의결권', icon: FileText, tone: 'bg-orange-50 text-orange-700 border-orange-200' },
+    { value: 'none', label: '없음', description: '총회 불참', icon: Check, tone: 'bg-slate-100 text-slate-700 border-slate-200' }
 ];
 const ELECTION_MODE_OPTIONS = [
-    { value: 'none', label: '없음', description: '선거 불참', tone: 'bg-slate-100 text-slate-700 border-slate-200' },
     { value: 'onsite', label: '현장', description: '현장 선거 참여', tone: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
-    { value: 'mail', label: '우편투표', description: '우편투표 고정표 입력', tone: 'bg-amber-50 text-amber-700 border-amber-200' }
+    { value: 'mail', label: '우편투표', description: '우편투표 고정표 입력', tone: 'bg-amber-50 text-amber-700 border-amber-200' },
+    { value: 'none', label: '없음', description: '선거 불참', tone: 'bg-slate-100 text-slate-700 border-slate-200' }
 ];
 
 const buildInitialWrittenVotes = (agendas = []) => {
@@ -71,7 +71,7 @@ const getAttendanceBadges = (record) => {
     if (record.type === 'written') {
         badges.push({
             key: 'written',
-            label: '서면',
+            label: '서면결의서',
             icon: FileText,
             className: 'bg-orange-100 text-orange-700'
         });
@@ -439,7 +439,7 @@ export default function CheckInPage() {
                                             <div className="text-3xl font-black text-blue-800 leading-none">{stats.proxyCount}</div>
                                         </div>
                                         <div className="bg-orange-50 border border-orange-100 rounded-xl p-2">
-                                            <div className="text-sm text-orange-700 font-bold mb-1">서면</div>
+                                            <div className="text-sm text-orange-700 font-bold mb-1">서면결의서</div>
                                             <div className="text-3xl font-black text-orange-800 leading-none">{stats.writtenCount}</div>
                                         </div>
                                         <div className="bg-amber-50 border border-amber-100 rounded-xl p-2">
@@ -666,7 +666,7 @@ export default function CheckInPage() {
                                 <section className="space-y-3">
                                     <div className="flex items-center justify-between gap-3">
                                         <div>
-                                            <div className="text-sm font-bold text-slate-800">서면 결의</div>
+                                            <div className="text-sm font-bold text-slate-800">서면결의서</div>
                                             <p className="text-xs text-slate-500">선거 안건을 제외한 총회 안건만 반영됩니다.</p>
                                         </div>
                                         <button
@@ -788,7 +788,7 @@ export default function CheckInPage() {
                                         <span className="text-xs font-semibold text-red-500">우편투표를 선택한 경우 모든 선거 안건에 응답해야 합니다.</span>
                                     )}
                                     {!isWrittenComplete && (
-                                        <span className="text-xs font-semibold text-red-500">서면결의를 선택한 경우 모든 총회 안건에 응답해야 합니다.</span>
+                                        <span className="text-xs font-semibold text-red-500">서면결의서를 선택한 경우 모든 총회 안건에 응답해야 합니다.</span>
                                     )}
                                     {checkInForm.electionMode === 'none' && checkInForm.meetingType === 'none' && (
                                         <span className="text-xs font-semibold text-red-500">총회 상태 또는 선거 참여를 하나 이상 선택해야 합니다.</span>
