@@ -1,6 +1,8 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+
+const VIEWER_SWITCH_DEBOUNCE_MS = 180;
 
 const buildPdfViewerUrl = (url, pageNumber) => {
     const source = String(url || '').trim();
@@ -34,11 +36,24 @@ const PDFViewerFrame = ({ viewerUrl }) => {
 
 export default function PDFViewer({ url, pageNumber, className }) {
     const viewerUrl = useMemo(() => buildPdfViewerUrl(url, pageNumber), [pageNumber, url]);
+    const [stableViewerUrl, setStableViewerUrl] = useState(viewerUrl);
+
+    useEffect(() => {
+        if (viewerUrl === stableViewerUrl) return undefined;
+
+        const timeoutId = window.setTimeout(() => {
+            setStableViewerUrl(viewerUrl);
+        }, VIEWER_SWITCH_DEBOUNCE_MS);
+
+        return () => {
+            window.clearTimeout(timeoutId);
+        };
+    }, [stableViewerUrl, viewerUrl]);
 
     return (
         <div className={`relative w-full h-full overflow-hidden bg-white ${className || ''}`}>
-            {viewerUrl ? (
-                <PDFViewerFrame key={viewerUrl} viewerUrl={viewerUrl} />
+            {stableViewerUrl ? (
+                <PDFViewerFrame key={stableViewerUrl} viewerUrl={stableViewerUrl} />
             ) : (
                 <div className="flex h-full w-full items-center justify-center text-slate-400">
                     No PDF

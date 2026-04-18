@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useMemo } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useStore } from '@/lib/store';
 import { getAgendaAttendanceDisplayStats, getAgendaVoteBuckets, getAttendanceQuorumTarget, getMeetingAttendanceStats, normalizeAgendaType } from '@/lib/store';
 import { supabase } from '@/lib/supabase';
@@ -9,6 +9,9 @@ import dynamic from 'next/dynamic';
 
 const PDFViewer = dynamic(() => import('@/components/PDFViewer'), { ssr: false });
 const EMPTY_INACTIVE_MEMBER_IDS = [];
+const PROJECTOR_HOLD_LAST_GOOD_MS = 800;
+const PROJECTOR_LOG_STORAGE_KEY = '__votecast_projector_render_log__';
+const PROJECTOR_LOG_LIMIT = 100;
 const parseResultStatsFromDeclaration = (declaration = '') => {
     const text = String(declaration || '').replace(/\s+/g, ' ');
     if (!text) return null;
@@ -30,10 +33,129 @@ const parseResultStatsFromDeclaration = (declaration = '') => {
         totalAttendance: totalMatch ? parseInt(totalMatch[1], 10) : null
     };
 };
+const toProjectorRenderState = ({ projectorMode, currentAgendaId, voteData, projectorData }) => ({
+    projectorMode: projectorMode || 'IDLE',
+    currentAgendaId: currentAgendaId || 1,
+    presentationPage: Math.max(1, parseInt(voteData?.presentationPage, 10) || 1),
+    resultAgendaId: voteData?.resultAgendaId || null,
+    resultDeclaration: String(voteData?.resultDeclaration || '').trim(),
+    customDeclaration: String(voteData?.customDeclaration || '').trim(),
+    resultVotesYes: voteData?.resultVotesYes ?? 0,
+    resultVotesNo: voteData?.resultVotesNo ?? 0,
+    resultVotesAbstain: voteData?.resultVotesAbstain ?? 0,
+    resultTotalAttendance: voteData?.resultTotalAttendance ?? 0,
+    resultIsPassed: !!voteData?.resultIsPassed,
+    syncVersion: parseInt(voteData?.__syncVersion, 10) || 0,
+    projectorData: projectorData ?? null
+});
+const serializeProjectorRenderState = (renderState) => JSON.stringify(renderState);
+const summarizeProjectorRenderState = (renderState = {}) => ({
+    projectorMode: renderState.projectorMode || 'IDLE',
+    currentAgendaId: renderState.currentAgendaId || null,
+    presentationPage: renderState.presentationPage || 1,
+    resultAgendaId: renderState.resultAgendaId || null,
+    syncVersion: renderState.syncVersion || 0
+});
 
 export default function ProjectorPage() {
     const { state } = useStore();
-    const { projectorMode, agendas, currentAgendaId, voteData, attendance, members, mailElectionVotes } = state;
+    const { projectorMode: liveProjectorMode, agendas, currentAgendaId: liveCurrentAgendaId, voteData, projectorData, attendance, members, mailElectionVotes } = state;
+    const rawRenderState = useMemo(() => toProjectorRenderState({
+        projectorMode: liveProjectorMode,
+        currentAgendaId: liveCurrentAgendaId,
+        voteData,
+        projectorData
+    }), [liveCurrentAgendaId, liveProjectorMode, projectorData, voteData]);
+    const [heldRenderState, setHeldRenderState] = useState(rawRenderState);
+    const holdTimerRef = useRef(null);
+    const pendingRenderStateRef = useRef(rawRenderState);
+    const initialRenderStateRef = useRef(rawRenderState);
+    const heldRenderSignature = useMemo(() => serializeProjectorRenderState(heldRenderState), [heldRenderState]);
+    const rawRenderSignature = useMemo(() => serializeProjectorRenderState(rawRenderState), [rawRenderState]);
+    const appendProjectorLog = React.useCallback((eventType, details = {}) => {
+        const entry = {
+            eventType,
+            timestamp: new Date().toISOString(),
+            details
+        };
+
+        console.log(`[ProjectorHold] ${eventType}`, details);
+
+        try {
+            const previousEntries = JSON.parse(window.sessionStorage.getItem(PROJECTOR_LOG_STORAGE_KEY) || '[]');
+            const nextEntries = [...previousEntries, entry].slice(-PROJECTOR_LOG_LIMIT);
+            window.sessionStorage.setItem(PROJECTOR_LOG_STORAGE_KEY, JSON.stringify(nextEntries));
+        } catch (error) {
+            console.error('Failed to persist projector render log:', error);
+        }
+    }, []);
+
+    useEffect(() => {
+        appendProjectorLog('page_loaded', {
+            raw: summarizeProjectorRenderState(initialRenderStateRef.current)
+        });
+    }, [appendProjectorLog]);
+
+    useEffect(() => {
+        pendingRenderStateRef.current = rawRenderState;
+
+        if (rawRenderSignature === heldRenderSignature) {
+            if (holdTimerRef.current) {
+                window.clearTimeout(holdTimerRef.current);
+                holdTimerRef.current = null;
+            }
+            return undefined;
+        }
+
+        if (holdTimerRef.current) {
+            window.clearTimeout(holdTimerRef.current);
+            appendProjectorLog('hold_restarted', {
+                applied: summarizeProjectorRenderState(heldRenderState),
+                pending: summarizeProjectorRenderState(rawRenderState),
+                holdMs: PROJECTOR_HOLD_LAST_GOOD_MS
+            });
+        } else {
+            appendProjectorLog('hold_scheduled', {
+                applied: summarizeProjectorRenderState(heldRenderState),
+                pending: summarizeProjectorRenderState(rawRenderState),
+                holdMs: PROJECTOR_HOLD_LAST_GOOD_MS
+            });
+        }
+
+        holdTimerRef.current = window.setTimeout(() => {
+            const nextRenderState = pendingRenderStateRef.current;
+            setHeldRenderState(nextRenderState);
+            appendProjectorLog('hold_applied', {
+                applied: summarizeProjectorRenderState(nextRenderState)
+            });
+            holdTimerRef.current = null;
+        }, PROJECTOR_HOLD_LAST_GOOD_MS);
+
+        return () => undefined;
+    }, [appendProjectorLog, heldRenderSignature, heldRenderState, rawRenderSignature, rawRenderState]);
+
+    useEffect(() => () => {
+        if (holdTimerRef.current) {
+            window.clearTimeout(holdTimerRef.current);
+            holdTimerRef.current = null;
+        }
+    }, []);
+
+    const projectorMode = heldRenderState.projectorMode;
+    const currentAgendaId = heldRenderState.currentAgendaId;
+    const displayVoteData = useMemo(() => ({
+        ...voteData,
+        presentationPage: heldRenderState.presentationPage,
+        resultAgendaId: heldRenderState.resultAgendaId,
+        resultDeclaration: heldRenderState.resultDeclaration,
+        customDeclaration: heldRenderState.customDeclaration || voteData?.customDeclaration || '',
+        resultVotesYes: heldRenderState.resultVotesYes,
+        resultVotesNo: heldRenderState.resultVotesNo,
+        resultVotesAbstain: heldRenderState.resultVotesAbstain,
+        resultTotalAttendance: heldRenderState.resultTotalAttendance,
+        resultIsPassed: heldRenderState.resultIsPassed,
+        __syncVersion: heldRenderState.syncVersion
+    }), [heldRenderState, voteData]);
     const inactiveMemberIds = Array.isArray(voteData?.inactiveMemberIds) ? voteData.inactiveMemberIds : EMPTY_INACTIVE_MEMBER_IDS;
     const activeMemberIdSet = useMemo(() => {
         const inactiveMemberIdSet = new Set(inactiveMemberIds);
@@ -166,39 +288,39 @@ export default function ProjectorPage() {
             mailElectionVotes,
             activeMemberIdSet
         });
-        const isResultSnapshot = projectorMode === 'RESULT' && voteData?.resultAgendaId === currentAgenda?.id;
+        const isResultSnapshot = projectorMode === 'RESULT' && displayVoteData?.resultAgendaId === currentAgenda?.id;
         const projectorDeclaration = isResultSnapshot
-            ? String(voteData?.resultDeclaration || voteData?.customDeclaration || '').trim()
+            ? String(displayVoteData?.resultDeclaration || displayVoteData?.customDeclaration || '').trim()
             : '';
 
         const baseTotalAttendance = isResultSnapshot
             ? (
-                (voteData?.resultTotalAttendance > 0
-                    ? voteData.resultTotalAttendance
+                (displayVoteData?.resultTotalAttendance > 0
+                    ? displayVoteData.resultTotalAttendance
                     : null)
                 ?? displayStats.total
             )
             : (isConfirmed ? snapshot.stats.total : displayStats.total);
         const baseVotesYes = isResultSnapshot
             ? (
-                (voteData?.resultVotesYes > 0
-                    ? voteData.resultVotesYes
+                (displayVoteData?.resultVotesYes > 0
+                    ? displayVoteData.resultVotesYes
                     : null)
                 ?? liveVoteBuckets.final.yes
             )
             : (isConfirmed ? snapshot.votes.yes : liveVoteBuckets.final.yes);
         const baseVotesNo = isResultSnapshot
             ? (
-                (voteData?.resultVotesNo > 0
-                    ? voteData.resultVotesNo
+                (displayVoteData?.resultVotesNo > 0
+                    ? displayVoteData.resultVotesNo
                     : null)
                 ?? liveVoteBuckets.final.no
             )
             : (isConfirmed ? snapshot.votes.no : liveVoteBuckets.final.no);
         const baseVotesAbstain = isResultSnapshot
             ? (
-                (voteData?.resultVotesAbstain > 0
-                    ? voteData.resultVotesAbstain
+                (displayVoteData?.resultVotesAbstain > 0
+                    ? displayVoteData.resultVotesAbstain
                     : null)
                 ?? liveVoteBuckets.final.abstain
             )
@@ -219,7 +341,7 @@ export default function ProjectorPage() {
         // Result Logic
         let isPassed = false;
         if (isResultSnapshot) {
-            isPassed = !!voteData?.resultIsPassed;
+            isPassed = !!displayVoteData?.resultIsPassed;
         } else if (isConfirmed && snapshot.result) {
             isPassed = snapshot.result === 'PASSED';
         } else {
@@ -244,7 +366,7 @@ export default function ProjectorPage() {
             isSpecialVote,
             isElection: normalizeAgendaType(currentAgenda?.type) === 'election'
         };
-    }, [activeMemberIdSet, currentAgenda, displayStats, mailElectionVotes, projectorMode, voteData]);
+    }, [activeMemberIdSet, currentAgenda, displayStats, displayVoteData, mailElectionVotes, projectorMode]);
 
 
 
@@ -269,14 +391,14 @@ export default function ProjectorPage() {
             }
         }
 
-        const startPage = voteData?.presentationPage || currentAgenda.start_page || 1;
+        const startPage = displayVoteData?.presentationPage || currentAgenda.start_page || 1;
         let source = individualSource || masterSource;
 
         // Clean source URL (remove existing query params or hash if any, though usually clean)
         // Adjust this if your DB stores params. Assuming clean URL or Supabase URL.
 
         return { finalSource: source, currentPage: parseInt(startPage) };
-    }, [currentAgenda, voteData?.presentationPage, agendas]);
+    }, [currentAgenda, displayVoteData?.presentationPage, agendas]);
 
     return (
 

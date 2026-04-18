@@ -46,7 +46,55 @@ const WINDOW_SYNC_CHANNEL = 'votecast-system-settings-sync';
 const WINDOW_SYNC_STORAGE_KEY = '__votecast_system_settings_sync__';
 const WINDOW_AGENDAS_SYNC_CHANNEL = 'votecast-agendas-sync';
 const WINDOW_AGENDAS_SYNC_STORAGE_KEY = '__votecast_agendas_sync__';
+const PROJECTOR_SESSION_STORAGE_KEY = '__votecast_projector_session__';
 const normalizeProjectorModeValue = (mode) => mode === 'ADJUSTING' ? 'RESULT' : (mode || 'IDLE');
+const getVoteDataSyncVersion = (voteData = {}) => {
+    const parsed = parseInt(voteData?.__syncVersion, 10);
+    return Number.isNaN(parsed) ? 0 : parsed;
+};
+const stampVoteDataWithSyncVersion = (voteData = {}, syncVersion) => ({
+    ...voteData,
+    __syncVersion: syncVersion
+});
+const readProjectorSessionState = () => {
+    if (typeof window === 'undefined') return null;
+    if (!window.location.pathname.startsWith('/projector')) return null;
+
+    try {
+        const raw = window.sessionStorage.getItem(PROJECTOR_SESSION_STORAGE_KEY);
+        if (!raw) return null;
+
+        const parsed = JSON.parse(raw);
+        if (!parsed || typeof parsed !== 'object') return null;
+
+        return {
+            agendas: Array.isArray(parsed.agendas) ? parsed.agendas : INITIAL_DATA.agendas,
+            voteData: { ...INITIAL_DATA.voteData, ...(parsed.voteData || {}) },
+            currentAgendaId: parsed.currentAgendaId || INITIAL_DATA.currentAgendaId,
+            projectorMode: normalizeProjectorModeValue(parsed.projectorMode),
+            projectorData: Object.prototype.hasOwnProperty.call(parsed, 'projectorData')
+                ? parsed.projectorData
+                : INITIAL_DATA.projectorData,
+            masterPresentationSource: parsed.masterPresentationSource || INITIAL_DATA.masterPresentationSource
+        };
+    } catch (error) {
+        console.error('Failed to restore projector session state:', error);
+        return null;
+    }
+};
+const createInitialState = () => {
+    const projectorSessionState = readProjectorSessionState();
+    if (!projectorSessionState) return INITIAL_DATA;
+
+    return {
+        ...INITIAL_DATA,
+        ...projectorSessionState,
+        voteData: {
+            ...INITIAL_DATA.voteData,
+            ...(projectorSessionState.voteData || {})
+        }
+    };
+};
 
 const applyWrittenVoteDeltaToAgendaList = (agendas = [], votes = [], delta = 1) => {
     if (!Array.isArray(votes) || !votes.length || !delta) return agendas;
@@ -509,7 +557,7 @@ const StoreContext = createContext(null);
 
 // Provider Component
 export function StoreProvider({ children }) {
-    const [state, setState] = useState(INITIAL_DATA);
+    const [state, setState] = useState(createInitialState);
     const [isInitialized, setIsInitialized] = useState(false);
     const isReorderingAgendasRef = useRef(false);
     const suppressAgendaRealtimeUntilRef = useRef(0);
@@ -519,10 +567,35 @@ export function StoreProvider({ children }) {
     const broadcastChannelRef = useRef(null);
     const agendaBroadcastChannelRef = useRef(null);
     const attendanceSyncChannelRef = useRef(null);
+    const lastAppliedSystemSyncVersionRef = useRef(getVoteDataSyncVersion(state.voteData));
+    const nextSystemSyncVersionRef = useRef(getVoteDataSyncVersion(state.voteData));
+    const lastAgendaSyncMessageAtRef = useRef(0);
 
     useEffect(() => {
         stateRef.current = state;
     }, [state]);
+
+    useEffect(() => {
+        if (typeof window === 'undefined') return undefined;
+        if (!window.location.pathname.startsWith('/projector')) return undefined;
+
+        const sessionSnapshot = {
+            agendas: state.agendas,
+            voteData: state.voteData,
+            currentAgendaId: state.currentAgendaId,
+            projectorMode: state.projectorMode,
+            projectorData: state.projectorData,
+            masterPresentationSource: state.masterPresentationSource
+        };
+
+        try {
+            window.sessionStorage.setItem(PROJECTOR_SESSION_STORAGE_KEY, JSON.stringify(sessionSnapshot));
+        } catch (error) {
+            console.error('Failed to persist projector session state:', error);
+        }
+
+        return undefined;
+    }, [state.agendas, state.currentAgendaId, state.masterPresentationSource, state.projectorData, state.projectorMode, state.voteData]);
 
     const getDefaultMeetingId = React.useCallback((agendas = []) => {
         if (agendas.length === 0) return null;
@@ -531,8 +604,47 @@ export function StoreProvider({ children }) {
         return firstFolder ? firstFolder.id : null;
     }, []);
 
+    const createNextSystemSyncVersion = React.useCallback(() => {
+        const nextVersion = Math.max(
+            Date.now(),
+            lastAppliedSystemSyncVersionRef.current + 1,
+            nextSystemSyncVersionRef.current + 1
+        );
+
+        nextSystemSyncVersionRef.current = nextVersion;
+        return nextVersion;
+    }, []);
+
+    const createStampedVoteData = React.useCallback((voteData = {}, syncVersion = createNextSystemSyncVersion()) => {
+        lastAppliedSystemSyncVersionRef.current = Math.max(lastAppliedSystemSyncVersionRef.current, syncVersion);
+        nextSystemSyncVersionRef.current = Math.max(nextSystemSyncVersionRef.current, syncVersion);
+        return stampVoteDataWithSyncVersion(voteData, syncVersion);
+    }, [createNextSystemSyncVersion]);
+
+    const shouldApplySystemSettings = React.useCallback((settings, options = {}) => {
+        const incomingVersion = getVoteDataSyncVersion(settings?.vote_data);
+        const currentVersion = lastAppliedSystemSyncVersionRef.current;
+        const { allowLegacyVersion = false } = options;
+
+        if (incomingVersion === 0 && currentVersion > 0 && !allowLegacyVersion) {
+            return false;
+        }
+
+        if (incomingVersion < currentVersion) {
+            return false;
+        }
+
+        if (incomingVersion > 0) {
+            lastAppliedSystemSyncVersionRef.current = incomingVersion;
+            nextSystemSyncVersionRef.current = Math.max(nextSystemSyncVersionRef.current, incomingVersion);
+        }
+
+        return true;
+    }, []);
+
     const applySystemSettingsToState = React.useCallback((settings, options = {}) => {
         if (!settings) return;
+        if (!shouldApplySystemSettings(settings, options)) return;
 
         const {
             defaultMeetingId = null,
@@ -556,7 +668,7 @@ export function StoreProvider({ children }) {
             projectorData,
             masterPresentationSource: settings.master_presentation_source
         }));
-    }, []);
+    }, [shouldApplySystemSettings]);
 
     const refreshSystemSettingsFromDb = React.useCallback(async (options = {}) => {
         const { data: settings, error } = await supabase
@@ -661,6 +773,7 @@ export function StoreProvider({ children }) {
         const applyIncomingWindowSync = (message) => {
             if (!message?.settings) return;
             if (message.senderId === windowSyncIdRef.current) return;
+            if ((message.sentAt || 0) < lastAppliedSystemSyncVersionRef.current) return;
 
             applySystemSettingsToState(message.settings, {
                 preserveCurrentMeetingId: true,
@@ -730,6 +843,9 @@ export function StoreProvider({ children }) {
         const applyIncomingAgendaSync = (message) => {
             if (!Array.isArray(message?.agendas)) return;
             if (message.senderId === windowSyncIdRef.current) return;
+            if ((message.sentAt || 0) < lastAgendaSyncMessageAtRef.current) return;
+
+            lastAgendaSyncMessageAtRef.current = message.sentAt || lastAgendaSyncMessageAtRef.current;
 
             applyAgendaRowsToState(message.agendas);
         };
@@ -984,7 +1100,7 @@ export function StoreProvider({ children }) {
                     mailElectionVotes: mailElectionVotes || []
                 }));
 
-                await refreshSystemSettingsFromDb({ defaultMeetingId });
+                await refreshSystemSettingsFromDb({ defaultMeetingId, allowLegacyVersion: true });
                 setIsInitialized(true);
             } catch (error) {
                 console.error("Error fetching initial data:", error);
@@ -999,14 +1115,10 @@ export function StoreProvider({ children }) {
         const channel = supabase.channel('room_common')
             .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'system_settings' }, (payload) => {
                 if (payload.new && payload.new.id === 1) {
-                    setState(prev => ({
-                        ...prev,
-                        voteData: { ...INITIAL_DATA.voteData, ...(payload.new.vote_data || {}) },
-                        currentAgendaId: payload.new.current_agenda_id,
-                        activeMeetingId: payload.new.active_meeting_id, // Sync Active Meeting
-                        projectorMode: payload.new.projector_mode,
-                        masterPresentationSource: payload.new.master_presentation_source
-                    }));
+                    applySystemSettingsToState(payload.new, {
+                        preserveCurrentMeetingId: true,
+                        projectorData: payload.new.projector_data ?? null
+                    });
                 }
             })
             .on('postgres_changes', { event: '*', schema: 'public', table: 'agendas' }, async () => {
@@ -1159,7 +1271,7 @@ export function StoreProvider({ children }) {
             supabase.removeChannel(attendanceSyncChannel);
             attendanceSyncChannelRef.current = null;
         };
-    }, [reconcileAgendaVoteCountsFromWrittenVotes, refreshAgendasFromDb, refreshMailElectionVotesFromDb, refreshSystemSettingsFromDb, syncAgendaForWrittenVote]);
+    }, [applySystemSettingsToState, reconcileAgendaVoteCountsFromWrittenVotes, refreshAgendasFromDb, refreshMailElectionVotesFromDb, refreshSystemSettingsFromDb, syncAgendaForWrittenVote]);
 
     // Visibility Change + Polling Fallback for Attendance
     // Handles mobile browser WebSocket disconnects (tab switch, screen lock, etc.)
@@ -1297,12 +1409,12 @@ export function StoreProvider({ children }) {
 전체 참석자(${total.toLocaleString()})명중 ${criterion} 찬성으로
 "${targetAgenda.title}"은 가결되었음을 선포합니다.` : "";
 
-        const newVoteData = {
+        const newVoteData = createStampedVoteData({
             ...vData,
             voteType: newType,
             customDeclaration: defaultDecl,
             presentationPage: targetAgenda.start_page || 1
-        };
+        });
 
         console.log('[setAgenda] Setting currentAgendaId to:', id);
 
@@ -1324,7 +1436,7 @@ export function StoreProvider({ children }) {
                 vote_data: newVoteData
             });
         }
-    }, [broadcastSystemSettingsSync]);
+    }, [broadcastSystemSettingsSync, createStampedVoteData]);
 
     // Actions
     const actions = React.useMemo(() => ({
@@ -2159,10 +2271,10 @@ export function StoreProvider({ children }) {
                 inactiveMemberIds.add(memberId);
             }
 
-            const newVoteData = {
+            const newVoteData = createStampedVoteData({
                 ...currentVoteData,
                 inactiveMemberIds: Array.from(inactiveMemberIds).sort((a, b) => a - b)
-            };
+            });
 
             setState(prev => ({ ...prev, voteData: newVoteData }));
 
@@ -2189,10 +2301,10 @@ export function StoreProvider({ children }) {
                 delete nextLocks[agendaId];
             }
 
-            const newVoteData = {
+            const newVoteData = createStampedVoteData({
                 ...currentVoteData,
                 agendaTypeLocks: nextLocks
-            };
+            });
 
             setState(prev => ({ ...prev, voteData: newVoteData }));
 
@@ -2206,10 +2318,10 @@ export function StoreProvider({ children }) {
 
         setAgendaOrderLock: async (isLocked) => {
             const currentVoteData = stateRef.current.voteData || {};
-            const newVoteData = {
+            const newVoteData = createStampedVoteData({
                 ...currentVoteData,
                 agendaOrderLocked: !!isLocked
-            };
+            });
 
             setState(prev => ({ ...prev, voteData: newVoteData }));
 
@@ -2258,10 +2370,10 @@ export function StoreProvider({ children }) {
             }
 
             const currentVoteData = stateRef.current.voteData || {};
-            const nextVoteData = {
+            const nextVoteData = createStampedVoteData({
                 ...currentVoteData,
                 inactiveMemberIds: getInactiveMemberIds(currentVoteData).filter((memberId) => memberId !== id)
-            };
+            });
 
             const { error } = await supabase
                 .from('members')
@@ -2286,7 +2398,7 @@ export function StoreProvider({ children }) {
 
         updateVoteData: async (field, value) => {
             const currentVoteData = stateRef.current.voteData;
-            const newVoteData = { ...currentVoteData, [field]: value };
+            const newVoteData = createStampedVoteData({ ...currentVoteData, [field]: value });
 
             setState(prev => ({ ...prev, voteData: newVoteData }));
 
@@ -2307,7 +2419,7 @@ export function StoreProvider({ children }) {
 
             if (currentPage === newPage) return;
 
-            const newVoteData = { ...currentVoteData, presentationPage: newPage };
+            const newVoteData = createStampedVoteData({ ...currentVoteData, presentationPage: newPage });
             setState(prev => ({ ...prev, voteData: newVoteData }));
 
             const { error } = await supabase.from('system_settings')
@@ -2328,7 +2440,7 @@ export function StoreProvider({ children }) {
 
             if ((parseInt(currentVoteData.presentationPage, 10) || 1) === normalizedPage) return;
 
-            const newVoteData = { ...currentVoteData, presentationPage: normalizedPage };
+            const newVoteData = createStampedVoteData({ ...currentVoteData, presentationPage: normalizedPage });
             setState(prev => ({ ...prev, voteData: newVoteData }));
 
             const { error } = await supabase.from('system_settings')
@@ -2345,7 +2457,7 @@ export function StoreProvider({ children }) {
 
         setProjectorMode: async (mode, data = null) => {
             const currentVoteData = stateRef.current.voteData || {};
-            const nextVoteData = (mode === 'RESULT' && data?.declaration !== undefined)
+            const nextVoteData = createStampedVoteData((mode === 'RESULT' && data?.declaration !== undefined)
                 ? {
                     ...currentVoteData,
                     customDeclaration: data.declaration || '',
@@ -2357,7 +2469,7 @@ export function StoreProvider({ children }) {
                     resultTotalAttendance: data.totalAttendance ?? 0,
                     resultIsPassed: !!data.isPassed
                 }
-                : currentVoteData;
+                : currentVoteData);
 
             // Save both mode AND data to state
             setState(prev => ({
@@ -2388,7 +2500,7 @@ export function StoreProvider({ children }) {
 
         updateProjectorData: async (data) => {
             const currentVoteData = stateRef.current.voteData || {};
-            const nextVoteData = {
+            const nextVoteData = createStampedVoteData({
                 ...currentVoteData,
                 customDeclaration: data?.declaration || '',
                 resultDeclaration: data?.declaration || '',
@@ -2398,7 +2510,7 @@ export function StoreProvider({ children }) {
                 resultVotesAbstain: data?.votesAbstain ?? currentVoteData.resultVotesAbstain ?? 0,
                 resultTotalAttendance: data?.totalAttendance ?? currentVoteData.resultTotalAttendance ?? 0,
                 resultIsPassed: data?.isPassed ?? currentVoteData.resultIsPassed ?? false
-            };
+            });
 
             setState(prev => ({
                 ...prev,
@@ -2438,7 +2550,7 @@ export function StoreProvider({ children }) {
         },
 
         resetHelper: async () => { }
-    }), [broadcastAgendaRowsSync, broadcastSystemSettingsSync, reconcileAgendaVoteCountsFromWrittenVotes, refreshAgendasFromDb, refreshAttendanceFromDb, refreshMailElectionVotesFromDb, setAgendaById]); // Actions are stable because they use stateRef to access current state values
+    }), [broadcastAgendaRowsSync, broadcastSystemSettingsSync, createStampedVoteData, reconcileAgendaVoteCountsFromWrittenVotes, refreshAgendasFromDb, refreshAttendanceFromDb, refreshMailElectionVotesFromDb, setAgendaById]); // Actions are stable because they use stateRef to access current state values
 
     return (
         <StoreContext.Provider value={{ state, actions }}>
