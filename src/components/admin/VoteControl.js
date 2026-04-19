@@ -3,7 +3,7 @@
 import React, { useMemo, useEffect, useLayoutEffect, useState, useCallback, useRef } from 'react';
 import { useStore } from '@/lib/store';
 import { getAgendaAttendanceDisplayStats, getAgendaVoteBuckets, getAttendanceQuorumTarget, getElectionAgendaValidationStats, getMeetingAttendanceStats, normalizeAgendaType } from '@/lib/store';
-import { CheckCircle2, AlertTriangle, Trash2, Lock, Unlock, RotateCcw, Save, Wand2, ArrowLeft, ArrowRight } from 'lucide-react';
+import { CheckCircle2, AlertTriangle, AlertCircle, Trash2, Lock, Unlock, RotateCcw, Save, Wand2, ArrowLeft, ArrowRight } from 'lucide-react';
 import Card from '@/components/ui/Card';
 
 const EMPTY_INACTIVE_MEMBER_IDS = [];
@@ -779,14 +779,67 @@ ${resultLine}`;
 
                                 <div className="min-h-[48px] mb-1 flex items-center">
                                     {(!isVoteCountValid || isOnsiteOverflow || (isElection && hasElectionValidationIssue)) ? (
-                                        <div className="w-full rounded-xl border border-rose-800/60 bg-rose-950/40 px-4 py-2 flex items-center gap-3 shadow-inner animate-in fade-in slide-in-from-top-1 duration-200">
-                                            <div className="flex items-center justify-center bg-rose-900/50 rounded-full p-1.5 shrink-0">
+                                        <div className="w-full rounded-xl border border-rose-800/60 bg-rose-950/40 px-4 py-2 flex items-start gap-3 shadow-inner animate-in fade-in slide-in-from-top-1 duration-200">
+                                            <div className="flex items-center justify-center bg-rose-900/50 rounded-full p-1.5 shrink-0 mt-0.5">
                                                 <AlertTriangle size={16} className="text-rose-400" />
                                             </div>
                                             <div className="text-sm font-bold text-rose-300">
-                                                {isElection ? (
-                                                    hasElectionValidationIssue ? '선거 안건 검증 경고가 남아있습니다. 입력 상태를 확인하세요.' : 
-                                                    isOnsiteOverflow ? `현장 입력 합계가 가능 인원(${effectiveOnsiteEligibleCount}명)을 초과했습니다.` : '모든 수치를 확인해 주세요.'
+                                                {isElection && hasElectionValidationIssue ? (
+                                                    <div className="flex flex-col gap-1">
+                                                        <span>선거 안건 검증 경고:</span>
+                                                        <ul className="list-none space-y-1 text-xs font-semibold text-rose-300/90">
+                                                            {isElectionMailMissing && (() => {
+                                                                const missingMembers = (electionValidation.missingMailVoteMemberIds || [])
+                                                                    .map(id => members.find(m => m.id === id))
+                                                                    .filter(Boolean);
+                                                                const names = missingMembers.map(m => `${m.unit || ''} ${m.name}`).join(', ');
+                                                                return (
+                                                                    <li className="flex flex-col gap-0.5">
+                                                                        <div className="flex items-start gap-1.5">
+                                                                            <span className="text-rose-400 shrink-0">•</span>
+                                                                            <span>우편투표 미제출: 등록된 {electionValidation.expectedMailVoteCount}명 중 {electionValidation.missingMailVoteCount}명의 투표 기록 없음</span>
+                                                                        </div>
+                                                                        <div className="ml-3 text-[10px] text-rose-400/80 leading-relaxed font-medium">
+                                                                            대상: {names}
+                                                                        </div>
+                                                                    </li>
+                                                                );
+                                                            })()}
+                                                            {hasElectionMailOverlap && (() => {
+                                                                const overlapMembers = (electionValidation.overlapMailVoteMemberIds || [])
+                                                                    .map(id => members.find(m => m.id === id))
+                                                                    .filter(Boolean);
+                                                                const names = overlapMembers.map(m => `${m.unit || ''} ${m.name}`).join(', ');
+                                                                return (
+                                                                    <li className="flex flex-col gap-0.5">
+                                                                        <div className="flex items-start gap-1.5">
+                                                                            <span className="text-amber-400 shrink-0">•</span>
+                                                                            <span className="text-amber-300/90">우편/현장 중복: {electionValidation.overlapMailVoteCount}명이 중복 등록됨 (참석유형 정리 필요)</span>
+                                                                        </div>
+                                                                        <div className="ml-3 text-[10px] text-amber-500/80 leading-relaxed font-medium">
+                                                                            대상: {names}
+                                                                        </div>
+                                                                    </li>
+                                                                );
+                                                            })()}
+                                                            {isOnsiteOverflow && (
+                                                                <li className="flex items-start gap-1.5">
+                                                                    <span className="text-rose-400 shrink-0">•</span>
+                                                                    <span>현장 입력 초과: 현장 입력 합계({onsiteVotesCast}표)가 가능 인원({effectiveOnsiteEligibleCount}명)을 초과 → 현장 투표 숫자를 줄이세요</span>
+                                                                </li>
+                                                            )}
+                                                            {displayTotalVotesCast !== electionValidation.expectedTotalVotes && !isOnsiteOverflow && (
+                                                                <li className="flex items-start gap-1.5">
+                                                                    <span className="text-rose-400 shrink-0">•</span>
+                                                                    <span>총 투표수 불일치: 현재 {displayTotalVotesCast}표 / 기대값 {electionValidation.expectedTotalVotes}표 (우편 {electionValidation.actualMailVoteCount} + 현장 {effectiveOnsiteEligibleCount}) → 현장 투표 입력을 조정하세요</span>
+                                                                </li>
+                                                            )}
+                                                        </ul>
+                                                    </div>
+                                                ) : isOnsiteOverflow ? (
+                                                    `현장 입력 합계가 가능 인원(${effectiveOnsiteEligibleCount}명)을 초과했습니다.`
+                                                ) : isElection ? (
+                                                    '모든 수치를 확인해 주세요.'
                                                 ) : (
                                                     isOnsiteOverflow ? `현장 입력 합계가 가능 인원(${effectiveOnsiteEligibleCount}명)을 초과했습니다.` :
                                                     `현재 총 투표수는 참석자 기준보다 ${voteCountStatusText} 상태입니다.`
@@ -1092,18 +1145,38 @@ ${resultLine}`;
                                 <span className="font-semibold text-slate-700">모든 결과를 확인하였으며, 확정합니다.</span>
                             </label>
                             {isLocalDirty && (
-                                <div className="w-full rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-center text-sm font-semibold text-amber-700">
-                                    현장 투표 입력이 아직 반영되지 않았습니다. `입력 완료`를 눌러 선포문구와 DB에 반영한 뒤 확정하세요.
+                                <div className="w-full rounded-xl border border-amber-300 bg-amber-50/80 px-4 py-3 text-center text-sm font-bold text-amber-800 shadow-sm animate-pulse">
+                                    <div className="flex items-center justify-center gap-2 mb-1">
+                                        <AlertTriangle size={18} className="text-amber-600" />
+                                        <span>현장 투표 입력값 미반영</span>
+                                    </div>
+                                    <p className="text-xs font-semibold leading-relaxed">
+                                        위의 <span className="text-blue-700 underline underline-offset-2">[입력 완료 (선포문구 반영)]</span> 버튼을 반드시 눌러야 선포 문구에 숫자가 기록되고 확정이 가능해집니다.
+                                    </p>
                                 </div>
                             )}
                             {!isLocalDirty && !isVoteCountValid && (
-                                <div className="w-full rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-center text-sm font-semibold text-red-700">
-                                    총 투표수와 성원(참석자) 수가 일치해야 확정할 수 있습니다.
+                                <div className="w-full rounded-xl border border-rose-300 bg-rose-50/80 px-4 py-3 text-center text-sm font-bold text-rose-800 shadow-sm">
+                                    <div className="flex items-center justify-center gap-2 mb-1">
+                                        <AlertCircle size={18} className="text-rose-600" />
+                                        <span>투표수 합계 불일치 ({voteCountStatusText})</span>
+                                    </div>
+                                    <p className="text-xs font-semibold leading-relaxed">
+                                        총 투표수({displayTotalVotesCast}표)가 성원 인원({effectiveTotalAttendance}명)과 일치해야 확정할 수 있습니다. <br/>
+                                        입력칸의 숫자를 조정한 후 다시 [입력 완료]를 눌러주세요.
+                                    </p>
                                 </div>
                             )}
-                            {!isLocalDirty && hasElectionValidationIssue && (
-                                <div className="w-full rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-center text-sm font-semibold text-amber-700">
-                                    선거 안건 검증 경고를 모두 해소해야 확정할 수 있습니다.
+                            {!isLocalDirty && hasElectionValidationIssue && isVoteCountValid && (
+                                <div className="w-full rounded-xl border border-amber-300 bg-amber-50/80 px-4 py-3 text-center text-sm font-bold text-amber-800 shadow-sm">
+                                    <div className="flex items-center justify-center gap-2 mb-1">
+                                        <AlertTriangle size={18} className="text-amber-600" />
+                                        <span>선거 검증 항목 확인 필요</span>
+                                    </div>
+                                    <p className="text-xs font-semibold leading-relaxed">
+                                        상단의 선거 안건 검증 경고 내용을 확인해 주세요. <br/>
+                                        (중복 인원 정리 또는 우편투표 누락분 처리 필요)
+                                    </p>
                                 </div>
                             )}
                             <button

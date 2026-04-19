@@ -345,6 +345,16 @@ export const withLegacyVoteTotals = (agenda = {}, options = {}) => {
     };
 };
 
+const areAttendanceListsEqual = (list1, list2) => {
+    if (list1.length !== list2.length) return false;
+    return list1.every((record, index) => (
+        record.id === list2[index]?.id
+        && record.type === list2[index]?.type
+        && record.has_election === list2[index]?.has_election
+        && record.proxy_name === list2[index]?.proxy_name
+    ));
+};
+
 const areAgendaListsEqual = (left = [], right = []) => {
     if (left === right) return true;
     if (left.length !== right.length) return false;
@@ -510,20 +520,22 @@ export const getElectionAgendaValidationStats = ({
         actualMailVoteIds.add(vote.member_id);
     });
 
-    let missingMailVoteCount = 0;
+    const missingMailVoteMemberIds = [];
     expectedMailVoteIds.forEach((memberId) => {
         if (!actualMailVoteIds.has(memberId)) {
-            missingMailVoteCount += 1;
+            missingMailVoteMemberIds.push(memberId);
         }
     });
 
-    let overlapMailVoteCount = 0;
+    const overlapMailVoteMemberIds = [];
     actualMailVoteIds.forEach((memberId) => {
         if (onsiteAttendanceIds.has(memberId)) {
-            overlapMailVoteCount += 1;
+            overlapMailVoteMemberIds.push(memberId);
         }
     });
 
+    const missingMailVoteCount = missingMailVoteMemberIds.length;
+    const overlapMailVoteCount = overlapMailVoteMemberIds.length;
     const onsiteEligibleCount = Math.max(0, onsiteAttendanceIds.size - overlapMailVoteCount);
 
     return {
@@ -531,6 +543,8 @@ export const getElectionAgendaValidationStats = ({
         actualMailVoteCount: actualMailVoteIds.size,
         missingMailVoteCount,
         overlapMailVoteCount,
+        missingMailVoteMemberIds,
+        overlapMailVoteMemberIds,
         onsiteEligibleCount,
         expectedTotalVotes: onsiteEligibleCount + actualMailVoteIds.size
     };
@@ -910,15 +924,7 @@ export function StoreProvider({ children }) {
 
         const rows = (data || []).map(normalizeAttendanceRecord);
         setState((prev) => {
-            if (
-                prev.attendance.length === rows.length
-                && prev.attendance.every((record, index) => (
-                    record.id === rows[index]?.id
-                    && record.type === rows[index]?.type
-                    && record.has_election === rows[index]?.has_election
-                    && record.proxy_name === rows[index]?.proxy_name
-                ))
-            ) {
+            if (areAttendanceListsEqual(prev.attendance, rows)) {
                 return prev;
             }
 
@@ -1293,9 +1299,7 @@ export function StoreProvider({ children }) {
             if (data) {
                 setState(prev => {
                     const normalizedAttendance = data.map(normalizeAttendanceRecord);
-                    // Skip update if nothing changed (avoid unnecessary re-renders)
-                    if (prev.attendance.length === normalizedAttendance.length &&
-                        prev.attendance.every((a, i) => a.id === normalizedAttendance[i]?.id)) {
+                    if (areAttendanceListsEqual(prev.attendance, normalizedAttendance)) {
                         return prev;
                     }
                     return { ...prev, attendance: normalizedAttendance };
