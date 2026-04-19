@@ -678,7 +678,13 @@ export function StoreProvider({ children }) {
             .single();
 
         if (error) {
-            console.error('Failed to refresh system settings:', error);
+            console.error('Failed to refresh system settings:', {
+                message: error.message,
+                status: error.status,
+                details: error.details,
+                hint: error.hint,
+                code: error.code
+            });
             return null;
         }
 

@@ -135,7 +135,7 @@ export default function AdminPage() {
             }
             fixedTopContent={<LiveMonitor />}
         >
-            <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm relative z-0">
+            <div className="bg-white p-4 pb-2 rounded-xl border border-slate-200 shadow-sm relative z-0">
                 <VoteControl />
             </div>
         </DashboardLayout>

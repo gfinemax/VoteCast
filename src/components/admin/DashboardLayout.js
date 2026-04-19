@@ -7,7 +7,7 @@ export default function DashboardLayout({ title, subtitle, sidebarContent, sideb
     return (
         <div className="flex h-screen bg-slate-50 font-sans text-slate-800 overflow-hidden">
             {/* Sidebar */}
-            <aside className="w-80 bg-white border-r border-slate-200 flex flex-col shadow-lg z-10 relative">
+            <aside className="w-80 bg-white border-r border-slate-200 flex flex-col shadow-lg z-10 relative shrink-0">
                 <div className="p-6 border-b border-slate-100 shrink-0">
                     <h1 className="text-xl font-bold text-slate-900 flex items-center gap-2">
                         <div className="w-8 h-8 bg-slate-900 rounded-lg flex items-center justify-center text-white">
@@ -34,7 +34,7 @@ export default function DashboardLayout({ title, subtitle, sidebarContent, sideb
             {/* Main Content */}
             <main className="flex-1 flex flex-col h-full overflow-hidden relative">
                 {/* Header */}
-                <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-8 shadow-sm shrink-0 z-20">
+                <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-4 shadow-sm shrink-0 z-20">
                     <div className="flex items-center gap-4 w-full">
                         {headerContent}
                     </div>
@@ -44,17 +44,17 @@ export default function DashboardLayout({ title, subtitle, sidebarContent, sideb
                 <div className="flex-1 overflow-y-auto w-full">
                     {/* Fixed Top Content as Sticky (Matches scroll context width) */}
                     {fixedTopContent && (
-                        <div className="sticky top-0 z-20 px-8 pt-4 pb-0 w-full relative pointer-events-none">
+                        <div className="sticky top-0 z-20 px-4 pt-4 pb-0 w-full relative pointer-events-none">
                             {/* Seamless masking to hide scrolling text ONLY in the top 16px gap */}
                             <div className="absolute top-0 left-0 right-0 h-4 bg-slate-50"></div>
-                            <div className="max-w-5xl mx-auto relative pointer-events-auto drop-shadow-xl rounded-xl">
+                            <div className="w-full relative pointer-events-auto drop-shadow-xl rounded-xl">
                                 {fixedTopContent}
                             </div>
                         </div>
                     )}
 
-                    <div className="px-8 pt-4 pb-8">
-                        <div className="max-w-5xl mx-auto pb-20">
+                    <div className="px-4 pt-2 pb-2">
+                        <div className="w-full pb-4">
                             {children}
                         </div>
                     </div>

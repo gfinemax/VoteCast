@@ -3,36 +3,27 @@
 import React, { useMemo, useEffect, useLayoutEffect, useState, useCallback, useRef } from 'react';
 import { useStore } from '@/lib/store';
 import { getAgendaAttendanceDisplayStats, getAgendaVoteBuckets, getAttendanceQuorumTarget, getElectionAgendaValidationStats, getMeetingAttendanceStats, normalizeAgendaType } from '@/lib/store';
-import { CheckCircle2, AlertTriangle, Trash2, Lock, Unlock, RotateCcw, Save, Wand2 } from 'lucide-react';
+import { CheckCircle2, AlertTriangle, Trash2, Lock, Unlock, RotateCcw, Save, Wand2, ArrowLeft, ArrowRight } from 'lucide-react';
 import Card from '@/components/ui/Card';
 
 const EMPTY_INACTIVE_MEMBER_IDS = [];
 
 const FastNumericInput = ({ value, onChange, className, disabled, placeholder, innerRef }) => {
-    const [localValue, setLocalValue] = useState(value);
-    const [isFocused, setIsFocused] = useState(false);
-    const displayValue = isFocused ? localValue : value;
-
-    const handleChange = (e) => {
-        const val = e.target.value.replace(/[^0-9]/g, '');
-        setLocalValue(val);
-        onChange(val);
-    };
-
+    // Standard controlled input to avoid sync issues. simple e.target.select() handles the 'clear on focus' behavior.
     return (
         <input
             ref={innerRef}
             type="text"
             inputMode="numeric"
-            value={(displayValue === 0 || displayValue === '0') && !disabled ? '' : displayValue}
-            placeholder={placeholder}
+            value={((value === 0 || value === '0') ? '' : value)}
+            placeholder={placeholder || "0"}
             onFocus={(e) => {
-                setIsFocused(true);
-                setLocalValue(value);
                 e.target.select();
             }}
-            onBlur={() => setIsFocused(false)}
-            onChange={handleChange}
+            onChange={(e) => {
+                const val = e.target.value.replace(/[^0-9]/g, '');
+                onChange(val);
+            }}
             disabled={disabled}
             className={className}
         />
@@ -41,7 +32,7 @@ const FastNumericInput = ({ value, onChange, className, disabled, placeholder, i
 
 export default function VoteControl() {
     const { state, actions } = useStore();
-    const { updateAgenda, setDeclarationEditMode, setAgendaTypeLock, updateProjectorData } = actions;
+    const { updateAgenda, setDeclarationEditMode, setAgendaTypeLock, updateProjectorData, moveAgendaSelection } = actions;
     const { members, attendance, agendas, currentAgendaId, voteData, projectorMode, projectorData, mailElectionVotes } = state;
     const [confirmReadyAgendaId, setConfirmReadyAgendaId] = useState(null);
     const [confirmModalState, setConfirmModalState] = useState({ isOpen: false, type: null }); // type: 'confirm' | 'reset'
@@ -147,6 +138,12 @@ export default function VoteControl() {
         ? (displayStats.direct + displayStats.proxy)
         : (isElection ? electionValidation.onsiteEligibleCount : (displayStats.direct + displayStats.proxy));
 
+    // Progress Calculation
+    const navigableAgendas = useMemo(() => agendas.filter(a => a.type !== 'folder'), [agendas]);
+    const currentNavIndex = navigableAgendas.findIndex(a => a.id === currentAgendaId);
+    const progressPercent = navigableAgendas.length > 0
+        ? Math.round(((currentNavIndex + 1) / navigableAgendas.length) * 100)
+        : 0;
     // Targets (Based on Snapshot or Realtime totalMembers)
     // Note: If total members changed (removed from DB), snapshot should logically preserve it? 
     // Usually total members is stable, but let's assume Members list is realtime reference OR snapshot if we saved it.
@@ -206,15 +203,10 @@ ${resultLine}`;
         : (declaration || '');
     const isTypeLocked = !!agendaTypeLocks[currentAgendaId];
     const primaryOnsiteInputRef = useRef(null);
-    const votePanelContentRef = useRef(null);
-    const votePanelAnimationFrameRef = useRef(null);
-    const votePanelAnimationTimeoutRef = useRef(null);
-    const previousVotePanelHeightRef = useRef(null);
     const votePanelLayoutVariant = hasSplitVoteColumns
         ? (isElection ? 'split-election' : 'split-standard')
         : 'simple';
     const previousVotePanelLayoutRef = useRef(votePanelLayoutVariant);
-    const [animatedVotePanelHeight, setAnimatedVotePanelHeight] = useState(null);
 
     const setIsEditingDeclaration = (value) => {
         if (!currentAgendaId) return;
@@ -278,79 +270,6 @@ ${resultLine}`;
             window.cancelAnimationFrame(frameId);
         };
     }, [currentAgendaId, hasSplitVoteColumns, isConfirmed]);
-
-    useEffect(() => {
-        if (typeof ResizeObserver === 'undefined') return undefined;
-        const node = votePanelContentRef.current;
-        if (!node) return undefined;
-
-        const observer = new ResizeObserver((entries) => {
-            const entry = entries[0];
-            if (!entry) return;
-            previousVotePanelHeightRef.current = entry.contentRect.height;
-        });
-
-        observer.observe(node);
-        return () => observer.disconnect();
-    }, [currentAgendaId, hasSplitVoteColumns]);
-
-    useLayoutEffect(() => {
-        const node = votePanelContentRef.current;
-        if (!node || typeof window === 'undefined') return undefined;
-
-        const nextHeight = node.getBoundingClientRect().height;
-        const previousHeight = previousVotePanelHeightRef.current;
-        const didLayoutModeChange = previousVotePanelLayoutRef.current !== votePanelLayoutVariant;
-
-        if (
-            didLayoutModeChange
-            && previousHeight !== null
-            && Math.abs(previousHeight - nextHeight) > 1
-        ) {
-            if (votePanelAnimationFrameRef.current) {
-                window.cancelAnimationFrame(votePanelAnimationFrameRef.current);
-            }
-            if (votePanelAnimationTimeoutRef.current) {
-                window.clearTimeout(votePanelAnimationTimeoutRef.current);
-            }
-
-            setAnimatedVotePanelHeight(previousHeight);
-
-            votePanelAnimationFrameRef.current = window.requestAnimationFrame(() => {
-                votePanelAnimationFrameRef.current = window.requestAnimationFrame(() => {
-                    setAnimatedVotePanelHeight(nextHeight);
-                });
-            });
-
-            votePanelAnimationTimeoutRef.current = window.setTimeout(() => {
-                setAnimatedVotePanelHeight(null);
-                votePanelAnimationTimeoutRef.current = null;
-            }, 340);
-        }
-
-        previousVotePanelHeightRef.current = nextHeight;
-        previousVotePanelLayoutRef.current = votePanelLayoutVariant;
-
-        return () => {
-            if (votePanelAnimationFrameRef.current) {
-                window.cancelAnimationFrame(votePanelAnimationFrameRef.current);
-                votePanelAnimationFrameRef.current = null;
-            }
-        };
-    }, [currentAgendaId, votePanelLayoutVariant]);
-
-    useEffect(() => {
-        return () => {
-            if (typeof window !== 'undefined') {
-                if (votePanelAnimationFrameRef.current) {
-                    window.cancelAnimationFrame(votePanelAnimationFrameRef.current);
-                }
-                if (votePanelAnimationTimeoutRef.current) {
-                    window.clearTimeout(votePanelAnimationTimeoutRef.current);
-                }
-            }
-        };
-    }, []);
 
 
     // Handlers
@@ -563,29 +482,20 @@ ${resultLine}`;
         {
             value: 'majority',
             label: '일반',
-            activeClass: 'border-blue-200 bg-blue-50 text-blue-700 shadow-sm',
-            tooltipLines: [
-                '정족수: 전체 조합원 과반수 출석',
-                '의결: 출석자 과반수 찬성'
-            ]
+            activeClass: 'bg-blue-600 text-white font-black shadow-[0_0_15px_rgba(37,99,235,0.4)] border-blue-500',
+            tooltipLines: []
         },
         {
             value: 'election',
             label: '선거',
-            activeClass: 'border-emerald-200 bg-emerald-50 text-emerald-700 shadow-sm',
-            tooltipLines: [
-                '정족수: 전체 조합원 과반수 출석(직접참석20%)',
-                '의결: 출석자 과반수 찬성'
-            ]
+            activeClass: 'bg-emerald-600 text-white font-black shadow-[0_0_15px_rgba(5,150,105,0.4)] border-emerald-500',
+            tooltipLines: []
         },
         {
             value: 'twoThirds',
             label: '해산/규약',
-            activeClass: 'border-violet-200 bg-violet-50 text-violet-700 shadow-sm',
-            tooltipLines: [
-                '정족수: 전체 조합원 3분의 2 출석',
-                '의결: 출석자 3분의 2 이상 찬성'
-            ]
+            activeClass: 'bg-violet-600 text-white font-black shadow-[0_0_15px_rgba(124,58,237,0.4)] border-violet-500',
+            tooltipLines: []
         }
     ];
 
@@ -624,8 +534,8 @@ ${resultLine}`;
         },
         {
             key: 'abstain',
-            summaryLabel: '전체 기권/무효',
-            inputLabel: '현장 기권/무효',
+            summaryLabel: '전체 기권',
+            inputLabel: '현장 기권',
             totalValue: fixedVoteTotals.abstain + (parseInt(localVotes.abstain) || 0),
             writtenValue: fixedVoteTotals.abstain,
             onsiteValue: localVotes.abstain,
@@ -642,13 +552,13 @@ ${resultLine}`;
 
 
     return (
-        <div className="space-y-4 pb-20">
+        <div className="space-y-2 pb-2">
             {/* Header Section */}
             <div className="flex justify-between items-start gap-4">
                 <div className="flex-1">
-                    <h2 className="text-2xl font-bold leading-snug break-keep">
+                    <h2 className="text-lg font-bold leading-snug break-keep">
                         {currentAgenda.title}
-                        <span className="inline-block align-middle ml-2 -mt-1 text-sm font-normal text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded whitespace-nowrap">
+                        <span className="inline-block align-middle ml-2 -mt-1 text-sm font-bold text-white bg-blue-600 px-2 py-0.5 rounded shadow-sm whitespace-nowrap">
                             {isSpecialVote ? '특별결의(2/3)' : (currentAgendaType === 'election' ? '일반결의(과반/현장참석 20%)' : '일반결의(과반)')}
                         </span>
                     </h2>
@@ -665,306 +575,169 @@ ${resultLine}`;
                 </div>
             )}
 
+            {/* Top Grid: Sections 1 and 2 */}
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-stretch mb-4">
+                <div className="lg:col-span-4 flex flex-col items-stretch">
+
             {/* Section 1: Attendance */}
-            <section className={isConfirmed ? "opacity-90 grayscale-[0.3]" : ""}>
-                <div className="flex justify-between items-center mb-3">
-                    <h3 className="text-lg font-bold text-slate-600 uppercase tracking-wider flex items-center gap-2">
-                        01. 성원(참석) 집계
-                        <span className="text-xs font-normal text-slate-400 normal-case ml-2">
-                            (참조: {agendas.find(a => a.id === meetingId)?.title || '미지정'})
-                        </span>
-                        {isConfirmed && <span className="text-xs bg-slate-200 text-slate-600 px-1.5 rounded">고정됨</span>}
-                    </h3>
-
-                    {/* Vote Type Selector - Single Line Unified Toolbar */}
-                    <div className="flex items-center gap-2">
-                        {isTypeLocked && !isConfirmed && (
-                            <span className="rounded-full bg-amber-100 px-2 py-1 text-xs font-semibold text-amber-700">
-                                유형 잠금
-                            </span>
-                        )}
-                        <div className="flex items-center rounded-lg border border-slate-200 bg-white p-0.5 shadow-sm">
-                        <button
-                            type="button"
-                            onClick={toggleTypeLock}
-                            disabled={isConfirmed}
-                            title={isTypeLocked ? '투표 유형 잠금 해제' : '투표 유형 잠금'}
-                            className={`flex h-8 w-9 items-center justify-center rounded-md transition-all ${
-                                isTypeLocked
-                                    ? 'bg-yellow-400 text-yellow-900 shadow-sm'
-                                    : 'bg-transparent text-slate-400 hover:bg-slate-50 hover:text-slate-600'
-                            } disabled:cursor-not-allowed disabled:opacity-50`}
-                        >
-                            {isTypeLocked ? <Lock size={14} /> : <Unlock size={14} />}
-                        </button>
-
-                        <div className="mx-1 h-4 w-px bg-slate-200"></div>
-
-                        <div className="flex items-center">
-                            {voteTypeOptions.map((option) => {
-                                const isActive = currentAgendaType === option.value;
-                                return (
-                                    <div key={option.value} className="group relative">
-                                        <button
-                                            onClick={() => handleTypeChange(option.value)}
-                                            disabled={isConfirmed || isTypeLocked}
-                                            className={`rounded-md px-3 py-1.5 text-sm font-medium whitespace-nowrap transition-all border ${
-                                                isActive
-                                                    ? option.activeClass
-                                                    : 'border-transparent bg-transparent text-slate-500 hover:bg-slate-50 hover:text-slate-700'
-                                            } disabled:cursor-not-allowed disabled:opacity-45`}
-                                        >
-                                            {option.label}
-                                        </button>
-                                        <div className="pointer-events-none absolute bottom-full left-1/2 z-20 mb-2 hidden w-56 -translate-x-1/2 rounded-xl border border-slate-200 bg-slate-950 px-3 py-2 text-center text-[11px] font-medium leading-relaxed text-white shadow-2xl group-hover:block group-focus-within:block">
-                                            {option.tooltipLines.map((line) => (
-                                                <div key={line}>{line}</div>
-                                            ))}
-                                            <div className="absolute left-1/2 top-full h-2 w-2 -translate-x-1/2 -translate-y-1 rotate-45 border-b border-r border-slate-200 bg-slate-950" />
-                                        </div>
-                                    </div>
-                                );
-                            })}
-                        </div>
-                        </div>
+            <section className={`flex flex-col flex-1 ${isConfirmed ? "opacity-90 grayscale-[0.3]" : ""}`}>
+                <div className="mb-2">
+                    <div className="flex justify-between items-center">
+                        <h3 className="text-base font-bold text-slate-600 uppercase tracking-wider flex items-center gap-2">
+                            01.성원집계
+                            {isConfirmed && <span className="text-[10px] bg-slate-200 text-slate-600 px-1.5 rounded normal-case font-normal">고정됨</span>}
+                        </h3>
                     </div>
                 </div>
 
-                <Card className="p-4 space-y-3">
-                    {/* Total Members & Quorum Check */}
-                    <div className="bg-slate-800 text-white p-3 rounded-lg mb-2 shadow-inner">
+                <div className="bg-slate-900 border border-slate-800 rounded-2xl p-3 shadow-xl relative overflow-hidden ring-1 ring-white/5 group flex flex-col gap-3 flex-1">
+
+
+                    {/* Total (Equation Result) */}
+                    <div className="flex items-center justify-between bg-emerald-950/40 border border-emerald-900/50 rounded-xl p-2.5 px-3 mb-2 transition-colors group-hover:bg-emerald-950/60 group-hover:border-emerald-800/60">
+                        <div className="text-emerald-500/70 font-bold text-[11px] tracking-widest uppercase">성원합계(개최기준{quorumTarget}명)</div>
+                        <div className="flex items-baseline gap-1 relative top-0.5">
+                            <span className="text-3xl font-black text-emerald-400 leading-none tabular-nums tracking-tighter">{displayStats.total.toLocaleString()}</span>
+                            <span className="text-xs font-bold text-emerald-600/70 ml-0.5">명</span>
+                        </div>
+                    </div>
+
+                    {/* Attendance Equation Header */}
+                    <div className="grid grid-cols-[1.1fr_auto_1.6fr] gap-1 mb-1.5 px-0.5 text-[10px] font-bold text-slate-500 text-center tracking-wide items-end">
+                        <div>사전 접수({displayStats.fixedAttendanceLabel})</div>
+                        <div className="w-3"></div>
+                        <div className="flex flex-col items-center leading-tight">
+                            <span>현장 참석</span>
+                            <span className="text-[8px] opacity-70">(조합원+대리인)</span>
+                        </div>
+                    </div>
+
+                    {/* Equation Row */}
+                    <div className="flex items-center justify-between mb-3 px-1">
+                        {/* 1. Written */}
+                        <div className="flex-[1.1] flex flex-col items-center justify-center py-2 bg-slate-800/80 border border-slate-700 rounded-xl shadow-inner text-slate-300 transition-colors group-hover:border-slate-600">
+                            <span className="font-mono font-black text-2xl tabular-nums leading-none tracking-tight mt-0.5">{displayStats.fixedAttendanceCount}</span>
+                        </div>
+
+                        {/* Plus */}
+                        <div className="text-slate-600 font-black text-lg px-2">+</div>
+
+                        {/* Onsite Group: Direct + Proxy */}
+                        <div className="flex-[1.6] flex items-stretch border border-blue-900/50 bg-blue-900/20 rounded-xl overflow-hidden shadow-inner relative transition-colors group-hover:border-blue-800/60">
+                            {/* Direct */}
+                            <div className="flex-1 flex flex-col items-center justify-center py-2 relative">
+                                <span className="text-[9px] font-bold text-blue-400/50 absolute top-0.5">조합원</span>
+                                <span className="font-mono font-black text-blue-400 text-2xl tabular-nums leading-none mt-3">{displayStats.direct}</span>
+                            </div>
+                            <div className="w-px bg-blue-900/40"></div>
+                            {/* Proxy */}
+                            <div className="flex-1 flex flex-col items-center justify-center py-2 relative">
+                                <span className="text-[9px] font-bold text-blue-400/50 absolute top-0.5">대리인</span>
+                                <span className="font-mono font-black text-blue-400 text-2xl tabular-nums leading-none mt-3">{displayStats.proxy}</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Total Members & Quorum Check (Moved to Bottom) */}
+                    <div className="bg-slate-950/50 p-2.5 rounded-xl border border-slate-800 transition-colors group-hover:bg-slate-950/70 mt-1">
                         <div className="flex justify-between items-center mb-2">
-                            <label className="text-sm font-bold text-slate-300">전체 조합원 수</label>
-                            <div className="flex items-center gap-2">
-                                <span className="font-mono text-xl font-bold">{totalMembers}</span>
-                                <span className="text-sm text-slate-400">명</span>
+                            <label className="text-xs font-bold text-slate-400">전체 조합원 수</label>
+                            <div className="flex items-center gap-1">
+                                <span className="font-mono text-lg font-bold text-slate-200">{totalMembers}</span>
+                                <span className="text-xs text-slate-500">명</span>
                             </div>
                         </div>
 
-                        <div className="w-full h-2 bg-slate-700 rounded-full overflow-hidden mb-2 relative">
-                            <div className="absolute top-0 bottom-0 w-0.5 bg-white/50 z-10" style={{ left: isSpecialVote ? '66.66%' : '50%' }}></div>
+                        <div className="w-full h-2 bg-slate-800 rounded-full overflow-hidden mb-2 relative">
+                            <div className="absolute top-0 bottom-0 w-0.5 flex flex-col bg-slate-400/50 z-10" style={{ left: isSpecialVote ? '66.66%' : '50%' }}></div>
                             <div
-                                className={`h-full transition-all duration-500 ${isQuorumSatisfied ? 'bg-emerald-500' : 'bg-red-500'}`}
+                                className={`h-full transition-all duration-500 ${isQuorumSatisfied ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]' : 'bg-rose-500'}`}
                                 style={{ width: `${Math.min(100, (displayStats.total / (totalMembers || 1)) * 100)}%` }}
                             ></div>
                         </div>
 
-                        <div className="flex justify-between items-center text-xs">
-                            <span className="text-slate-400">
-                                개회 기준: {quorumTarget}명
-                                {isElection && <span className="text-emerald-400 ml-1">중에 현장참석 {directTarget}명(20%)</span>}
+                        <div className="flex justify-between items-center text-[10px]">
+                            <span className="text-slate-500">
+                                개회 기준: <span className="text-slate-300 font-bold">{quorumTarget}명</span>
+                                {isElection && <span className="text-emerald-500/70 ml-1">중에 현장참석 {directTarget}명(20%)</span>}
                             </span>
-                            <span className={`font-bold ${isQuorumSatisfied ? 'text-emerald-400' : 'text-red-400'}`}>
+                            <span className={`font-bold ${isQuorumSatisfied ? 'text-emerald-400' : 'text-rose-400'}`}>
                                 {isQuorumSatisfied
-                                    ? '조건 충족 (개회 가능)'
+                                    ? '조건 충족'
                                     : `미달 ${!isDirectSatisfied ? '(직접참석 부족)' : `(${Math.max(0, quorumTarget - displayStats.total)}명 부족)`}`}
                             </span>
                         </div>
                     </div>
 
-                    <div className="flex items-center gap-2">
-                        {/* 1. Direct */}
-                        <div className="flex items-center justify-between px-4 py-3 bg-slate-50 border border-slate-200 rounded min-w-[120px]">
-                            <span className="text-sm font-medium text-slate-500 mr-2">조합원</span>
-                            <span className="font-mono font-bold text-slate-700 text-2xl">{displayStats.direct}</span>
-                        </div>
+                    {/* Vote Type Selector (Moved to Dark Box Bottom) */}
+                    <div className="flex items-center justify-end pt-3 border-t border-slate-800/80 mt-1">
+                        <div className="flex items-center gap-2">
+                            <div className="flex items-center rounded-lg border border-slate-700 bg-slate-950/50 p-1 shadow-inner">
+                                <button
+                                    type="button"
+                                    onClick={toggleTypeLock}
+                                    disabled={isConfirmed}
+                                    title={isTypeLocked ? '투표 유형 잠금 해제' : '투표 유형 잠금'}
+                                    className={`flex h-7 w-8 items-center justify-center rounded-md transition-all ${
+                                        isTypeLocked
+                                            ? 'bg-amber-500/20 text-amber-400 shadow-sm'
+                                            : 'bg-transparent text-slate-500 hover:bg-slate-800 hover:text-slate-300'
+                                    } disabled:cursor-not-allowed disabled:opacity-50`}
+                                >
+                                    {isTypeLocked ? <Lock size={12} /> : <Unlock size={12} />}
+                                </button>
 
-                        <div className="text-slate-300 font-bold text-lg">+</div>
+                                <div className="mx-1.5 h-3 w-px bg-slate-700"></div>
 
-                        {/* 2. Proxy */}
-                        <div className="flex items-center justify-between px-4 py-3 bg-slate-50 border border-slate-200 rounded min-w-[120px]">
-                            <span className="text-sm font-medium text-slate-500 mr-2">대리인</span>
-                            <span className="font-mono font-bold text-slate-700 text-2xl">{displayStats.proxy}</span>
-                        </div>
-
-                        <div className="text-slate-300 font-bold text-lg">+</div>
-
-                        {/* 3. Written */}
-                        <div className="flex items-center justify-between px-4 py-3 bg-slate-50 border border-slate-200 rounded min-w-[120px]">
-                            <span className="text-sm font-medium text-slate-500 mr-2">{displayStats.fixedAttendanceLabel}</span>
-                            <span className="font-mono font-bold text-slate-700 text-2xl">{displayStats.fixedAttendanceCount}</span>
-                        </div>
-
-                        <div className="text-slate-300 font-bold text-lg">=</div>
-
-                        {/* 4. Total (Equation Result) */}
-                        <div className="flex-1 flex justify-end items-baseline gap-2">
-                            <span className="text-base font-bold text-slate-400">총</span>
-                            <div className="text-5xl font-black text-blue-600 leading-none">
-                                {displayStats.total.toLocaleString()}<span className="text-xl text-blue-400 font-bold ml-1">명</span>
+                                <div className="flex items-center">
+                                    {voteTypeOptions.map((option) => {
+                                        const isActive = currentAgendaType === option.value;
+                                        return (
+                                            <div key={option.value}>
+                                                <button
+                                                    onClick={() => handleTypeChange(option.value)}
+                                                    disabled={isConfirmed || isTypeLocked}
+                                                    className={`rounded-md px-3.5 py-1 text-[11px] whitespace-nowrap transition-all border ${
+                                                        isActive
+                                                            ? option.activeClass
+                                                            : 'border-transparent bg-transparent text-slate-500 hover:bg-slate-800 hover:text-slate-300 font-medium'
+                                                    } disabled:cursor-not-allowed disabled:opacity-45`}
+                                                >
+                                                    {option.label}
+                                                </button>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
                             </div>
                         </div>
                     </div>
-                </Card>
+                </div>
             </section>
+                </div> {/* End of Left Column top grid */}
+
+                <div className="lg:col-span-8 flex flex-col items-stretch">
 
             {/* Section 2: Votes */}
-            <section className={isConfirmed ? "pointer-events-none opacity-90" : ""}>
-                <div className="flex justify-between items-end mb-3">
-                    <h3 className="text-lg font-bold text-slate-600 uppercase tracking-wider flex items-center gap-2">
+            <section className={`flex flex-col flex-1 ${isConfirmed ? "pointer-events-none opacity-90" : ""}`}>
+                <div className="flex justify-between items-end mb-1">
+                    <h3 className="text-base font-bold text-slate-600 uppercase tracking-wider flex items-center gap-2">
                         02. 투표결과 입력
                         {isConfirmed && <Lock size={14} className="text-slate-400" />}
                     </h3>
                 </div>
-                <Card className={`p-4 ${isConfirmed ? 'bg-slate-50' : 'bg-white'}`}>
-                    <div
-                        className="vote-panel-shell"
-                        style={animatedVotePanelHeight !== null ? { height: `${animatedVotePanelHeight}px` } : undefined}
-                    >
-                        <div
-                            ref={votePanelContentRef}
-                            className="space-y-3"
-                        >
+                <div className={`flex flex-col flex-1 ${hasSplitVoteColumns ? '' : `p-3 rounded-2xl border ${isConfirmed ? 'bg-slate-50 border-slate-200 opacity-90' : 'bg-white border-slate-200 shadow-sm'}`}`}>
+                    <div className="flex flex-col flex-1">
+                        <div className={`flex flex-col flex-1 ${hasSplitVoteColumns ? '' : 'space-y-3'}`}>
                     {hasSplitVoteColumns ? (
-                        <div className="space-y-3">
-                            {/* Summary Dashboard Component */}
-                            <div className="flex flex-col md:flex-row gap-3 items-center justify-between rounded-xl border border-blue-100/70 bg-blue-50/30 py-2 px-4 shadow-sm">
-                                <div className="flex items-center gap-6 divide-x divide-slate-200/60 w-full md:w-auto">
-                                    <div className="flex flex-col">
-                                        <span className="text-xs font-bold text-slate-500 mb-0.5 tracking-wide">총 투표수</span>
-                                        <span className="text-2xl font-black text-blue-700">{displayTotalVotesCast}<span className="text-sm font-semibold text-blue-500 ml-1">표</span></span>
-                                    </div>
-                                    <div className="flex flex-col pl-6">
-                                        <span className="text-xs font-bold text-slate-500 mb-0.5 tracking-wide">성원(참석자)</span>
-                                        <span className="text-2xl font-black text-slate-700">{effectiveTotalAttendance}<span className="text-sm font-medium text-slate-500 ml-1">명</span></span>
-                                    </div>
-                                    <div className="flex flex-col pl-6 hidden sm:flex">
-                                        <span className="text-xs font-bold text-slate-500 mb-0.5 tracking-wide">투표 구성</span>
-                                        <div className="text-base font-medium text-slate-600 mt-0.5">
-                                            {fixedVoteLabel} <span className="font-bold text-slate-800">{totalFixedVotes}</span>
-                                            <span className="text-slate-300 mx-2">+</span>
-                                            현장 <span className="font-bold text-slate-800">{(parseInt(localVotes.yes) || 0) + (parseInt(localVotes.no) || 0) + (parseInt(localVotes.abstain) || 0)}</span>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div className={`flex flex-col items-center justify-center py-1.5 px-3 rounded-xl border w-full md:w-auto md:min-w-[120px] transition-colors shadow-sm ${
-                                    isVoteCountValid 
-                                        ? 'bg-emerald-50/80 border-emerald-200 text-emerald-700' 
-                                        : 'bg-red-50 border-red-200 text-red-600 animate-pulse'
-                                }`}>
-                                    {isVoteCountValid ? (
-                                        <>
-                                            <CheckCircle2 size={20} className="mb-0.5 text-emerald-500" />
-                                            <span className="text-sm font-bold tracking-tight">결과 일치 (검증됨)</span>
-                                        </>
-                                    ) : (
-                                        <>
-                                            <AlertTriangle size={20} className="mb-0.5" />
-                                            <span className="text-sm font-bold tracking-tight">{voteCountStatusText}</span>
-                                        </>
-                                    )}
-                                </div>
-                            </div>
-
-                            <div className={`rounded-2xl border px-4 py-3 transition-colors duration-300 min-h-[188px] ${
-                                isElection
-                                    ? (hasElectionValidationIssue ? 'border-amber-200 bg-amber-50' : 'border-emerald-200 bg-emerald-50')
-                                    : 'border-slate-200 bg-slate-50'
-                            }`}>
-                                <div className={`text-sm font-bold ${
-                                    isElection
-                                        ? (hasElectionValidationIssue ? 'text-amber-800' : 'text-emerald-700')
-                                        : 'text-slate-700'
-                                }`}>
-                                    {isElection ? '선거 안건 검증' : (isSpecialVote ? '해산/규약 안건 안내' : '일반 안건 안내')}
-                                </div>
-                                <div className="mt-2 flex flex-wrap gap-2 text-xs font-semibold">
-                                    {isElection ? (
-                                        <>
-                                            <span className="rounded-full bg-white/80 px-3 py-1 text-slate-700 border border-slate-200">
-                                                우편투표 예상 {electionValidation.expectedMailVoteCount}명
-                                            </span>
-                                            <span className="rounded-full bg-white/80 px-3 py-1 text-slate-700 border border-slate-200">
-                                                우편투표 입력 {electionValidation.actualMailVoteCount}명
-                                            </span>
-                                            <span className="rounded-full bg-white/80 px-3 py-1 text-slate-700 border border-slate-200">
-                                                현장 입력 가능 {electionValidation.onsiteEligibleCount}명
-                                            </span>
-                                            <span className="rounded-full bg-white/80 px-3 py-1 text-slate-700 border border-slate-200">
-                                                선거 기준 총표 {electionValidation.expectedTotalVotes}표
-                                            </span>
-                                        </>
-                                    ) : (
-                                        <>
-                                            <span className="rounded-full bg-white/90 px-3 py-1 text-slate-700 border border-slate-200">
-                                                {fixedVoteLabel}(고정) {totalFixedVotes}표
-                                            </span>
-                                            <span className="rounded-full bg-white/90 px-3 py-1 text-slate-700 border border-slate-200">
-                                                현장 입력 목표 {splitVoteTargetTotal}표
-                                            </span>
-                                            <span className="rounded-full bg-white/90 px-3 py-1 text-slate-700 border border-slate-200">
-                                                참석 기준 총표 {effectiveTotalAttendance}표
-                                            </span>
-                                            <span className="rounded-full bg-white/90 px-3 py-1 text-slate-700 border border-slate-200">
-                                                의결 기준 {isSpecialVote ? '출석자 3분의 2 이상' : '출석자 과반수'}
-                                            </span>
-                                        </>
-                                    )}
-                                </div>
-                                <div className="mt-3 space-y-2 text-sm">
-                                    {isElection ? (
-                                        <>
-                                            {isElectionMailMissing && (
-                                                <div className="flex items-start gap-2 text-amber-800">
-                                                    <AlertTriangle size={16} className="mt-0.5 shrink-0" />
-                                                    <span>우편투표 접수 예정 인원 중 이 안건에 미입력된 인원이 {electionValidation.missingMailVoteCount}명 있습니다.</span>
-                                                </div>
-                                            )}
-                                            {hasElectionMailOverlap && (
-                                                <div className="flex items-start gap-2 text-amber-800">
-                                                    <AlertTriangle size={16} className="mt-0.5 shrink-0" />
-                                                    <span>현장 참석자와 우편투표 입력이 중복된 인원이 {electionValidation.overlapMailVoteCount}명 있습니다. 현장 입력 가능 인원이 자동으로 줄어듭니다.</span>
-                                                </div>
-                                            )}
-                                            {isOnsiteOverflow && (
-                                                <div className="flex items-start gap-2 text-amber-800">
-                                                    <AlertTriangle size={16} className="mt-0.5 shrink-0" />
-                                                    <span>현장 입력 합계가 {onsiteVotesCast}표로, 입력 가능 인원 {effectiveOnsiteEligibleCount}명을 초과했습니다.</span>
-                                                </div>
-                                            )}
-                                            {displayTotalVotesCast !== electionValidation.expectedTotalVotes && (
-                                                <div className="flex items-start gap-2 text-amber-800">
-                                                    <AlertTriangle size={16} className="mt-0.5 shrink-0" />
-                                                    <span>선거 기준 총 투표수는 {electionValidation.expectedTotalVotes}표여야 하나 현재 {displayTotalVotesCast}표입니다.</span>
-                                                </div>
-                                            )}
-                                            {!hasElectionValidationIssue && (
-                                                <div className="flex items-start gap-2 text-emerald-700">
-                                                    <CheckCircle2 size={16} className="mt-0.5 shrink-0" />
-                                                    <span>우편투표와 현장 입력 구성이 선거 기준과 일치합니다.</span>
-                                                </div>
-                                            )}
-                                        </>
-                                    ) : (
-                                        <>
-                                            <div className="flex items-start gap-2 text-slate-600">
-                                                <CheckCircle2 size={16} className="mt-0.5 shrink-0 text-slate-400" />
-                                                <span>{fixedVoteLabel} 고정표와 현장 입력표를 합쳐 현재 참석 인원 기준으로 집계합니다.</span>
-                                            </div>
-                                            <div className="flex items-start gap-2 text-slate-600">
-                                                <CheckCircle2 size={16} className="mt-0.5 shrink-0 text-slate-400" />
-                                                <span>{isSpecialVote ? '해산/규약 안건은 출석자 3분의 2 이상 찬성이 필요합니다.' : '일반 안건은 출석자 과반수 찬성이 필요합니다.'}</span>
-                                            </div>
-                                            <div className={`flex items-start gap-2 ${isVoteCountValid ? 'text-emerald-700' : 'text-amber-700'}`}>
-                                                {isVoteCountValid ? (
-                                                    <CheckCircle2 size={16} className="mt-0.5 shrink-0" />
-                                                ) : (
-                                                    <AlertTriangle size={16} className="mt-0.5 shrink-0" />
-                                                )}
-                                                <span>{isVoteCountValid ? '현재 총 투표수와 참석자 수가 일치합니다.' : `현재 총 투표수는 참석자 수 기준보다 ${voteCountStatusText} 상태입니다.`}</span>
-                                            </div>
-                                        </>
-                                    )}
-                                </div>
-                            </div>
-
-                            <div className="rounded-2xl border border-slate-800 bg-slate-900 px-4 py-3 shadow-[0_12px_40px_-15px_rgba(0,0,0,0.5)]">
+                        <div className="flex flex-col flex-1 mt-0">
+                            <div className="rounded-2xl border border-slate-800 bg-slate-900 px-3 py-2 shadow-[0_12px_40px_-15px_rgba(0,0,0,0.5)] flex-1">
                                 <div className="mb-2 flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between border-b border-slate-800 pb-2">
                                     <div className="flex items-center gap-3 ml-2">
-                                        <div className="text-lg font-black text-white">현장 투표 입력</div>
+
                                         <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-800 border border-slate-700">
-                                            <span className="text-xs font-bold text-slate-400">현장투표인원</span>
-                                            <span className="text-sm font-black text-blue-400 tabular-nums">{effectiveOnsiteEligibleCount}명</span>
+                                            <span className="text-xs font-bold text-slate-400">성원합계</span>
+                                            <span className="text-sm font-black text-blue-400 tabular-nums">{effectiveTotalAttendance}명</span>
                                         </div>
                                     </div>
                                     <div className="flex flex-wrap items-center gap-2">
@@ -1004,20 +777,49 @@ ${resultLine}`;
                                     </div>
                                 </div>
 
-                                <div className="hidden grid-cols-[88px_minmax(76px,0.7fr)_auto_minmax(180px,1.7fr)_auto_minmax(124px,0.9fr)] gap-4 px-4 pb-3 text-xs font-bold uppercase tracking-wide text-slate-500 lg:grid items-center">
+                                <div className="min-h-[48px] mb-1 flex items-center">
+                                    {(!isVoteCountValid || isOnsiteOverflow || (isElection && hasElectionValidationIssue)) ? (
+                                        <div className="w-full rounded-xl border border-rose-800/60 bg-rose-950/40 px-4 py-2 flex items-center gap-3 shadow-inner animate-in fade-in slide-in-from-top-1 duration-200">
+                                            <div className="flex items-center justify-center bg-rose-900/50 rounded-full p-1.5 shrink-0">
+                                                <AlertTriangle size={16} className="text-rose-400" />
+                                            </div>
+                                            <div className="text-sm font-bold text-rose-300">
+                                                {isElection ? (
+                                                    hasElectionValidationIssue ? '선거 안건 검증 경고가 남아있습니다. 입력 상태를 확인하세요.' : 
+                                                    isOnsiteOverflow ? `현장 입력 합계가 가능 인원(${effectiveOnsiteEligibleCount}명)을 초과했습니다.` : '모든 수치를 확인해 주세요.'
+                                                ) : (
+                                                    isOnsiteOverflow ? `현장 입력 합계가 가능 인원(${effectiveOnsiteEligibleCount}명)을 초과했습니다.` :
+                                                    `현재 총 투표수는 참석자 기준보다 ${voteCountStatusText} 상태입니다.`
+                                                )}
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <div className="px-4 py-2 opacity-0 select-none pointer-events-none text-sm text-slate-800">Space reserved for warnings</div>
+                                    )}
+                                </div>
+
+                                <div className="hidden grid-cols-[88px_minmax(76px,0.7fr)_auto_minmax(180px,1.7fr)_auto_minmax(124px,0.9fr)] gap-2 lg:gap-2 px-3 pb-3 text-[11px] font-bold uppercase tracking-wide text-slate-500 lg:grid items-center">
                                     <div className="text-center text-slate-400">구분</div>
-                                    <div className="text-center text-slate-500">{fixedVoteLabel}(고정)</div>
+                                    <div className="text-center text-slate-500 whitespace-pre-wrap">서면결의서({displayStats.fixedAttendanceCount}명)</div>
                                     <div className="w-4"></div>
-                                    <div className="text-center text-blue-400">현장 입력</div>
+                                    <div className="text-center text-blue-400 border border-blue-900/50 bg-blue-900/20 rounded px-2 py-0.5 leading-tight flex flex-col items-center justify-center">
+                                        <span>현장 참석입력</span>
+                                        <span className="text-[10px] font-bold text-blue-300">
+                                            {isElection 
+                                                ? `(조합원=${displayStats.direct}명)` 
+                                                : `(조합원+대리인=${displayStats.direct + displayStats.proxy}명)`
+                                            }
+                                        </span>
+                                    </div>
                                     <div className="w-4"></div>
-                                    <div className="text-center">총 합계</div>
+                                    <div className="text-center text-emerald-400/70">입력합계 {displayTotalVotesCast}명</div>
                                 </div>
 
                                 <div className="space-y-2">
                                     {splitVoteDisplayCards.map((card) => (
                                         <div
                                             key={`${card.key}-row`}
-                                            className={`grid grid-cols-1 lg:grid-cols-[88px_minmax(76px,0.7fr)_auto_minmax(180px,1.7fr)_auto_minmax(124px,0.9fr)] gap-4 lg:gap-4 items-center rounded-2xl border px-4 py-2.5 transition-colors ${card.tone.rowTint} hover:shadow-md`}
+                                            className={`grid grid-cols-1 lg:grid-cols-[88px_minmax(76px,0.7fr)_auto_minmax(180px,1.7fr)_auto_minmax(124px,0.9fr)] gap-2 lg:gap-2 items-center rounded-2xl border px-3 py-1.5 transition-colors ${card.tone.rowTint} hover:shadow-md`}
                                         >
                                             <div className="flex items-center justify-between lg:flex lg:justify-center">
                                                 <span className={`inline-flex h-12 w-[88px] items-center justify-center rounded-lg border px-2 text-sm font-bold shadow-sm ${card.tone.labelBadge}`}>
@@ -1025,15 +827,15 @@ ${resultLine}`;
                                                 </span>
                                             </div>
 
-                                            <div className="flex items-center justify-between rounded-xl bg-slate-800/30 px-4 py-3 lg:bg-transparent lg:px-0 lg:py-0 lg:justify-center">
-                                                <span className="text-xs font-bold text-slate-500 lg:hidden">{fixedVoteLabel}(고정)</span>
-                                                <span className={`font-mono text-2xl md:text-[2rem] font-black tabular-nums ${card.tone.writtenText}`}>{card.writtenValue}</span>
+                                            <div className="flex flex-col items-center justify-between rounded-xl bg-slate-800/30 px-4 py-3 lg:bg-transparent lg:px-0 lg:py-0 lg:justify-center">
+                                                <span className="text-xs font-bold text-slate-500 lg:hidden mb-1">사전 접수표</span>
+                                                <span className={`font-mono text-xl md:text-2xl font-black tabular-nums ${card.tone.writtenText}`}>{card.writtenValue}</span>
                                             </div>
 
                                             <div className="hidden lg:flex justify-center text-slate-700 text-2xl font-black">+</div>
 
                                             <div className="relative lg:flex lg:justify-center">
-                                                <div className={`mb-1 text-xs font-bold lg:hidden ${card.tone.inputLabel}`}>현장 입력</div>
+                                                <div className={`mb-1 text-xs font-bold lg:hidden ${card.tone.inputLabel}`}>현장 참석입력</div>
                                                 <FastNumericInput
                                                     innerRef={card.key === 'yes' ? primaryOnsiteInputRef : null}
                                                     value={card.onsiteValue}
@@ -1042,16 +844,16 @@ ${resultLine}`;
                                                         handleLocalVoteChange(card.key, val);
                                                     }}
                                                     disabled={isConfirmed}
-                                                    className={`w-full lg:w-[66%] lg:mx-auto rounded-xl border px-3 py-2 text-center text-2xl md:text-3xl font-black shadow-[inset_0_2px_4px_rgba(0,0,0,0.06)] outline-none disabled:bg-slate-50 disabled:text-slate-400 transition-all ${card.tone.inputBox}`}
+                                                    className={`w-full lg:w-[66%] lg:mx-auto rounded-xl border px-2 py-1 text-center text-xl md:text-2xl font-black shadow-[inset_0_2px_4px_rgba(0,0,0,0.06)] outline-none disabled:bg-slate-50 disabled:text-slate-400 transition-all ${card.tone.inputBox}`}
                                                 />
                                             </div>
 
                                             <div className="hidden lg:flex justify-center text-slate-700 text-2xl font-black">=</div>
 
-                                            <div className="flex items-center justify-between rounded-xl bg-slate-800/30 px-4 py-3 lg:bg-transparent lg:px-0 lg:py-0 lg:justify-center">
-                                                <span className="text-xs font-bold text-slate-500 lg:hidden">총 합계</span>
+                                            <div className="flex flex-col items-center justify-between rounded-xl bg-slate-800/30 px-4 py-3 lg:bg-transparent lg:px-0 lg:py-0 lg:justify-center">
+                                                <span className="text-xs font-bold text-slate-500 lg:hidden mb-1">최종 득표</span>
                                                 <div className="flex items-end gap-1">
-                                                    <span className={`font-mono text-2xl md:text-3xl font-black tabular-nums leading-none ${card.tone.totalText}`}>{card.totalValue}</span>
+                                                    <span className={`font-mono text-xl md:text-2xl font-black tabular-nums leading-none ${card.tone.totalText}`}>{card.totalValue}</span>
                                                     <span className="text-sm font-bold text-slate-400 mb-1 md:mb-0.5">표</span>
                                                 </div>
                                             </div>
@@ -1153,7 +955,7 @@ ${resultLine}`;
                                             placeholder="0"
                                             onChange={(val) => handleLocalVoteChange('yes', val)}
                                             disabled={isConfirmed}
-                                            className="w-full p-4 border-2 border-emerald-200 rounded-xl text-center text-4xl font-black text-emerald-800 bg-white shadow-inner outline-none caret-emerald-700 focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100 disabled:bg-slate-100 disabled:text-slate-500 transition-all"
+                                            className="w-full p-2 border-2 border-emerald-200 rounded-xl text-center text-3xl font-black text-emerald-800 bg-white shadow-inner outline-none caret-emerald-700 focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100 disabled:bg-slate-100 disabled:text-slate-500 transition-all"
                                         />
                                     </div>
                                     <div className="flex flex-col gap-2 bg-red-50/50 p-4 border border-red-100 rounded-2xl transition-colors hover:bg-red-50">
@@ -1163,7 +965,7 @@ ${resultLine}`;
                                             placeholder="0"
                                             onChange={(val) => handleLocalVoteChange('no', val)}
                                             disabled={isConfirmed}
-                                            className="w-full p-4 border-2 border-red-200 rounded-xl text-center text-4xl font-black text-red-800 bg-white shadow-inner outline-none caret-red-700 focus:border-red-500 focus:ring-4 focus:ring-red-100 disabled:bg-slate-100 disabled:text-slate-500 transition-all"
+                                            className="w-full p-2 border-2 border-red-200 rounded-xl text-center text-3xl font-black text-red-800 bg-white shadow-inner outline-none caret-red-700 focus:border-red-500 focus:ring-4 focus:ring-red-100 disabled:bg-slate-100 disabled:text-slate-500 transition-all"
                                         />
                                     </div>
                                     <div className="flex flex-col gap-2 bg-slate-50/50 p-4 border border-slate-200 rounded-2xl transition-colors hover:bg-slate-50">
@@ -1173,7 +975,7 @@ ${resultLine}`;
                                             placeholder="0"
                                             onChange={(val) => handleLocalVoteChange('abstain', val)}
                                             disabled={isConfirmed}
-                                            className="w-full p-4 border-2 border-slate-200 rounded-xl text-center text-4xl font-black text-slate-600 bg-white shadow-inner outline-none caret-slate-600 focus:border-slate-400 focus:ring-4 focus:ring-slate-100 disabled:bg-slate-100 disabled:text-slate-400 transition-all"
+                                            className="w-full p-2 border-2 border-slate-200 rounded-xl text-center text-3xl font-black text-slate-600 bg-white shadow-inner outline-none caret-slate-600 focus:border-slate-400 focus:ring-4 focus:ring-slate-100 disabled:bg-slate-100 disabled:text-slate-400 transition-all"
                                         />
                                     </div>
                                 </div>
@@ -1182,13 +984,23 @@ ${resultLine}`;
                     )}
                         </div>
                     </div>
-                </Card>
+                </div>
             </section>
 
-            {/* Section 3: Declaration */}
+
+            
+            
+                
+                </div> {/* End of Right Column top grid */}
+            </div> {/* End of Top Grid */}
+
+            {/* Bottom Grid: Sections 3 and 4 */}
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-stretch">
+                <div className="lg:col-span-4 flex flex-col gap-4">
+                    {/* Section 3: Declaration (Moved to Left Column) */}
             <section>
-                <div className="flex justify-between items-center mb-2">
-                    <h3 className="text-lg font-bold text-slate-600 uppercase tracking-wider">
+                <div className="flex justify-between items-center mb-1 mt-2">
+                    <h3 className="text-base font-bold text-slate-600 uppercase tracking-wider">
                         03. 선포 문구
                     </h3>
                     {isEditingDeclaration && !isConfirmed ? (
@@ -1217,33 +1029,36 @@ ${resultLine}`;
                     )}
                 </div>
 
-                <Card className="p-4">
+                <div className="flex flex-col flex-1">
                     <textarea
                         value={isEditingDeclaration ? localDeclaration : (declaration || '')}
                         onChange={(e) => setDeclarationDraft({ agendaId: currentAgendaId, value: e.target.value })}
                         disabled={!isEditingDeclaration || isConfirmed}
                         placeholder={isEditingDeclaration ? "선포문구를 입력하세요..." : "편집 버튼을 클릭하면 자동 생성됩니다."}
-                        rows={Math.max(4, ((isEditingDeclaration ? localDeclaration : declaration) || '').split('\n').length + 1)}
-                        className={`w-full p-3 border rounded-lg outline-none text-xl font-serif resize-none min-h-[120px] shadow-inner leading-relaxed transition-colors ${isEditingDeclaration && !isConfirmed
-                            ? 'border-blue-300 bg-white text-slate-700 focus:ring-2 focus:ring-blue-500'
+                        rows={Math.max(12, ((isEditingDeclaration ? localDeclaration : declaration) || '').split('\n').length + 1)}
+                        className={`w-full p-4 border rounded-2xl outline-none text-base font-serif resize-none min-h-[220px] flex-1 shadow-sm leading-relaxed transition-colors ${isEditingDeclaration && !isConfirmed
+                            ? 'border-blue-300 bg-white text-slate-700 focus:ring-2 focus:ring-blue-500 shadow-blue-100/50'
                             : 'border-slate-200 bg-slate-50 text-slate-600 cursor-not-allowed'
                             }`}
                     />
                     {isConfirmed && (
-                        <div className="mt-2 text-xs text-slate-400 text-right">
+                        <div className="mt-1 text-[10px] text-slate-400 text-right pr-2">
                             * 이 선포문은 의결 확정 시점에 고정되었습니다.
                         </div>
                     )}
-                </Card>
+                </div>
             </section>
-            
-            {/* Section 4: Final Confirmation */}
-            <section className="mt-8 pt-8 border-t-2 border-slate-100">
-                <div className="flex flex-col items-center justify-center p-8 bg-slate-50 border border-slate-200 rounded-3xl shadow-sm">
-                    <h3 className="text-xl font-bold text-slate-800 mb-2">
+                </div>
+                <div className="lg:col-span-8 flex flex-col gap-4">
+                    {/* Section 4: Final Confirmation */}
+            <section className="flex flex-col flex-1">
+                <div className="flex justify-between items-center mb-1 mt-2">
+                    <h3 className="text-base font-bold text-slate-600 uppercase tracking-wider">
                         04. 최종 결과 확정
                     </h3>
-                    <p className="text-slate-500 mb-6 text-center">
+                </div>
+                <div className="flex flex-col items-center justify-center p-4 bg-slate-50 border border-slate-200 rounded-2xl shadow-sm flex-1">
+                    <p className="text-slate-500 mb-3 text-center text-sm">
                         모든 출석율과 투표 인원이 오류 없이 정상적으로 표기되었는지 확인해 주세요.
                     </p>
 
@@ -1302,14 +1117,61 @@ ${resultLine}`;
                                     : 'bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed shadow-none opacity-80'
                                 }`}
                             >
-                                <Lock size={22} className={canConfirmDecision ? 'text-white/90' : 'opacity-50'} />
+                                <Lock size={18} className={canConfirmDecision ? 'text-white/90' : 'opacity-50'} />
                                 안건 결과 최종 확정
                             </button>
                         </div>
                     )}
                 </div>
             </section>
+                </div>
+            
+        </div> {/* End of Grid main layout wrapper */}
 
+            {/* Action Footer (Navigation + System Status) */}
+            <div className="mt-8 mb-4 border-t border-slate-200 pt-6 flex flex-col md:flex-row justify-between items-center gap-4 text-slate-500">
+                <div className="flex flex-col sm:flex-row items-center gap-4 text-sm font-medium">
+                    <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-100 rounded-lg">
+                        <span className="font-bold border border-slate-300 shadow-sm rounded px-1.5 py-0.5 bg-white text-xs">Space</span>
+                        <span>입력 / 확인</span>
+                    </div>
+                    <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-100 rounded-lg">
+                        <span className="font-bold border border-slate-300 shadow-sm rounded px-1.5 py-0.5 bg-white text-xs">A</span>
+                        <span>자동계산 토글</span>
+                    </div>
+                    <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-100 rounded-lg">
+                        <span className="font-bold border border-slate-300 shadow-sm rounded px-1.5 py-0.5 bg-white text-xs">&uarr; &darr;</span>
+                        <span>안건 이동</span>
+                    </div>
+                    <div className="hidden lg:flex items-center gap-2 ml-2 text-xs text-slate-400">
+                        <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></div>
+                        서버 동기화 상태 양호
+                    </div>
+                </div>
+                
+                <div className="flex items-center gap-3">
+                    <button 
+                        onClick={() => moveAgendaSelection(-1)}
+                        className="px-5 py-2.5 border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 rounded-xl font-bold flex items-center gap-2 transition-colors shadow-sm"
+                    >
+                        <ArrowLeft size={16} /> 이전 안건
+                    </button>
+
+                    <div className="hidden sm:flex flex-col items-center justify-center px-4 w-40">
+                        <div className="text-xs font-bold text-slate-500 mb-1.5">{currentNavIndex + 1} / {navigableAgendas.length} 안건 진행중</div>
+                        <div className="w-full h-1.5 bg-slate-200 rounded-full overflow-hidden">
+                            <div className="h-full bg-blue-500 transition-all duration-500" style={{ width: `${progressPercent}%` }}></div>
+                        </div>
+                    </div>
+
+                    <button 
+                        onClick={() => moveAgendaSelection(1)}
+                        className="px-5 py-2.5 bg-slate-800 text-white hover:bg-slate-700 rounded-xl font-bold flex items-center gap-2 transition-colors shadow-sm"
+                    >
+                        다음 안건 <ArrowRight size={16} />
+                    </button>
+                </div>
+            </div>
             {/* Custom Confirm Modal */}
             {confirmModalState.isOpen && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4 animate-in fade-in duration-200">

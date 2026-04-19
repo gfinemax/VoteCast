@@ -59,6 +59,12 @@ const summarizeProjectorRenderState = (renderState = {}) => ({
 
 export default function ProjectorPage() {
     const { state } = useStore();
+    const [isMounted, setIsMounted] = useState(false);
+    
+    useEffect(() => {
+        setIsMounted(true);
+    }, []);
+
     const { projectorMode: liveProjectorMode, agendas, currentAgendaId: liveCurrentAgendaId, voteData, projectorData, attendance, members, mailElectionVotes } = state;
     const rawRenderState = useMemo(() => toProjectorRenderState({
         projectorMode: liveProjectorMode,
@@ -400,9 +406,21 @@ export default function ProjectorPage() {
         return { finalSource: source, currentPage: parseInt(startPage) };
     }, [currentAgenda, displayVoteData?.presentationPage, agendas]);
 
+    if (!isMounted) {
+        return (
+            <div className="flex flex-col w-screen h-screen bg-black overflow-hidden font-sans text-slate-900 relative">
+                {/* Minimal server-consistent skeleton or simple black screen */}
+                <div className="absolute inset-0 bg-slate-900 flex items-center justify-center">
+                    <div className="animate-pulse text-slate-700 font-bold uppercase tracking-[0.3em] text-xs">Initializing Projector...</div>
+                </div>
+            </div>
+        );
+    }
+
     return (
 
         <div className="flex flex-col w-screen h-screen bg-black overflow-hidden font-sans text-slate-900 relative">
+
 
             {/* 1. LAYER: IDLE or PPT (Z-index 10) */}
             <div className={`absolute inset-0 transition-opacity duration-300 ${(projectorMode === 'IDLE' || projectorMode === 'PPT') ? 'opacity-100 z-10' : 'opacity-0 z-0 pointer-events-none'}`}>
