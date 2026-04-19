@@ -133,6 +133,20 @@ export default function VoteControl() {
     const isSpecialVote = currentAgendaType === 'twoThirds';
     const isElection = currentAgendaType === 'election';
 
+    const electionValidation = getElectionAgendaValidationStats({
+        agenda: currentAgenda,
+        meetingId,
+        attendance,
+        mailElectionVotes,
+        activeMemberIdSet
+    });
+    const effectiveTotalAttendance = isConfirmed
+        ? displayStats.total
+        : (isElection ? electionValidation.expectedTotalVotes : displayStats.total);
+    const effectiveOnsiteEligibleCount = isConfirmed
+        ? (displayStats.direct + displayStats.proxy)
+        : (isElection ? electionValidation.onsiteEligibleCount : (displayStats.direct + displayStats.proxy));
+
     // Targets (Based on Snapshot or Realtime totalMembers)
     // Note: If total members changed (removed from DB), snapshot should logically preserve it? 
     // Usually total members is stable, but let's assume Members list is realtime reference OR snapshot if we saved it.
@@ -146,23 +160,23 @@ export default function VoteControl() {
     const isDirectSatisfied = !isElection || (displayStats.direct >= directTarget);
     const isQuorumSatisfied = (displayStats.total >= quorumTarget) && isDirectSatisfied;
 
-    const calculatePass = useCallback((yesCount, totalCount = displayStats.total) => {
+    const calculatePass = useCallback((yesCount, totalCount = effectiveTotalAttendance) => {
         if (isSpecialVote) {
             return yesCount >= Math.ceil(totalCount * (2 / 3));
         }
         return yesCount > (totalCount / 2);
-    }, [displayStats.total, isSpecialVote]);
+    }, [effectiveTotalAttendance, isSpecialVote]);
     const isPassed = calculatePass(votesYes);
 
     // 3. Declaration Generation
     const generateDefaultDeclaration = useCallback((overrides = {}) => {
-        if (!currentAgenda || displayStats.total === 0) return '';
+        if (!currentAgenda || effectiveTotalAttendance === 0) return '';
 
         const yesCount = overrides.yes ?? votesYes;
         const noCount = overrides.no ?? votesNo;
         const abstainCount = overrides.abstain ?? votesAbstain;
         const criterion = isSpecialVote ? "3분의 2 이상" : "과반수 이상";
-        const passed = calculatePass(yesCount, displayStats.total);
+        const passed = calculatePass(yesCount, effectiveTotalAttendance);
         const fixedSourceText = isElection ? '우편투표를 포함하여' : '서면결의서를 포함하여';
 
         const resultReason = passed ? `${criterion} 찬성으로` : '찬성 미달로';
@@ -172,10 +186,10 @@ export default function VoteControl() {
         const resultLine = isElection
             ? `후보자는 ${resultSuffix} 되었음을 선포합니다.`
             : `${resultSuffix} 되었음을 선포합니다.`;
-        return `"${currentAgenda.title}"은 ${fixedSourceText} 전체 참석자 ${displayStats.total.toLocaleString()}명 중
+        return `"${currentAgenda.title}"은 ${fixedSourceText} 전체 참석자 ${effectiveTotalAttendance.toLocaleString()}명 중
 찬성 ${yesCount}표, 반대 ${noCount}표, 기권 ${abstainCount}표인 ${resultReason}
 ${resultLine}`;
-    }, [calculatePass, currentAgenda, displayStats.total, isElection, isSpecialVote, votesAbstain, votesNo, votesYes]);
+    }, [calculatePass, currentAgenda, effectiveTotalAttendance, isElection, isSpecialVote, votesAbstain, votesNo, votesYes]);
 
     // Use GLOBAL state for declaration editing (prevents revert on re-render)
     const declarationEditState = state.declarationEditState?.[currentAgendaId] || { isEditing: false, isAutoCalc: true };
@@ -214,7 +228,7 @@ ${resultLine}`;
     const syncProjectorDeclaration = useCallback((nextDeclaration, overrides = {}) => {
         if (projectorMode !== 'RESULT' || !currentAgenda) return;
 
-        const totalAttendance = overrides.totalAttendance ?? displayStats.total;
+        const totalAttendance = overrides.totalAttendance ?? effectiveTotalAttendance;
         const votesYesForProjector = overrides.yes ?? votesYes;
         const votesNoForProjector = overrides.no ?? votesNo;
         const votesAbstainForProjector = overrides.abstain ?? votesAbstain;
@@ -231,7 +245,7 @@ ${resultLine}`;
             isPassed: calculatePass(votesYesForProjector, totalAttendance)
         };
         updateProjectorData(nextProjectorData);
-    }, [calculatePass, currentAgenda, displayStats.total, projectorData, projectorMode, updateProjectorData, votesAbstain, votesNo, votesYes]);
+    }, [calculatePass, currentAgenda, effectiveTotalAttendance, projectorData, projectorMode, updateProjectorData, votesAbstain, votesNo, votesYes]);
 
     // Save declaration to DB (called when clicking Done)
     const saveDeclaration = useCallback(() => {
@@ -373,7 +387,7 @@ ${resultLine}`;
         let newLocal = { ...localVotes, [fieldKey]: value };
 
         if (isAutoCalc) {
-            const currentTotal = hasSplitVoteColumns ? displayStats.total - totalFixedVotes : displayStats.total;
+            const currentTotal = hasSplitVoteColumns ? effectiveTotalAttendance - totalFixedVotes : effectiveTotalAttendance;
             if (fieldKey === 'yes') {
                 const currentAbstain = parseInt(localVotes.abstain) || 0;
                 newLocal.no = Math.max(0, currentTotal - value - currentAbstain);
@@ -428,7 +442,7 @@ ${resultLine}`;
                 yes: appliedTotals.yes,
                 no: appliedTotals.no,
                 abstain: appliedTotals.abstain,
-                totalAttendance: displayStats.total
+                totalAttendance: effectiveTotalAttendance
             });
         }
         setLocalVoteDraft({
@@ -441,7 +455,7 @@ ${resultLine}`;
 
     const handleAutoSum = () => {
         if (isConfirmed || !currentAgenda) return;
-        const currentTotal = hasSplitVoteColumns ? displayStats.total - totalFixedVotes : displayStats.total;
+        const currentTotal = hasSplitVoteColumns ? effectiveTotalAttendance - totalFixedVotes : effectiveTotalAttendance;
         const remainder = Math.max(0, currentTotal - (parseInt(localVotes.no) || 0) - (parseInt(localVotes.abstain) || 0));
         handleLocalVoteChange('yes', remainder);
     };
@@ -481,7 +495,7 @@ ${resultLine}`;
                 yes: fixedVoteTotals.yes,
                 no: fixedVoteTotals.no,
                 abstain: fixedVoteTotals.abstain,
-                totalAttendance: displayStats.total
+                totalAttendance: effectiveTotalAttendance
             });
         }
     };
@@ -498,7 +512,10 @@ ${resultLine}`;
     const executeModalAction = () => {
         if (confirmModalState.type === 'confirm') {
             const snapshotData = {
-                stats: displayStats,
+                stats: {
+                    ...displayStats,
+                    total: effectiveTotalAttendance
+                },
                 votes: { yes: votesYes, no: votesNo, abstain: votesAbstain },
                 declaration: currentAgenda.declaration, // current value
                 result: isPassed ? 'PASSED' : 'FAILED',
@@ -522,28 +539,25 @@ ${resultLine}`;
         : (parseInt(localVotes.yes) || 0) + (parseInt(localVotes.no) || 0) + (parseInt(localVotes.abstain) || 0);
 
     const displayTotalVotesCast = isLocalDirty ? localTotalVotesCast : totalVotesCast;
-    const isVoteCountValid = displayTotalVotesCast === displayStats.total;
+    const isVoteCountValid = displayTotalVotesCast === effectiveTotalAttendance;
     const onsiteVotesCast = hasSplitVoteColumns
         ? (parseInt(localVotes.yes) || 0) + (parseInt(localVotes.no) || 0) + (parseInt(localVotes.abstain) || 0)
         : displayTotalVotesCast;
-    const electionValidation = getElectionAgendaValidationStats({
-        agenda: currentAgenda,
-        meetingId,
-        attendance,
-        mailElectionVotes,
-        activeMemberIdSet
-    });
     const isElectionMailMissing = isElection && electionValidation.missingMailVoteCount > 0;
     const hasElectionMailOverlap = isElection && electionValidation.overlapMailVoteCount > 0;
-    const isOnsiteOverflow = hasSplitVoteColumns && onsiteVotesCast > (displayStats.direct + displayStats.proxy);
+    const isOnsiteOverflow = hasSplitVoteColumns && onsiteVotesCast > effectiveOnsiteEligibleCount;
     const hasElectionValidationIssue = isElection && (
         isElectionMailMissing
         || hasElectionMailOverlap
         || isOnsiteOverflow
         || displayTotalVotesCast !== electionValidation.expectedTotalVotes
     );
-    const splitVoteTargetTotal = Math.max(0, displayStats.total - totalFixedVotes);
+    const splitVoteTargetTotal = Math.max(0, effectiveTotalAttendance - totalFixedVotes);
     const isApplyDisabled = !isVoteCountValid || isOnsiteOverflow || (isElection && hasElectionValidationIssue);
+    const voteCountDelta = effectiveTotalAttendance - displayTotalVotesCast;
+    const voteCountStatusText = voteCountDelta > 0
+        ? `${voteCountDelta}표 부족`
+        : `${Math.abs(voteCountDelta)}표 초과`;
     const canConfirmDecision = isReadyToConfirm && !isLocalDirty && !isApplyDisabled;
     const voteTypeOptions = [
         {
@@ -812,7 +826,7 @@ ${resultLine}`;
                                     </div>
                                     <div className="flex flex-col pl-6">
                                         <span className="text-xs font-bold text-slate-500 mb-0.5 tracking-wide">성원(참석자)</span>
-                                        <span className="text-2xl font-black text-slate-700">{displayStats.total}<span className="text-sm font-medium text-slate-500 ml-1">명</span></span>
+                                        <span className="text-2xl font-black text-slate-700">{effectiveTotalAttendance}<span className="text-sm font-medium text-slate-500 ml-1">명</span></span>
                                     </div>
                                     <div className="flex flex-col pl-6 hidden sm:flex">
                                         <span className="text-xs font-bold text-slate-500 mb-0.5 tracking-wide">투표 구성</span>
@@ -836,7 +850,7 @@ ${resultLine}`;
                                     ) : (
                                         <>
                                             <AlertTriangle size={20} className="mb-0.5" />
-                                            <span className="text-sm font-bold tracking-tight">{displayStats.total - displayTotalVotesCast}표 부족</span>
+                                            <span className="text-sm font-bold tracking-tight">{voteCountStatusText}</span>
                                         </>
                                     )}
                                 </div>
@@ -879,7 +893,7 @@ ${resultLine}`;
                                                 현장 입력 목표 {splitVoteTargetTotal}표
                                             </span>
                                             <span className="rounded-full bg-white/90 px-3 py-1 text-slate-700 border border-slate-200">
-                                                참석 기준 총표 {displayStats.total}표
+                                                참석 기준 총표 {effectiveTotalAttendance}표
                                             </span>
                                             <span className="rounded-full bg-white/90 px-3 py-1 text-slate-700 border border-slate-200">
                                                 의결 기준 {isSpecialVote ? '출석자 3분의 2 이상' : '출석자 과반수'}
@@ -905,7 +919,7 @@ ${resultLine}`;
                                             {isOnsiteOverflow && (
                                                 <div className="flex items-start gap-2 text-amber-800">
                                                     <AlertTriangle size={16} className="mt-0.5 shrink-0" />
-                                                    <span>현장 입력 합계가 {onsiteVotesCast}표로, 입력 가능 인원 {displayStats.direct + displayStats.proxy}명을 초과했습니다.</span>
+                                                    <span>현장 입력 합계가 {onsiteVotesCast}표로, 입력 가능 인원 {effectiveOnsiteEligibleCount}명을 초과했습니다.</span>
                                                 </div>
                                             )}
                                             {displayTotalVotesCast !== electionValidation.expectedTotalVotes && (
@@ -937,7 +951,7 @@ ${resultLine}`;
                                                 ) : (
                                                     <AlertTriangle size={16} className="mt-0.5 shrink-0" />
                                                 )}
-                                                <span>{isVoteCountValid ? '현재 총 투표수와 참석자 수가 일치합니다.' : `현재 총 투표수는 참석자 수보다 ${displayStats.total - displayTotalVotesCast}표 부족합니다.`}</span>
+                                                <span>{isVoteCountValid ? '현재 총 투표수와 참석자 수가 일치합니다.' : `현재 총 투표수는 참석자 수 기준보다 ${voteCountStatusText} 상태입니다.`}</span>
                                             </div>
                                         </>
                                     )}
@@ -950,7 +964,7 @@ ${resultLine}`;
                                         <div className="text-lg font-black text-white">현장 투표 입력</div>
                                         <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-800 border border-slate-700">
                                             <span className="text-xs font-bold text-slate-400">현장투표인원</span>
-                                            <span className="text-sm font-black text-blue-400 tabular-nums">{displayStats.direct + displayStats.proxy}명</span>
+                                            <span className="text-sm font-black text-blue-400 tabular-nums">{effectiveOnsiteEligibleCount}명</span>
                                         </div>
                                     </div>
                                     <div className="flex flex-wrap items-center gap-2">
@@ -1057,7 +1071,7 @@ ${resultLine}`;
                                     </div>
                                     <div className="flex flex-col pl-6">
                                         <span className="text-xs font-semibold text-slate-400 mb-1">성원(참석자)</span>
-                                        <span className="text-xl font-bold text-slate-700">{displayStats.total}<span className="text-sm font-normal ml-1">명</span></span>
+                                        <span className="text-xl font-bold text-slate-700">{effectiveTotalAttendance}<span className="text-sm font-normal ml-1">명</span></span>
                                     </div>
                                 </div>
                                 <div className={`flex flex-col items-center justify-center p-3 rounded-xl border-2 w-full md:w-auto md:min-w-[140px] transition-colors ${
@@ -1073,7 +1087,7 @@ ${resultLine}`;
                                     ) : (
                                         <>
                                             <AlertTriangle size={24} className="mb-1" />
-                                            <span className="text-sm font-bold">{displayStats.total - displayTotalVotesCast}표 부족</span>
+                                            <span className="text-sm font-bold">{voteCountStatusText}</span>
                                         </>
                                     )}
                                 </div>
