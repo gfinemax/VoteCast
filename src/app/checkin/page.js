@@ -2,13 +2,31 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import { useStore } from '@/lib/store';
-import { getMajorityThreshold, getMeetingAttendanceStats, getUniqueAttendanceRecords, normalizeAgendaType } from '@/lib/store';
+import {
+    getMajorityThreshold,
+    getMeetingAttendanceStats,
+    getUniqueAttendanceRecords,
+    isElectionModeAllowedForMeetingType,
+    normalizeAgendaType,
+    sanitizeElectionModeForMeetingType
+} from '@/lib/store';
 import { Search, UserCheck, AlertCircle, Clock, Check, RotateCcw, ChevronDown, ChevronUp, User, FileText, Pencil, Loader2 } from 'lucide-react';
 import FlipNumber from '@/components/ui/FlipNumber';
 import FullscreenToggle from '@/components/ui/FullscreenToggle';
 import AuthStatus from '@/components/ui/AuthStatus';
 
 const EMPTY_INACTIVE_MEMBER_IDS = [];
+const MEETING_TYPE_LABELS = {
+    direct: '본인 참석',
+    proxy: '대리 참석',
+    written: '서면결의서',
+    none: '총회 불참'
+};
+const ELECTION_MODE_LABELS = {
+    onsite: '현장투표',
+    mail: '우편투표 제출',
+    none: '선거 불참'
+};
 const MEETING_TYPE_OPTIONS = [
     { value: 'direct', label: '본인', description: '직접 참석', icon: User, tone: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
     { value: 'proxy', label: '대리', description: '대리 참석', icon: Clock, tone: 'bg-blue-50 text-blue-700 border-blue-200' },
@@ -16,7 +34,7 @@ const MEETING_TYPE_OPTIONS = [
     { value: 'none', label: '없음', description: '총회 불참', icon: Check, tone: 'bg-slate-100 text-slate-700 border-slate-200' }
 ];
 const ELECTION_MODE_OPTIONS = [
-    { value: 'onsite', label: '현장', description: '현장 선거 참여', tone: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
+    { value: 'onsite', label: '현장투표', description: '현장 선거 참여', tone: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
     { value: 'mail', label: '우편투표', description: '우편투표 고정표 입력', tone: 'bg-amber-50 text-amber-700 border-amber-200' },
     { value: 'none', label: '없음', description: '선거 불참', tone: 'bg-slate-100 text-slate-700 border-slate-200' }
 ];
@@ -36,15 +54,90 @@ const buildInitialElectionVotes = (agendas = []) => {
     });
     return initialVotes;
 };
+const countVotes = (votes = {}) => Object.keys(votes || {}).length;
+const toCheckInStateFromDetail = (detail = null) => ({
+    meetingType: detail?.meetingType || 'none',
+    electionMode: detail?.electionMode || 'none',
+    proxyName: detail?.proxyName || '',
+    writtenVoteCount: countVotes(detail?.writtenVotes),
+    electionVoteCount: countVotes(detail?.electionVotes)
+});
+const toCheckInStateFromPayload = (payload = {}) => ({
+    meetingType: payload?.meetingType || 'none',
+    electionMode: payload?.electionMode || 'none',
+    proxyName: payload?.proxyName || '',
+    writtenVoteCount: Array.isArray(payload?.writtenVotes) ? payload.writtenVotes.length : 0,
+    electionVoteCount: Array.isArray(payload?.electionVotes) ? payload.electionVotes.length : 0
+});
+const hasRemoteSubmission = (state = {}) => (
+    state.meetingType === 'written'
+    || state.electionMode === 'mail'
+    || (state.writtenVoteCount || 0) > 0
+    || (state.electionVoteCount || 0) > 0
+);
+const hasOnsiteAttendance = (state = {}) => ['direct', 'proxy'].includes(state.meetingType);
+const formatCheckInSummary = (state = {}) => {
+    const lines = [
+        `총회 상태: ${MEETING_TYPE_LABELS[state.meetingType] || '미등록'}`,
+        `선거 상태: ${ELECTION_MODE_LABELS[state.electionMode] || '미등록'}`
+    ];
 
-const getAttendanceBadges = (record) => {
+    if (state.proxyName) {
+        lines.push(`대리인: ${state.proxyName}`);
+    }
+    if ((state.writtenVoteCount || 0) > 0) {
+        lines.push(`서면결의 응답: ${state.writtenVoteCount}건`);
+    }
+    if ((state.electionVoteCount || 0) > 0) {
+        lines.push(`우편투표 응답: ${state.electionVoteCount}건`);
+    }
+
+    return lines.join('\n');
+};
+const buildTransitionPrompt = ({ member, currentState, nextState }) => {
+    const existingHasRemote = hasRemoteSubmission(currentState);
+    const existingHasOnsite = hasOnsiteAttendance(currentState);
+    const nextHasRemote = hasRemoteSubmission(nextState);
+    const nextHasOnsite = hasOnsiteAttendance(nextState);
+    const memberLabel = `${member?.unit || ''} ${member?.name || ''}`.trim();
+
+    if (existingHasRemote && nextHasOnsite) {
+        return {
+            title: '기존 제출 내역이 있습니다',
+            message: `${memberLabel} 조합원은 이미 서면결의 또는 우편투표가 접수되어 있습니다.\n현재 입력값을 적용하면 기존 제출 내역과 현장 상태가 함께 정리되어 최종값으로 다시 반영됩니다.\n\n현재 저장 상태\n${formatCheckInSummary(currentState)}\n\n변경 예정 상태\n${formatCheckInSummary(nextState)}`,
+            confirmLabel: '현재 입력값으로 변경',
+            keepLabel: '기존 제출 유지',
+            requestLabel: '관리자 확인 필요'
+        };
+    }
+
+    if (existingHasOnsite && nextHasRemote) {
+        return {
+            title: '이미 현장 접수된 조합원입니다',
+            message: `${memberLabel} 조합원은 이미 현장 접수되어 있습니다.\n현재 입력값을 적용하면 현장 접수와 원격 제출 상태가 함께 정리되어 최종값으로 다시 반영됩니다.\n\n현재 저장 상태\n${formatCheckInSummary(currentState)}\n\n변경 예정 상태\n${formatCheckInSummary(nextState)}`,
+            confirmLabel: '현장 무효 후 변경',
+            keepLabel: '현장 유지',
+            requestLabel: '관리자 확인 필요'
+        };
+    }
+
+    return null;
+};
+
+const getAttendanceBadges = (record, options = {}) => {
     if (!record) return [];
 
     const badges = [];
-    if (record.has_election) {
+    const electionMode = options.electionMode || record.electionMode || (record.has_election ? 'onsite' : 'none');
+    if (record.has_election || electionMode !== 'none') {
+        const electionLabel = electionMode === 'mail'
+            ? '우편투표'
+            : electionMode === 'onsite'
+                ? '직접투표'
+                : '선거';
         badges.push({
             key: 'election',
-            label: '선거',
+            label: electionLabel,
             icon: Check,
             className: 'bg-amber-100 text-amber-700'
         });
@@ -103,6 +196,16 @@ export default function CheckInPage() {
     const [checkInModalMode, setCheckInModalMode] = useState('create');
     const [isCheckInModalLoading, setIsCheckInModalLoading] = useState(false);
     const [isCheckInSubmitting, setIsCheckInSubmitting] = useState(false);
+    const [checkInDetail, setCheckInDetail] = useState(null);
+    const [transitionModal, setTransitionModal] = useState({
+        isOpen: false,
+        title: '',
+        message: '',
+        confirmLabel: '',
+        keepLabel: '',
+        requestLabel: '',
+        payload: null
+    });
     const [checkInForm, setCheckInForm] = useState({
         memberId: null,
         meetingType: 'direct',
@@ -200,6 +303,16 @@ export default function CheckInPage() {
         setCheckInModalMode('create');
         setIsCheckInModalLoading(false);
         setIsCheckInSubmitting(false);
+        setCheckInDetail(null);
+        setTransitionModal({
+            isOpen: false,
+            title: '',
+            message: '',
+            confirmLabel: '',
+            keepLabel: '',
+            requestLabel: '',
+            payload: null
+        });
         setCheckInForm({
             memberId: null,
             meetingType: 'direct',
@@ -217,6 +330,7 @@ export default function CheckInPage() {
         }
         setCheckInModalMode('create');
         setIsCheckInModalLoading(false);
+        setCheckInDetail(null);
         setCheckInForm({
             memberId: member.id,
             meetingType: 'direct',
@@ -233,6 +347,7 @@ export default function CheckInPage() {
 
         setCheckInModalMode('edit');
         setIsCheckInModalLoading(true);
+        setCheckInDetail(null);
         setCheckInForm({
             memberId: member.id,
             meetingType: record.type || 'none',
@@ -249,6 +364,7 @@ export default function CheckInPage() {
                 throw new Error('기존 접수 정보를 불러오지 못했습니다.');
             }
 
+            setCheckInDetail(detail);
             setCheckInForm({
                 memberId: member.id,
                 meetingType: detail.meetingType || 'none',
@@ -305,12 +421,73 @@ export default function CheckInPage() {
     const isSubmitDisabled = (
         !checkInForm.memberId
         || (checkInForm.electionMode === 'none' && checkInForm.meetingType === 'none')
-        || (checkInForm.meetingType === 'proxy' && !checkInForm.proxyName.trim())
+        || !isElectionModeAllowedForMeetingType(checkInForm.meetingType, checkInForm.electionMode)
         || !isWrittenComplete
         || !isMailElectionComplete
         || isCheckInModalLoading
         || isCheckInSubmitting
     );
+
+    const handleElectionModeSelect = (nextElectionMode) => {
+        setCheckInForm((prev) => {
+            let nextMeetingType = prev.meetingType;
+
+            if (nextElectionMode === 'onsite') {
+                nextMeetingType = 'direct';
+            } else if (nextElectionMode === 'mail' && prev.meetingType === 'direct') {
+                nextMeetingType = 'none';
+            }
+
+            return {
+                ...prev,
+                meetingType: nextMeetingType,
+                electionMode: nextElectionMode,
+                electionVotes: nextElectionMode === 'mail'
+                    ? (Object.keys(prev.electionVotes || {}).length ? prev.electionVotes : buildInitialElectionVotes(electionAgendas))
+                    : prev.electionVotes
+            };
+        });
+    };
+
+    const executeCheckInSave = async (payload) => {
+        setIsCheckInSubmitting(true);
+        try {
+            const result = checkInModalMode === 'edit'
+                ? await actions.replaceCheckInMember(checkInForm.memberId, payload)
+                : await actions.checkInMember(checkInForm.memberId, payload);
+
+            if (result?.ok === false) {
+                throw (result.error || new Error(checkInModalMode === 'edit' ? '접수 수정에 실패했습니다.' : '접수 처리에 실패했습니다.'));
+            }
+
+            closeCheckInModal();
+        } catch (error) {
+            console.error('Failed to save check-in:', error);
+            alert(error.message || (checkInModalMode === 'edit' ? '접수 수정에 실패했습니다.' : '접수 처리에 실패했습니다.'));
+        } finally {
+            setIsCheckInSubmitting(false);
+        }
+    };
+
+    const closeTransitionModal = () => {
+        setTransitionModal((prev) => ({
+            ...prev,
+            isOpen: false,
+            payload: null
+        }));
+    };
+
+    const handleConfirmTransition = async () => {
+        const payload = transitionModal.payload;
+        closeTransitionModal();
+        if (!payload) return;
+        await executeCheckInSave(payload);
+    };
+
+    const handleRequestTransitionReview = () => {
+        closeTransitionModal();
+        alert('관리자 확인이 필요한 변경입니다.\n조합원 또는 대리인 의사를 다시 확인한 뒤 관리자와 함께 처리해주세요.');
+    };
 
     const handleConfirmCheckIn = async () => {
         if (!checkInForm.memberId) return;
@@ -335,7 +512,6 @@ export default function CheckInPage() {
                 choice
             }));
 
-        setIsCheckInSubmitting(true);
         const payload = {
             meetingType: checkInForm.meetingType === 'none' ? null : checkInForm.meetingType,
             electionMode: checkInForm.electionMode,
@@ -344,22 +520,24 @@ export default function CheckInPage() {
             electionVotes: checkInForm.electionMode === 'mail' ? electionVotesArray : []
         };
 
-        try {
-            const result = checkInModalMode === 'edit'
-                ? await actions.replaceCheckInMember(checkInForm.memberId, payload)
-                : await actions.checkInMember(checkInForm.memberId, payload);
+        if (checkInModalMode === 'edit' && checkInDetail && selectedCheckInMember) {
+            const prompt = buildTransitionPrompt({
+                member: selectedCheckInMember,
+                currentState: toCheckInStateFromDetail(checkInDetail),
+                nextState: toCheckInStateFromPayload(payload)
+            });
 
-            if (result?.ok === false) {
-                throw (result.error || new Error(checkInModalMode === 'edit' ? '접수 수정에 실패했습니다.' : '접수 처리에 실패했습니다.'));
+            if (prompt) {
+                setTransitionModal({
+                    isOpen: true,
+                    ...prompt,
+                    payload
+                });
+                return;
             }
-
-            closeCheckInModal();
-        } catch (error) {
-            console.error('Failed to save check-in:', error);
-            alert(error.message || (checkInModalMode === 'edit' ? '접수 수정에 실패했습니다.' : '접수 처리에 실패했습니다.'));
-        } finally {
-            setIsCheckInSubmitting(false);
         }
+
+        await executeCheckInSave(payload);
     };
 
     const handleConfirmCancelCheckIn = () => {
@@ -597,13 +775,25 @@ export default function CheckInPage() {
                                         return (
                                             <button
                                                 key={option.value}
-                                                onClick={() => setCheckInForm((prev) => ({
-                                                    ...prev,
-                                                    meetingType: option.value,
-                                                    writtenVotes: option.value === 'written'
-                                                        ? (Object.keys(prev.writtenVotes || {}).length ? prev.writtenVotes : buildInitialWrittenVotes(writtenAgendas))
-                                                        : prev.writtenVotes
-                                                }))}
+                                                onClick={() => setCheckInForm((prev) => {
+                                                    const nextMeetingType = option.value;
+                                                    const nextElectionMode = sanitizeElectionModeForMeetingType(nextMeetingType, prev.electionMode);
+                                                    const nextProxyName = nextMeetingType === 'proxy'
+                                                        ? (prev.proxyName || selectedCheckInMember?.proxy || '')
+                                                        : prev.proxyName;
+                                                    return {
+                                                        ...prev,
+                                                        meetingType: nextMeetingType,
+                                                        electionMode: nextElectionMode,
+                                                        proxyName: nextProxyName,
+                                                        writtenVotes: nextMeetingType === 'written'
+                                                            ? (Object.keys(prev.writtenVotes || {}).length ? prev.writtenVotes : buildInitialWrittenVotes(writtenAgendas))
+                                                            : prev.writtenVotes,
+                                                        electionVotes: nextElectionMode === 'mail'
+                                                            ? (Object.keys(prev.electionVotes || {}).length ? prev.electionVotes : buildInitialElectionVotes(electionAgendas))
+                                                            : prev.electionVotes
+                                                    };
+                                                })}
                                                 className={`rounded-2xl border px-4 py-3 text-left transition-all ${isActive ? option.tone + ' ring-2 ring-offset-1 ring-slate-300 shadow-sm' : 'border-slate-200 bg-white text-slate-600'}`}
                                             >
                                                 <div className="flex items-center justify-between mb-2">
@@ -621,22 +811,18 @@ export default function CheckInPage() {
                             <section className="space-y-3">
                                 <div>
                                     <div className="text-sm font-bold text-slate-800">선거 참여</div>
-                                    <p className="text-xs text-slate-500">현장 선거 또는 우편투표 중 하나를 선택할 수 있습니다.</p>
+                                    <p className="text-xs text-slate-500">현장투표 또는 우편투표 중 하나를 선택할 수 있습니다.</p>
                                 </div>
-                                <div className="grid grid-cols-3 gap-2">
+                                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
                                     {ELECTION_MODE_OPTIONS.map((option) => {
                                         const isActive = checkInForm.electionMode === option.value;
                                         return (
                                             <button
                                                 key={option.value}
-                                                onClick={() => setCheckInForm((prev) => ({
-                                                    ...prev,
-                                                    electionMode: option.value,
-                                                    electionVotes: option.value === 'mail'
-                                                        ? (Object.keys(prev.electionVotes || {}).length ? prev.electionVotes : buildInitialElectionVotes(electionAgendas))
-                                                        : prev.electionVotes
-                                                }))}
-                                                className={`rounded-2xl border px-3 py-3 text-left transition-all ${isActive ? option.tone + ' ring-2 ring-offset-1 ring-slate-300 shadow-sm' : 'border-slate-200 bg-white text-slate-600'}`}
+                                                onClick={() => handleElectionModeSelect(option.value)}
+                                                className={`rounded-2xl border px-3 py-3 text-left transition-all ${
+                                                    isActive ? option.tone + ' ring-2 ring-offset-1 ring-slate-300 shadow-sm' : 'border-slate-200 bg-white text-slate-600'
+                                                }`}
                                             >
                                                 <div className="flex items-center justify-between mb-2">
                                                     <span className="text-sm font-black">{option.label}</span>
@@ -647,6 +833,9 @@ export default function CheckInPage() {
                                         );
                                     })}
                                 </div>
+                                <p className="text-xs text-slate-500">
+                                    현장투표를 선택하면 본인 참석으로 맞춰지고, 본인 참석 상태에서 우편투표를 선택하면 총회 불참으로 전환됩니다.
+                                </p>
                             </section>
 
                             {checkInForm.meetingType === 'proxy' && (
@@ -655,7 +844,7 @@ export default function CheckInPage() {
                                     <input
                                         autoFocus
                                         className="w-full px-4 py-3 rounded-xl border-2 border-slate-200 focus:border-blue-500 focus:ring-0 outline-none text-base font-bold text-slate-800 placeholder:text-slate-300 transition-colors"
-                                        placeholder="대리인 성명 입력"
+                                        placeholder="대리인 성명 입력 (선택)"
                                         value={checkInForm.proxyName}
                                         onChange={(e) => setCheckInForm((prev) => ({ ...prev, proxyName: e.target.value }))}
                                     />
@@ -776,6 +965,8 @@ export default function CheckInPage() {
                                     {getAttendanceBadges({
                                         type: checkInForm.meetingType === 'none' ? null : checkInForm.meetingType,
                                         has_election: checkInForm.electionMode !== 'none'
+                                    }, {
+                                        electionMode: checkInForm.electionMode
                                     }).map((badge) => {
                                         const Icon = badge.icon;
                                         return (
@@ -810,6 +1001,39 @@ export default function CheckInPage() {
                                 className="flex-[2] rounded-2xl border-none bg-gradient-to-r from-blue-600 to-indigo-600 px-4 py-4 text-[16px] font-black text-white shadow-[0_8px_16px_-6px_rgba(79,70,229,0.5)] transition-all hover:from-blue-500 hover:to-indigo-500 hover:shadow-[0_12px_20px_-6px_rgba(79,70,229,0.6)] active:scale-95 disabled:pointer-events-none disabled:from-slate-200 disabled:to-slate-200 disabled:text-slate-400 disabled:shadow-none flex items-center justify-center"
                             >
                                 {isCheckInSubmitting ? '저장 중...' : (checkInModalMode === 'edit' ? '확인 (수정 완료)' : '확인 (접수 완료)')}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {transitionModal.isOpen && (
+                <div className="fixed inset-0 z-[60] bg-black/60 flex items-center justify-center px-4 animate-in fade-in duration-200">
+                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
+                        <div className="p-5 border-b border-slate-100">
+                            <h3 className="text-lg font-bold text-slate-800 mb-1">{transitionModal.title}</h3>
+                            <p className="text-sm text-slate-500 whitespace-pre-wrap leading-relaxed">
+                                {transitionModal.message}
+                            </p>
+                        </div>
+                        <div className="p-4 bg-slate-50 flex flex-col gap-2">
+                            <button
+                                onClick={handleConfirmTransition}
+                                className="w-full rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 transition-colors"
+                            >
+                                {transitionModal.confirmLabel}
+                            </button>
+                            <button
+                                onClick={closeTransitionModal}
+                                className="w-full rounded-xl bg-white hover:bg-slate-100 text-slate-700 font-bold py-3 border border-slate-200 transition-colors"
+                            >
+                                {transitionModal.keepLabel}
+                            </button>
+                            <button
+                                onClick={handleRequestTransitionReview}
+                                className="w-full rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-800 font-bold py-3 border border-amber-200 transition-colors"
+                            >
+                                {transitionModal.requestLabel}
                             </button>
                         </div>
                     </div>

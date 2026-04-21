@@ -385,6 +385,38 @@ export const normalizeAgendaType = (type) => {
     if (type === 'special') return 'twoThirds';
     return type || 'majority';
 };
+export const isElectionModeAllowedForMeetingType = (meetingType, electionMode) => {
+    const normalizedMeetingType = meetingType || 'none';
+    const normalizedElectionMode = electionMode || 'none';
+
+    if (normalizedElectionMode === 'none') return true;
+    if (normalizedElectionMode === 'onsite') return normalizedMeetingType === 'direct';
+    if (normalizedElectionMode === 'mail') return ['proxy', 'written', 'none'].includes(normalizedMeetingType);
+
+    return false;
+};
+export const getAllowedElectionModesForMeetingType = (meetingType) => (
+    ['onsite', 'mail', 'none'].filter((mode) => isElectionModeAllowedForMeetingType(meetingType, mode))
+);
+export const getDefaultElectionModeForMeetingType = (meetingType) => (
+    meetingType === 'direct' ? 'onsite' : 'none'
+);
+export const sanitizeElectionModeForMeetingType = (meetingType, electionMode) => (
+    isElectionModeAllowedForMeetingType(meetingType, electionMode)
+        ? (electionMode || 'none')
+        : getDefaultElectionModeForMeetingType(meetingType)
+);
+const getElectionModeValidationMessage = (meetingType, electionMode) => {
+    if (electionMode === 'onsite') {
+        return '현장투표는 본인 참석인 경우에만 선택할 수 있습니다.';
+    }
+    if (electionMode === 'mail') {
+        return meetingType === 'direct'
+            ? '본인 참석은 우편투표와 함께 저장할 수 없습니다. 현장투표 또는 선거 불참을 선택하세요.'
+            : '선거 참여 방식이 참석유형과 맞지 않습니다.';
+    }
+    return '선거 참여 방식이 참석유형과 맞지 않습니다.';
+};
 const normalizeAgendaTypeForDb = (type) => {
     const normalized = normalizeAgendaType(type);
     if (['majority', 'twoThirds', 'election', 'folder'].includes(normalized)) {
@@ -452,6 +484,8 @@ export const getMeetingAttendanceStats = (attendance = [], meetingId = null, act
 export const getAgendaAttendanceDisplayStats = ({
     agenda = null,
     meetingStats = null,
+    meetingId = null,
+    attendance = [],
     mailElectionVotes = [],
     activeMemberIdSet = null
 } = {}) => {
@@ -464,19 +498,27 @@ export const getAgendaAttendanceDisplayStats = ({
             isElectionAgenda,
             fixedAttendanceLabel: '서면',
             fixedAttendanceCount: baseStats.written,
-            mailParticipantCount: 0
+            mailParticipantCount: 0,
+            onsiteEligibleCount: baseStats.direct + baseStats.proxy
         };
     }
 
-    const mailVoteStats = getMailElectionVoteStats(mailElectionVotes, agenda.id, activeMemberIdSet);
+    const electionValidation = getElectionAgendaValidationStats({
+        agenda,
+        meetingId,
+        attendance,
+        mailElectionVotes,
+        activeMemberIdSet
+    });
 
     return {
         ...baseStats,
         isElectionAgenda,
         fixedAttendanceLabel: '우편투표',
-        fixedAttendanceCount: mailVoteStats.participantCount,
-        mailParticipantCount: mailVoteStats.participantCount,
-        total: baseStats.direct + baseStats.proxy + mailVoteStats.participantCount
+        fixedAttendanceCount: electionValidation.actualMailVoteCount,
+        mailParticipantCount: electionValidation.actualMailVoteCount,
+        onsiteEligibleCount: electionValidation.onsiteEligibleCount,
+        total: electionValidation.expectedTotalVotes
     };
 };
 
@@ -492,8 +534,12 @@ export const getElectionAgendaValidationStats = ({
         actualMailVoteCount: 0,
         missingMailVoteCount: 0,
         overlapMailVoteCount: 0,
+        invalidProxyElectionCount: 0,
         onsiteEligibleCount: 0,
-        expectedTotalVotes: 0
+        expectedTotalVotes: 0,
+        missingMailVoteMemberIds: [],
+        overlapMailVoteMemberIds: [],
+        invalidProxyElectionMemberIds: []
     };
 
     if (normalizeAgendaType(agenda?.type) !== 'election' || !agenda?.id || !meetingId) {
@@ -501,14 +547,19 @@ export const getElectionAgendaValidationStats = ({
     }
 
     const uniqueRecords = getUniqueAttendanceRecords(attendance, meetingId, activeMemberIdSet);
-    const onsiteAttendanceIds = new Set(
+    const directElectionIds = new Set(
         uniqueRecords
-            .filter((record) => record.type === 'direct' || record.type === 'proxy')
+            .filter((record) => record.type === 'direct' && record.has_election)
+            .map((record) => record.member_id)
+    );
+    const proxyElectionIds = new Set(
+        uniqueRecords
+            .filter((record) => record.type === 'proxy' && record.has_election)
             .map((record) => record.member_id)
     );
     const expectedMailVoteIds = new Set(
         uniqueRecords
-            .filter((record) => record.has_election && (record.type === 'written' || !record.type))
+            .filter((record) => record.has_election && (record.type === 'written' || record.type === 'proxy' || !record.type))
             .map((record) => record.member_id)
     );
 
@@ -529,22 +580,31 @@ export const getElectionAgendaValidationStats = ({
 
     const overlapMailVoteMemberIds = [];
     actualMailVoteIds.forEach((memberId) => {
-        if (onsiteAttendanceIds.has(memberId)) {
+        if (directElectionIds.has(memberId)) {
             overlapMailVoteMemberIds.push(memberId);
+        }
+    });
+    const invalidProxyElectionMemberIds = [];
+    proxyElectionIds.forEach((memberId) => {
+        if (!actualMailVoteIds.has(memberId)) {
+            invalidProxyElectionMemberIds.push(memberId);
         }
     });
 
     const missingMailVoteCount = missingMailVoteMemberIds.length;
     const overlapMailVoteCount = overlapMailVoteMemberIds.length;
-    const onsiteEligibleCount = Math.max(0, onsiteAttendanceIds.size - overlapMailVoteCount);
+    const invalidProxyElectionCount = invalidProxyElectionMemberIds.length;
+    const onsiteEligibleCount = Math.max(0, directElectionIds.size - overlapMailVoteCount);
 
     return {
         expectedMailVoteCount: expectedMailVoteIds.size,
         actualMailVoteCount: actualMailVoteIds.size,
         missingMailVoteCount,
         overlapMailVoteCount,
+        invalidProxyElectionCount,
         missingMailVoteMemberIds,
         overlapMailVoteMemberIds,
+        invalidProxyElectionMemberIds,
         onsiteEligibleCount,
         expectedTotalVotes: onsiteEligibleCount + actualMailVoteIds.size
     };
@@ -1502,6 +1562,9 @@ export function StoreProvider({ children }) {
                 console.error("Check-in payload must include a meeting type or election participation.");
                 return { ok: false, error: new Error('총회 상태 또는 선거 참여를 하나 이상 선택해야 합니다.') };
             }
+            if (!isElectionModeAllowedForMeetingType(meetingType, electionMode)) {
+                return { ok: false, error: new Error(getElectionModeValidationMessage(meetingType, electionMode)) };
+            }
 
             pendingAttendanceOpsRef.current.add(attendanceKey);
             const agendaTypeById = new Map(stateRef.current.agendas.map((agenda) => [agenda.id, normalizeAgendaType(agenda?.type)]));
@@ -1733,6 +1796,9 @@ export function StoreProvider({ children }) {
 
             if (!meetingType && !hasElection) {
                 return { ok: false, error: new Error('총회 상태 또는 선거 참여를 하나 이상 선택해야 합니다.') };
+            }
+            if (!isElectionModeAllowedForMeetingType(meetingType, electionMode)) {
+                return { ok: false, error: new Error(getElectionModeValidationMessage(meetingType, electionMode)) };
             }
 
             const agendaTypeById = new Map(stateRef.current.agendas.map((agenda) => [agenda.id, normalizeAgendaType(agenda?.type)]));
