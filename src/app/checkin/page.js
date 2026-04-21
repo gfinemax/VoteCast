@@ -19,7 +19,7 @@ const EMPTY_INACTIVE_MEMBER_IDS = [];
 const MEETING_TYPE_LABELS = {
     direct: '본인 참석',
     proxy: '대리 참석',
-    written: '서면결의서',
+    written: '서면결의',
     none: '총회 불참'
 };
 const ELECTION_MODE_LABELS = {
@@ -28,14 +28,14 @@ const ELECTION_MODE_LABELS = {
     none: '선거 불참'
 };
 const MEETING_TYPE_OPTIONS = [
-    { value: 'direct', label: '본인', description: '직접 참석', icon: User, tone: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
-    { value: 'proxy', label: '대리', description: '대리 참석', icon: Clock, tone: 'bg-blue-50 text-blue-700 border-blue-200' },
-    { value: 'written', label: '서면결의서', description: '서면 의결권', icon: FileText, tone: 'bg-orange-50 text-orange-700 border-orange-200' },
+    { value: 'direct', label: '본인', description: '직접 참석', icon: User, tone: 'bg-cyan-50 text-cyan-700 border-cyan-200' },
+    { value: 'proxy', label: '대리', description: '대리 참석', icon: Clock, tone: 'bg-sky-50 text-sky-700 border-sky-200' },
+    { value: 'written', label: '서면결의', description: '서면 의결권', icon: FileText, tone: 'bg-indigo-50 text-indigo-700 border-indigo-200' },
     { value: 'none', label: '없음', description: '총회 불참', icon: Check, tone: 'bg-slate-100 text-slate-700 border-slate-200' }
 ];
 const ELECTION_MODE_OPTIONS = [
-    { value: 'onsite', label: '현장투표', description: '현장 선거 참여', tone: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
-    { value: 'mail', label: '우편투표', description: '우편투표 고정표 입력', tone: 'bg-amber-50 text-amber-700 border-amber-200' },
+    { value: 'onsite', label: '현장투표', description: '현장 선거 참여', tone: 'bg-amber-50 text-amber-700 border-amber-200' },
+    { value: 'mail', label: '우편투표', description: '우편투표 고정표 입력', tone: 'bg-orange-50 text-orange-700 border-orange-200' },
     { value: 'none', label: '없음', description: '선거 불참', tone: 'bg-slate-100 text-slate-700 border-slate-200' }
 ];
 
@@ -139,7 +139,11 @@ const getAttendanceBadges = (record, options = {}) => {
             key: 'election',
             label: electionLabel,
             icon: Check,
-            className: 'bg-amber-100 text-amber-700'
+            className: electionMode === 'mail'
+                ? 'bg-orange-100 text-orange-700'
+                : electionMode === 'onsite'
+                    ? 'bg-amber-100 text-amber-700'
+                    : 'bg-orange-100 text-orange-700'
         });
     }
 
@@ -148,7 +152,7 @@ const getAttendanceBadges = (record, options = {}) => {
             key: 'direct',
             label: '본인',
             icon: User,
-            className: 'bg-emerald-100 text-emerald-700'
+            className: 'bg-cyan-100 text-cyan-700'
         });
     }
 
@@ -157,16 +161,16 @@ const getAttendanceBadges = (record, options = {}) => {
             key: 'proxy',
             label: '대리',
             icon: Clock,
-            className: 'bg-blue-100 text-blue-700'
+            className: 'bg-sky-100 text-sky-700'
         });
     }
 
     if (record.type === 'written') {
         badges.push({
             key: 'written',
-            label: '서면결의서',
+            label: '서면결의',
             icon: FileText,
-            className: 'bg-orange-100 text-orange-700'
+            className: 'bg-indigo-100 text-indigo-700'
         });
     }
 
@@ -175,7 +179,7 @@ const getAttendanceBadges = (record, options = {}) => {
 
 export default function CheckInPage() {
     const { state, actions } = useStore();
-    const { members, attendance, activeMeetingId, agendas, voteData } = state; // activeMeetingId is Global
+    const { members, attendance, activeMeetingId, agendas, voteData, mailElectionVotes } = state; // activeMeetingId is Global
     const inactiveMemberIds = Array.isArray(voteData?.inactiveMemberIds) ? voteData.inactiveMemberIds : EMPTY_INACTIVE_MEMBER_IDS;
     const activeMemberIdSet = useMemo(() => {
         const inactiveMemberIdSet = new Set(inactiveMemberIds);
@@ -407,6 +411,25 @@ export default function CheckInPage() {
     })();
     const writtenAgendas = activeAgendas.filter((agenda) => normalizeAgendaType(agenda?.type) !== 'election');
     const electionAgendas = activeAgendas.filter((agenda) => normalizeAgendaType(agenda?.type) === 'election');
+    const electionAgendaIdSet = useMemo(
+        () => new Set(electionAgendas.map((agenda) => agenda.id)),
+        [electionAgendas]
+    );
+    const electionModeByMemberId = useMemo(() => {
+        const nextMap = new Map();
+
+        meetingAttendanceRecords.forEach((record) => {
+            nextMap.set(record.member_id, record.has_election ? 'onsite' : 'none');
+        });
+
+        mailElectionVotes.forEach((vote) => {
+            if (!electionAgendaIdSet.has(vote?.agenda_id)) return;
+            if (!activeMemberIdSet.has(vote?.member_id)) return;
+            nextMap.set(vote.member_id, 'mail');
+        });
+
+        return nextMap;
+    }, [activeMemberIdSet, electionAgendaIdSet, mailElectionVotes, meetingAttendanceRecords]);
 
     const selectedCheckInMember = members.find((member) => member.id === checkInForm.memberId) || null;
     const isWrittenComplete = (
@@ -608,17 +631,17 @@ export default function CheckInPage() {
                             {isStatsOpen && (
                                 <div className="mt-1 space-y-3 border-t border-slate-100 pt-2 animate-in slide-in-from-top-2 duration-200">
                                     <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-center">
-                                        <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-2">
-                                            <div className="text-sm text-emerald-700 font-bold mb-1">직접</div>
-                                            <div className="text-3xl font-black text-emerald-800 leading-none">{stats.directCount}</div>
+                                        <div className="bg-cyan-50 border border-cyan-100 rounded-xl p-2">
+                                            <div className="text-sm text-cyan-700 font-bold mb-1">직접</div>
+                                            <div className="text-3xl font-black text-cyan-800 leading-none">{stats.directCount}</div>
                                         </div>
-                                        <div className="bg-blue-50 border border-blue-100 rounded-xl p-2">
-                                            <div className="text-sm text-blue-700 font-bold mb-1">대리</div>
-                                            <div className="text-3xl font-black text-blue-800 leading-none">{stats.proxyCount}</div>
+                                        <div className="bg-sky-50 border border-sky-100 rounded-xl p-2">
+                                            <div className="text-sm text-sky-700 font-bold mb-1">대리</div>
+                                            <div className="text-3xl font-black text-sky-800 leading-none">{stats.proxyCount}</div>
                                         </div>
-                                        <div className="bg-orange-50 border border-orange-100 rounded-xl p-2">
-                                            <div className="text-sm text-orange-700 font-bold mb-1">서면결의서</div>
-                                            <div className="text-3xl font-black text-orange-800 leading-none">{stats.writtenCount}</div>
+                                        <div className="bg-indigo-50 border border-indigo-100 rounded-xl p-2">
+                                            <div className="text-sm text-indigo-700 font-bold mb-1">서면결의</div>
+                                            <div className="text-3xl font-black text-indigo-800 leading-none">{stats.writtenCount}</div>
                                         </div>
                                         <div className="bg-amber-50 border border-amber-100 rounded-xl p-2">
                                             <div className="text-sm text-amber-700 font-bold mb-1">선거</div>
@@ -636,10 +659,10 @@ export default function CheckInPage() {
                                         <div className="space-y-1.5">
                                             <div className="flex justify-between text-sm font-bold text-slate-700">
                                                 <span>직접참석 <span className="text-xs font-medium text-slate-500">({stats.directTarget}명 목표)</span></span>
-                                                <span className={stats.isDirectMet ? "text-emerald-600" : ""}>{stats.directCount}/{stats.directTarget}</span>
+                                                <span className={stats.isDirectMet ? "text-cyan-600" : ""}>{stats.directCount}/{stats.directTarget}</span>
                                             </div>
                                             <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
-                                                <div className={`h-full ${stats.isDirectMet ? 'bg-emerald-500' : 'bg-slate-300'}`} style={{ width: `${Math.min(100, (stats.directCount / (stats.directTarget || 1)) * 100)}%` }}></div>
+                                                <div className={`h-full ${stats.isDirectMet ? 'bg-cyan-500' : 'bg-slate-300'}`} style={{ width: `${Math.min(100, (stats.directCount / (stats.directTarget || 1)) * 100)}%` }}></div>
                                             </div>
                                         </div>
                                         <div className="space-y-1.5">
@@ -679,7 +702,9 @@ export default function CheckInPage() {
                         const isCheckedIn = !!record;
                         const checkInType = record?.type;
                         const displayProxyName = record?.proxy_name || member.proxy;
-                        const badges = getAttendanceBadges(record);
+                        const badges = getAttendanceBadges(record, {
+                            electionMode: electionModeByMemberId.get(member.id)
+                        });
 
                         return (
                             <div key={member.id} className="p-2 rounded-xl border border-slate-200 bg-white shadow-sm transition-all hover:border-blue-300">
@@ -855,7 +880,7 @@ export default function CheckInPage() {
                                 <section className="space-y-3">
                                     <div className="flex items-center justify-between gap-3">
                                         <div>
-                                            <div className="text-sm font-bold text-slate-800">서면결의서</div>
+                                            <div className="text-sm font-bold text-slate-800">서면결의</div>
                                             <p className="text-xs text-slate-500">선거 안건을 제외한 총회 안건만 반영됩니다.</p>
                                         </div>
                                         <button
@@ -979,7 +1004,7 @@ export default function CheckInPage() {
                                         <span className="text-xs font-semibold text-red-500">우편투표를 선택한 경우 모든 선거 안건에 응답해야 합니다.</span>
                                     )}
                                     {!isWrittenComplete && (
-                                        <span className="text-xs font-semibold text-red-500">서면결의서를 선택한 경우 모든 총회 안건에 응답해야 합니다.</span>
+                                        <span className="text-xs font-semibold text-red-500">서면결의를 선택한 경우 모든 총회 안건에 응답해야 합니다.</span>
                                     )}
                                     {checkInForm.electionMode === 'none' && checkInForm.meetingType === 'none' && (
                                         <span className="text-xs font-semibold text-red-500">총회 상태 또는 선거 참여를 하나 이상 선택해야 합니다.</span>
