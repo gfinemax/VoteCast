@@ -105,9 +105,13 @@ export default function LiveMonitor({ mode = 'admin' }) {
     const displayStats = useMemo(() => getAgendaAttendanceDisplayStats({
         agenda: currentAgenda,
         meetingStats,
+        meetingId,
+        attendance,
         mailElectionVotes,
         activeMemberIdSet
-    }), [activeMemberIdSet, currentAgenda, mailElectionVotes, meetingStats]);
+    }), [activeMemberIdSet, attendance, currentAgenda, mailElectionVotes, meetingId, meetingStats]);
+    const normalizedAgendaType = normalizeAgendaType(currentAgenda?.type);
+    const isElectionSummary = normalizedAgendaType === 'election';
 
     const { currentPage } = useMemo(
         () => getAgendaPresentation(currentAgenda, agendas, voteData?.presentationPage),
@@ -158,7 +162,9 @@ export default function LiveMonitor({ mode = 'admin' }) {
         activeMemberIdSet
     });
 
-    const totalAttendance = isConfirmed ? snapshot.stats.total : displayStats.total;
+    const totalAttendance = isConfirmed
+        ? (snapshot?.stats?.total > 0 ? snapshot.stats.total : displayStats.total)
+        : displayStats.total;
     const votesYes = isConfirmed ? snapshot.votes.yes : liveVoteBuckets.final.yes;
     const votesNo = isConfirmed ? snapshot.votes.no : liveVoteBuckets.final.no;
     const votesAbstain = isConfirmed ? snapshot.votes.abstain : liveVoteBuckets.final.abstain;
@@ -392,9 +398,9 @@ export default function LiveMonitor({ mode = 'admin' }) {
                                     <span className="absolute left-full bottom-1 ml-0.5 text-[6px] text-slate-500 font-light whitespace-nowrap">명</span>
                                 </div>
                                 <div className="flex items-center text-[4px] text-slate-400 font-medium font-mono gap-1">
-                                    <span className="text-emerald-400">참석 {displayStats.direct}</span>
+                                    <span className="text-emerald-400">{isElectionSummary ? '조합원' : '참석'} {displayStats.direct}</span>
                                     <span className="text-slate-700">|</span>
-                                    <span className="text-blue-400">대리 {displayStats.proxy}</span>
+                                    <span className={isElectionSummary ? 'text-amber-300' : 'text-blue-400'}>{isElectionSummary ? '대리제외' : '대리'} {displayStats.proxy}</span>
                                     <span className="text-slate-700">|</span>
                                     <span className="text-orange-400">{displayStats.fixedAttendanceLabel} {displayStats.fixedAttendanceCount}</span>
                                 </div>

@@ -194,6 +194,7 @@ export default function CheckInPage() {
     }, [activeMemberIdSet, members]);
 
     const [searchTerm, setSearchTerm] = useState("");
+    const [counterMode, setCounterMode] = useState("general"); // 'general' | 'election'
 
     const [isStatsOpen, setIsStatsOpen] = useState(false);
     const [isCheckInModalOpen, setIsCheckInModalOpen] = useState(false);
@@ -249,6 +250,7 @@ export default function CheckInPage() {
             writtenCount: 0,
             electionCount: 0,
             rate: 0,
+            participantRate: 0,
             directTarget: Math.ceil(activeMembers.length * 0.2),
             majorityTarget: getMajorityThreshold(activeMembers.length),
             twoThirdsTarget: Math.ceil(activeMembers.length * (2 / 3)),
@@ -268,6 +270,7 @@ export default function CheckInPage() {
         // Total Members in DB
         const total = activeMembers.length;
         const rate = total > 0 ? ((checkedInCount / total) * 100).toFixed(1) : 0;
+        const participantRate = total > 0 ? ((participantCount / total) * 100).toFixed(1) : 0;
 
         // Targets
         const directTarget = Math.ceil(total * 0.2);
@@ -283,6 +286,7 @@ export default function CheckInPage() {
             writtenCount,
             electionCount,
             rate,
+            participantRate,
             directTarget,
             majorityTarget,
             twoThirdsTarget,
@@ -608,13 +612,31 @@ export default function CheckInPage() {
                                 {/* 1. Left: Total Context */}
                                 <div className="md:absolute md:left-0 flex flex-row md:flex-col items-center md:items-start gap-2 md:gap-0 text-sm md:text-base text-slate-500 font-bold tracking-tighter leading-none md:leading-normal">
                                     <span>전체 {stats.total}명</span>
-                                    <span className="text-emerald-600">({stats.rate}%)</span>
+                                    <span className="text-emerald-600">총회 출석 {stats.rate}%</span>
                                 </div>
 
-                                {/* 2. Center: Hero Number */}
-                                <div className="flex items-center gap-2 cursor-pointer group hover:scale-105 transition-transform duration-200">
-                                    {/* Flip Counter Component */}
-                                    <FlipNumber value={stats.checkedIn} />
+                                {/* 2. Center: Hero Number with Segmented Control */}
+                                <div className="flex flex-col items-center gap-2 group hover:scale-[1.02] transition-transform duration-200">
+                                    <div className="flex bg-slate-100 p-0.5 rounded-lg border border-slate-200/60 shadow-inner">
+                                        <button 
+                                            onClick={(e) => { e.stopPropagation(); setCounterMode('general'); }}
+                                            className={`px-3 py-1.5 text-xs font-bold rounded-md transition-all ${counterMode === 'general' ? 'bg-white text-emerald-700 shadow-sm ring-1 ring-slate-200/50' : 'text-slate-400'}`}
+                                        >
+                                            총회 성원
+                                        </button>
+                                        <button 
+                                            onClick={(e) => { e.stopPropagation(); setCounterMode('election'); }}
+                                            className={`px-3 py-1.5 text-xs font-bold rounded-md transition-all flex items-center gap-1 ${counterMode === 'election' ? 'bg-white text-orange-600 shadow-sm ring-1 ring-slate-200/50' : 'text-slate-400'}`}
+                                        >
+                                            선거 투표권자
+                                        </button>
+                                    </div>
+                                    <FlipNumber value={counterMode === 'general' ? stats.checkedIn : stats.electionCount} />
+                                    {electionAgendas.length > 0 && stats.participantCount !== stats.checkedIn && counterMode === 'general' && (
+                                        <div className="text-[11px] font-semibold text-amber-600">
+                                            선거 참여 포함 {stats.participantCount}명 ({stats.participantRate}%)
+                                        </div>
+                                    )}
                                 </div>
 
                                 {/* 3. Right: Detail Button */}
@@ -650,7 +672,7 @@ export default function CheckInPage() {
                                     </div>
 
                                     <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-600 flex items-center justify-between">
-                                        <span>복합 포함 전체 처리</span>
+                                        <span>총회/선거 전체 처리</span>
                                         <span className="text-slate-900">{stats.participantCount}명</span>
                                     </div>
 
@@ -724,9 +746,18 @@ export default function CheckInPage() {
                                                 );
                                             })}
                                         </div>
-                                        <div className="text-base font-bold text-slate-800 flex items-center leading-tight">
-                                            {member.name}
-                                            {displayProxyName && (isCheckedIn ? checkInType === 'proxy' : true) && <span className="text-slate-800 ml-0.5 text-sm md:text-base">({displayProxyName})</span>}
+                                        <div className="text-base font-bold text-slate-800 flex items-center flex-wrap gap-x-1 gap-y-0.5 leading-tight mt-0.5">
+                                            <span>{member.name}</span>
+                                            {displayProxyName && (isCheckedIn ? checkInType === 'proxy' : true) && (
+                                                <>
+                                                    <span className="text-slate-800 ml-0.5 text-sm md:text-base">({displayProxyName})</span>
+                                                    {electionAgendas.length > 0 && (
+                                                        <span className="ml-1 text-[10px] md:text-xs font-bold text-red-600 bg-red-50 border border-red-200 px-1.5 py-0.5 rounded flex items-center gap-0.5">
+                                                            ❌ 선거권 없음
+                                                        </span>
+                                                    )}
+                                                </>
+                                            )}
                                         </div>
                                     </div>
 
@@ -832,6 +863,15 @@ export default function CheckInPage() {
                                     })}
                                 </div>
                             </section>
+
+                            {checkInForm.meetingType === 'proxy' && electionAgendas.length > 0 && (
+                                <div className="rounded-xl border border-red-200 bg-red-50 p-3 mx-1">
+                                    <p className="text-[13px] font-bold text-red-700 flex items-start gap-2 leading-snug">
+                                        <span>🚨</span>
+                                        <span>대리 참석이므로 <strong className="text-red-800">선거권이 없습니다 (직접선거)</strong>.<br/>일반안건 투표용지만 1장 교부하고, <strong className="text-red-800">선거 투표용지는 지급하지 마세요.</strong></span>
+                                    </p>
+                                </div>
+                            )}
 
                             <section className="space-y-3">
                                 <div>

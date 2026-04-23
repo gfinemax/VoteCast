@@ -48,9 +48,11 @@ export default function AdminPage() {
     const displayStats = React.useMemo(() => getAgendaAttendanceDisplayStats({
         agenda: currentAgenda,
         meetingStats,
+        meetingId,
+        attendance,
         mailElectionVotes,
         activeMemberIdSet
-    }), [activeMemberIdSet, currentAgenda, mailElectionVotes, meetingStats]);
+    }), [activeMemberIdSet, attendance, currentAgenda, mailElectionVotes, meetingId, meetingStats]);
 
     // Pass Logic based on Vote Type
     const normalizeType = (type) => {

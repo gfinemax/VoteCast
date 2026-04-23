@@ -3,7 +3,7 @@
 import React, { useMemo, useEffect, useLayoutEffect, useState, useCallback, useRef } from 'react';
 import { useStore } from '@/lib/store';
 import { getAgendaAttendanceDisplayStats, getAgendaVoteBuckets, getAttendanceQuorumTarget, getElectionAgendaValidationStats, getMeetingAttendanceStats, normalizeAgendaType } from '@/lib/store';
-import { CheckCircle2, AlertTriangle, AlertCircle, Trash2, Lock, Unlock, RotateCcw, Save, Wand2, ArrowLeft, ArrowRight } from 'lucide-react';
+import { CheckCircle2, AlertTriangle, AlertCircle, Trash2, Lock, Unlock, RotateCcw, Save, Wand2, ArrowLeft, ArrowRight, X } from 'lucide-react';
 import Card from '@/components/ui/Card';
 
 const EMPTY_INACTIVE_MEMBER_IDS = [];
@@ -36,6 +36,7 @@ export default function VoteControl() {
     const { members, attendance, agendas, currentAgendaId, voteData, projectorMode, projectorData, mailElectionVotes } = state;
     const [confirmReadyAgendaId, setConfirmReadyAgendaId] = useState(null);
     const [confirmModalState, setConfirmModalState] = useState({ isOpen: false, type: null }); // type: 'confirm' | 'reset'
+    const [isConfirmedToastDismissed, setIsConfirmedToastDismissed] = useState(false);
     const inactiveMemberIds = Array.isArray(voteData?.inactiveMemberIds) ? voteData.inactiveMemberIds : EMPTY_INACTIVE_MEMBER_IDS;
     const activeMemberIdSet = useMemo(() => {
         const inactiveMemberIdSet = new Set(inactiveMemberIds);
@@ -91,13 +92,19 @@ export default function VoteControl() {
     const realtimeStats = useMemo(() => getAgendaAttendanceDisplayStats({
         agenda: currentAgenda,
         meetingStats: baseMeetingStats,
+        meetingId,
+        attendance,
         mailElectionVotes,
         activeMemberIdSet
-    }), [activeMemberIdSet, baseMeetingStats, currentAgenda, mailElectionVotes]);
+    }), [activeMemberIdSet, attendance, baseMeetingStats, currentAgenda, mailElectionVotes, meetingId]);
 
     // Use Snapshot if confirmed, otherwise Realtime
     const displayStats = isConfirmed
-        ? { ...realtimeStats, ...(snapshot.stats || {}) }
+        ? {
+            ...realtimeStats,
+            ...(snapshot.stats || {}),
+            total: (snapshot?.stats?.total > 0 ? snapshot.stats.total : realtimeStats.total)
+        }
         : realtimeStats;
 
     // Vote Data Sources
@@ -155,7 +162,7 @@ export default function VoteControl() {
 
     const directTarget = Math.ceil(totalMembers * 0.2);
     const isDirectSatisfied = !isElection || (displayStats.direct >= directTarget);
-    const isQuorumSatisfied = (displayStats.total >= quorumTarget) && isDirectSatisfied;
+    const isQuorumSatisfied = (effectiveTotalAttendance >= quorumTarget) && isDirectSatisfied;
 
     const calculatePass = useCallback((yesCount, totalCount = effectiveTotalAttendance) => {
         if (isSpecialVote) {
@@ -164,6 +171,11 @@ export default function VoteControl() {
         return yesCount > (totalCount / 2);
     }, [effectiveTotalAttendance, isSpecialVote]);
     const isPassed = calculatePass(votesYes);
+    const totalOnsiteAttendance = displayStats.direct + displayStats.proxy;
+
+    useEffect(() => {
+        setIsConfirmedToastDismissed(false);
+    }, [currentAgendaId, isConfirmed]);
 
     // 3. Declaration Generation
     const generateDefaultDeclaration = useCallback((overrides = {}) => {
@@ -464,10 +476,12 @@ ${resultLine}`;
         : displayTotalVotesCast;
     const isElectionMailMissing = isElection && electionValidation.missingMailVoteCount > 0;
     const hasElectionMailOverlap = isElection && electionValidation.overlapMailVoteCount > 0;
+    const hasInvalidProxyElection = isElection && electionValidation.invalidProxyElectionCount > 0;
     const isOnsiteOverflow = hasSplitVoteColumns && onsiteVotesCast > effectiveOnsiteEligibleCount;
     const hasElectionValidationIssue = isElection && (
         isElectionMailMissing
         || hasElectionMailOverlap
+        || hasInvalidProxyElection
         || isOnsiteOverflow
         || displayTotalVotesCast !== electionValidation.expectedTotalVotes
     );
@@ -553,6 +567,27 @@ ${resultLine}`;
 
     return (
         <div className="space-y-2 pb-2">
+            {isConfirmed && !isConfirmedToastDismissed && (
+                <div className="pointer-events-none fixed right-4 top-24 z-40">
+                    <div className="pointer-events-auto flex max-w-[min(92vw,560px)] items-start gap-3 rounded-2xl border border-blue-200 bg-white/95 px-4 py-3 text-blue-700 shadow-[0_20px_50px_-20px_rgba(37,99,235,0.45)] backdrop-blur-md animate-in fade-in slide-in-from-top-2 duration-200">
+                        <div className="mt-0.5 rounded-full bg-blue-50 p-2 text-blue-600">
+                            <Lock size={16} />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                            <div className="text-sm font-black">현재 의결 결과가 확정되었습니다.</div>
+                            <div className="mt-0.5 text-xs font-semibold text-blue-600/80">실시간 성원 변동의 영향을 받지 않습니다.</div>
+                        </div>
+                        <button
+                            type="button"
+                            onClick={() => setIsConfirmedToastDismissed(true)}
+                            className="rounded-lg p-1 text-blue-400 transition-colors hover:bg-blue-50 hover:text-blue-700"
+                            aria-label="확정 안내 닫기"
+                        >
+                            <X size={16} />
+                        </button>
+                    </div>
+                </div>
+            )}
             {/* Header Section */}
             <div className="flex justify-between items-start gap-4">
                 <div className="flex-1">
@@ -566,14 +601,6 @@ ${resultLine}`;
 
                 {/* Actions removed and moved to Section 4 at the bottom */}
             </div>
-
-            {/* Confirmed Banner */}
-            {isConfirmed && (
-                <div className="bg-blue-50 border border-blue-200 p-3 rounded-lg flex justify-center items-center gap-2 text-blue-700 font-bold animate-in fade-in slide-in-from-top-2">
-                    <Lock size={16} />
-                    현재 의결 결과가 확정되었습니다. (실시간 성원 변동의 영향을 받지 않습니다)
-                </div>
-            )}
 
             {/* Top Grid: Sections 1 and 2 */}
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-stretch mb-4">
@@ -597,7 +624,7 @@ ${resultLine}`;
                     <div className="flex items-center justify-between bg-emerald-950/40 border border-emerald-900/50 rounded-xl p-2.5 px-3 mb-2 transition-colors group-hover:bg-emerald-950/60 group-hover:border-emerald-800/60">
                         <div className="text-emerald-500/70 font-bold text-[11px] tracking-widest uppercase">성원합계(개최기준{quorumTarget}명)</div>
                         <div className="flex items-baseline gap-1 relative top-0.5">
-                            <span className="text-3xl font-black text-emerald-400 leading-none tabular-nums tracking-tighter">{displayStats.total.toLocaleString()}</span>
+                            <span className="text-3xl font-black text-emerald-400 leading-none tabular-nums tracking-tighter">{effectiveTotalAttendance.toLocaleString()}</span>
                             <span className="text-xs font-bold text-emerald-600/70 ml-0.5">명</span>
                         </div>
                     </div>
@@ -607,8 +634,8 @@ ${resultLine}`;
                         <div>사전 접수({displayStats.fixedAttendanceLabel})</div>
                         <div className="w-3"></div>
                         <div className="flex flex-col items-center leading-tight">
-                            <span>현장 참석</span>
-                            <span className="text-[8px] opacity-70">(조합원+대리인)</span>
+                            <span>{isElection ? '현장 선거 가능' : '현장 참석'}</span>
+                            <span className="text-[8px] opacity-70">{isElection ? `(총 현장 ${totalOnsiteAttendance}명 중 대리 ${displayStats.proxy}명 제외)` : '(조합원+대리인)'}</span>
                         </div>
                     </div>
 
@@ -631,9 +658,9 @@ ${resultLine}`;
                             </div>
                             <div className="w-px bg-blue-900/40"></div>
                             {/* Proxy */}
-                            <div className="flex-1 flex flex-col items-center justify-center py-2 relative">
-                                <span className="text-[9px] font-bold text-blue-400/50 absolute top-0.5">대리인</span>
-                                <span className="font-mono font-black text-blue-400 text-2xl tabular-nums leading-none mt-3">{displayStats.proxy}</span>
+                            <div className={`flex-1 flex flex-col items-center justify-center py-2 relative ${isElection ? 'bg-amber-950/30' : ''}`}>
+                                <span className={`text-[9px] font-bold absolute top-0.5 ${isElection ? 'text-amber-300/80' : 'text-blue-400/50'}`}>{isElection ? '대리인 제외' : '대리인'}</span>
+                                <span className={`font-mono font-black text-2xl tabular-nums leading-none mt-3 ${isElection ? 'text-amber-300' : 'text-blue-400'}`}>{displayStats.proxy}</span>
                             </div>
                         </div>
                     </div>
@@ -652,7 +679,7 @@ ${resultLine}`;
                             <div className="absolute top-0 bottom-0 w-0.5 flex flex-col bg-slate-400/50 z-10" style={{ left: isSpecialVote ? '66.66%' : '50%' }}></div>
                             <div
                                 className={`h-full transition-all duration-500 ${isQuorumSatisfied ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]' : 'bg-rose-500'}`}
-                                style={{ width: `${Math.min(100, (displayStats.total / (totalMembers || 1)) * 100)}%` }}
+                                style={{ width: `${Math.min(100, (effectiveTotalAttendance / (totalMembers || 1)) * 100)}%` }}
                             ></div>
                         </div>
 
@@ -664,7 +691,7 @@ ${resultLine}`;
                             <span className={`font-bold ${isQuorumSatisfied ? 'text-emerald-400' : 'text-rose-400'}`}>
                                 {isQuorumSatisfied
                                     ? '조건 충족'
-                                    : `미달 ${!isDirectSatisfied ? '(직접참석 부족)' : `(${Math.max(0, quorumTarget - displayStats.total)}명 부족)`}`}
+                                    : `미달 ${!isDirectSatisfied ? '(직접참석 부족)' : `(${Math.max(0, quorumTarget - effectiveTotalAttendance)}명 부족)`}`}
                             </span>
                         </div>
                     </div>
@@ -822,6 +849,23 @@ ${resultLine}`;
                                                                     </li>
                                                                 );
                                                             })()}
+                                                            {hasInvalidProxyElection && (() => {
+                                                                const invalidProxyMembers = (electionValidation.invalidProxyElectionMemberIds || [])
+                                                                    .map(id => members.find(m => m.id === id))
+                                                                    .filter(Boolean);
+                                                                const names = invalidProxyMembers.map(m => `${m.unit || ''} ${m.name}`).join(', ');
+                                                                return (
+                                                                    <li className="flex flex-col gap-0.5">
+                                                                        <div className="flex items-start gap-1.5">
+                                                                            <span className="text-rose-400 shrink-0">•</span>
+                                                                            <span>대리 현장선거 불가: 대리 참석 {electionValidation.invalidProxyElectionCount}명이 선거 참여로 등록됨 → 우편투표 또는 선거 불참으로 정리하세요</span>
+                                                                        </div>
+                                                                        <div className="ml-3 text-[10px] text-rose-400/80 leading-relaxed font-medium">
+                                                                            대상: {names}
+                                                                        </div>
+                                                                    </li>
+                                                                );
+                                                            })()}
                                                             {isOnsiteOverflow && (
                                                                 <li className="flex items-start gap-1.5">
                                                                     <span className="text-rose-400 shrink-0">•</span>
@@ -851,31 +895,31 @@ ${resultLine}`;
                                     )}
                                 </div>
 
-                                <div className="hidden grid-cols-[88px_minmax(76px,0.7fr)_auto_minmax(180px,1.7fr)_auto_minmax(124px,0.9fr)] gap-2 lg:gap-2 px-3 pb-3 text-[11px] font-bold uppercase tracking-wide text-slate-500 lg:grid items-center">
+                                <div className="hidden grid-cols-[80px_minmax(56px,0.55fr)_24px_minmax(132px,1.25fr)_24px_minmax(136px,1fr)] gap-2 lg:gap-2 px-3 pb-3 text-[11px] font-bold uppercase tracking-wide text-slate-500 lg:grid items-center">
                                     <div className="text-center text-slate-400">구분</div>
-                                    <div className="text-center text-slate-500 whitespace-pre-wrap">서면결의서({displayStats.fixedAttendanceCount}명)</div>
-                                    <div className="w-4"></div>
-                                    <div className="text-center text-blue-400 border border-blue-900/50 bg-blue-900/20 rounded px-2 py-0.5 leading-tight flex flex-col items-center justify-center">
+                                    <div className="min-w-0 text-center text-slate-500 whitespace-pre-wrap">{fixedVoteLabel}({displayStats.fixedAttendanceCount}명)</div>
+                                    <div className="w-6 text-center text-slate-700 text-xl font-black">+</div>
+                                    <div className="min-w-0 text-center text-blue-400 border border-blue-900/50 bg-blue-900/20 rounded px-2 py-0.5 leading-tight flex flex-col items-center justify-center">
                                         <span>현장 참석입력</span>
                                         <span className="text-[10px] font-bold text-blue-300">
                                             {isElection 
-                                                ? `(조합원=${displayStats.direct}명)` 
+                                                ? `(조합원=${effectiveOnsiteEligibleCount}명)` 
                                                 : `(조합원+대리인=${displayStats.direct + displayStats.proxy}명)`
                                             }
                                         </span>
                                     </div>
-                                    <div className="w-4"></div>
-                                    <div className="text-center text-emerald-400/70">입력합계 {displayTotalVotesCast}명</div>
+                                    <div className="w-6 text-center text-slate-700 text-xl font-black">=</div>
+                                    <div className="min-w-0 whitespace-nowrap text-center text-emerald-400/70">입력합계 {displayTotalVotesCast}명</div>
                                 </div>
 
                                 <div className="space-y-2">
                                     {splitVoteDisplayCards.map((card) => (
                                         <div
                                             key={`${card.key}-row`}
-                                            className={`grid grid-cols-1 lg:grid-cols-[88px_minmax(76px,0.7fr)_auto_minmax(180px,1.7fr)_auto_minmax(124px,0.9fr)] gap-2 lg:gap-2 items-center rounded-2xl border px-3 py-1.5 transition-colors ${card.tone.rowTint} hover:shadow-md`}
+                                            className={`grid grid-cols-1 lg:grid-cols-[80px_minmax(56px,0.55fr)_24px_minmax(132px,1.25fr)_24px_minmax(136px,1fr)] gap-2 lg:gap-2 items-center rounded-2xl border px-3 py-1.5 transition-colors overflow-hidden ${card.tone.rowTint} hover:shadow-md`}
                                         >
                                             <div className="flex items-center justify-between lg:flex lg:justify-center">
-                                                <span className={`inline-flex h-12 w-[88px] items-center justify-center rounded-lg border px-2 text-sm font-bold shadow-sm ${card.tone.labelBadge}`}>
+                                                <span className={`inline-flex h-12 w-[80px] items-center justify-center rounded-lg border px-2 text-sm font-bold shadow-sm ${card.tone.labelBadge}`}>
                                                     {card.summaryLabel.replace('전체 ', '')}
                                                 </span>
                                             </div>
@@ -903,10 +947,10 @@ ${resultLine}`;
 
                                             <div className="hidden lg:flex justify-center text-slate-700 text-2xl font-black">=</div>
 
-                                            <div className="flex flex-col items-center justify-between rounded-xl bg-slate-800/30 px-4 py-3 lg:bg-transparent lg:px-0 lg:py-0 lg:justify-center">
+                                            <div className="min-w-0 flex flex-col items-center justify-between rounded-xl bg-slate-800/30 px-4 py-3 lg:bg-transparent lg:px-0 lg:py-0 lg:justify-center">
                                                 <span className="text-xs font-bold text-slate-500 lg:hidden mb-1">최종 득표</span>
-                                                <div className="flex items-end gap-1">
-                                                    <span className={`font-mono text-xl md:text-2xl font-black tabular-nums leading-none ${card.tone.totalText}`}>{card.totalValue}</span>
+                                                <div className="flex w-full items-end justify-center gap-1 whitespace-nowrap">
+                                                    <span className={`font-mono text-xl lg:text-2xl font-black tabular-nums leading-none ${card.tone.totalText}`}>{card.totalValue}</span>
                                                     <span className="text-sm font-bold text-slate-400 mb-1 md:mb-0.5">표</span>
                                                 </div>
                                             </div>
@@ -1052,7 +1096,7 @@ ${resultLine}`;
                 <div className="lg:col-span-4 flex flex-col gap-4">
                     {/* Section 3: Declaration (Moved to Left Column) */}
             <section>
-                <div className="flex justify-between items-center mb-1 mt-2">
+                <div className="flex justify-between items-center mb-1 mt-1">
                     <h3 className="text-base font-bold text-slate-600 uppercase tracking-wider">
                         03. 선포 문구
                     </h3>
@@ -1088,8 +1132,8 @@ ${resultLine}`;
                         onChange={(e) => setDeclarationDraft({ agendaId: currentAgendaId, value: e.target.value })}
                         disabled={!isEditingDeclaration || isConfirmed}
                         placeholder={isEditingDeclaration ? "선포문구를 입력하세요..." : "편집 버튼을 클릭하면 자동 생성됩니다."}
-                        rows={Math.max(12, ((isEditingDeclaration ? localDeclaration : declaration) || '').split('\n').length + 1)}
-                        className={`w-full p-4 border rounded-2xl outline-none text-base font-serif resize-none min-h-[220px] flex-1 shadow-sm leading-relaxed transition-colors ${isEditingDeclaration && !isConfirmed
+                        rows={Math.max(9, ((isEditingDeclaration ? localDeclaration : declaration) || '').split('\n').length)}
+                        className={`w-full p-4 border rounded-2xl outline-none text-base font-serif resize-none min-h-[180px] flex-1 shadow-sm leading-relaxed transition-colors ${isEditingDeclaration && !isConfirmed
                             ? 'border-blue-300 bg-white text-slate-700 focus:ring-2 focus:ring-blue-500 shadow-blue-100/50'
                             : 'border-slate-200 bg-slate-50 text-slate-600 cursor-not-allowed'
                             }`}
@@ -1105,19 +1149,19 @@ ${resultLine}`;
                 <div className="lg:col-span-8 flex flex-col gap-4">
                     {/* Section 4: Final Confirmation */}
             <section className="flex flex-col flex-1">
-                <div className="flex justify-between items-center mb-1 mt-2">
+                <div className="flex justify-between items-center mb-1 mt-1">
                     <h3 className="text-base font-bold text-slate-600 uppercase tracking-wider">
                         04. 최종 결과 확정
                     </h3>
                 </div>
-                <div className="flex flex-col items-center justify-center p-4 bg-slate-50 border border-slate-200 rounded-2xl shadow-sm flex-1">
-                    <p className="text-slate-500 mb-3 text-center text-sm">
+                <div className="flex flex-col items-center justify-center p-3 bg-slate-50 border border-slate-200 rounded-2xl shadow-sm flex-1">
+                    <p className="text-slate-500 mb-2 text-center text-sm">
                         모든 출석율과 투표 인원이 오류 없이 정상적으로 표기되었는지 확인해 주세요.
                     </p>
 
                     {isConfirmed ? (
-                        <div className="flex flex-col items-center gap-4">
-                            <div className="flex items-center gap-2 text-blue-700 font-bold bg-blue-50/50 border border-blue-100 px-6 py-3 rounded-xl shadow-sm">
+                        <div className="flex flex-col items-center gap-3">
+                            <div className="flex items-center gap-2 text-blue-700 font-bold bg-blue-50/50 border border-blue-100 px-5 py-2.5 rounded-xl shadow-sm">
                                 <CheckCircle2 size={24} />
                                 현재 안건의 의결 결과가 안전하게 확정되어 잠겼습니다.
                             </div>
@@ -1126,15 +1170,15 @@ ${resultLine}`;
                                     handleResetDecision();
                                     setConfirmReadyAgendaId(null);
                                 }}
-                                className="mt-2 flex items-center gap-2 text-slate-500 bg-white border border-slate-200 px-5 py-2.5 rounded-xl hover:bg-slate-100 transition-all font-semibold"
+                                className="mt-1 flex items-center gap-2 text-slate-500 bg-white border border-slate-200 px-5 py-2 rounded-xl hover:bg-slate-100 transition-all font-semibold"
                             >
                                 <Unlock size={18} />
                                 확정 취소 및 수정하기
                             </button>
                         </div>
                     ) : (
-                        <div className="flex flex-col items-center gap-3 w-full max-w-sm">
-                            <label className="flex items-center justify-center gap-3 w-full p-4 border border-slate-200 rounded-xl bg-white cursor-pointer hover:bg-slate-50 select-none shadow-sm transition-all focus-within:ring-2 focus-within:ring-slate-200">
+                        <div className="flex flex-col items-center gap-2.5 w-full max-w-sm">
+                            <label className="flex items-center justify-center gap-3 w-full px-4 py-3 border border-slate-200 rounded-xl bg-white cursor-pointer hover:bg-slate-50 select-none shadow-sm transition-all focus-within:ring-2 focus-within:ring-slate-200">
                                 <input 
                                     type="checkbox" 
                                     className="w-5 h-5 accent-blue-600 cursor-pointer rounded" 
@@ -1145,7 +1189,7 @@ ${resultLine}`;
                                 <span className="font-semibold text-slate-700">모든 결과를 확인하였으며, 확정합니다.</span>
                             </label>
                             {isLocalDirty && (
-                                <div className="w-full rounded-xl border border-amber-300 bg-amber-50/80 px-4 py-3 text-center text-sm font-bold text-amber-800 shadow-sm animate-pulse">
+                                <div className="w-full rounded-xl border border-amber-300 bg-amber-50/80 px-4 py-2.5 text-center text-sm font-bold text-amber-800 shadow-sm animate-pulse">
                                     <div className="flex items-center justify-center gap-2 mb-1">
                                         <AlertTriangle size={18} className="text-amber-600" />
                                         <span>현장 투표 입력값 미반영</span>

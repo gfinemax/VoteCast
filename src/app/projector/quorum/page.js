@@ -42,9 +42,11 @@ export default function QuorumProjectorPage() {
     const displayStats = useMemo(() => getAgendaAttendanceDisplayStats({
         agenda: currentAgenda,
         meetingStats,
+        meetingId,
+        attendance,
         mailElectionVotes,
         activeMemberIdSet
-    }), [activeMemberIdSet, currentAgenda, mailElectionVotes, meetingStats]);
+    }), [activeMemberIdSet, attendance, currentAgenda, mailElectionVotes, meetingId, meetingStats]);
 
     useEffect(() => {
         const handleResize = () => {
@@ -101,9 +103,9 @@ export default function QuorumProjectorPage() {
                             <span className="absolute left-full bottom-8 ml-4 text-4xl text-slate-500 font-light whitespace-nowrap">명</span>
                         </div>
                         <div className="flex items-center text-lg text-slate-400 font-medium">
-                            <span className="flex items-center text-emerald-500/80">조합원참석 <b className="text-emerald-400 ml-2 font-mono">{direct}</b></span>
+                            <span className="flex items-center text-emerald-500/80">{isElection ? '조합원' : '조합원참석'} <b className="text-emerald-400 ml-2 font-mono">{direct}</b></span>
                             <span className="mx-4 text-slate-700">|</span>
-                            <span className="flex items-center text-blue-500/80">대리인참석 <b className="text-blue-400 ml-2 font-mono">{proxy}</b></span>
+                            <span className={`flex items-center ${isElection ? 'text-amber-300' : 'text-blue-500/80'}`}>{isElection ? '대리인 제외' : '대리인참석'} <b className={`${isElection ? 'text-amber-300' : 'text-blue-400'} ml-2 font-mono`}>{proxy}</b></span>
                             <span className="mx-4 text-slate-700">|</span>
                             <span className="flex items-center text-orange-500/80">{displayStats.fixedAttendanceLabel} <b className="text-orange-400 ml-2 font-mono">{fixedAttendanceCount}</b></span>
                         </div>

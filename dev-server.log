@@ -1,0 +1,16 @@
+
+> votecast@0.1.0 dev
+> next dev --webpack
+
+▲ Next.js 16.1.2 (webpack)
+- Local:         http://localhost:3000
+- Network:       http://192.168.219.102:3000
+- Environments: .env.local
+
+✓ Starting...
+✓ Ready in 3.4s
+○ Compiling /admin ...
+[Supabase Init] URL present: true, Key present: true
+[Supabase Init] URL length: 40
+[Supabase Init] Creating real client...
+ GET /admin 200 in 8.8s (compile: 6.9s, proxy.ts: 1531ms, render: 399ms)

@@ -34,9 +34,11 @@ export default function CommissionPage() {
     const displayStats = React.useMemo(() => getAgendaAttendanceDisplayStats({
         agenda: currentAgenda,
         meetingStats,
+        meetingId,
+        attendance,
         mailElectionVotes,
         activeMemberIdSet
-    }), [activeMemberIdSet, currentAgenda, mailElectionVotes, meetingStats]);
+    }), [activeMemberIdSet, attendance, currentAgenda, mailElectionVotes, meetingId, meetingStats]);
     const voteBuckets = getAgendaVoteBuckets(currentAgenda, {
         mailElectionVotes,
         activeMemberIdSet

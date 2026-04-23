@@ -12,27 +12,6 @@ const EMPTY_INACTIVE_MEMBER_IDS = [];
 const PROJECTOR_HOLD_LAST_GOOD_MS = 800;
 const PROJECTOR_LOG_STORAGE_KEY = '__votecast_projector_render_log__';
 const PROJECTOR_LOG_LIMIT = 100;
-const parseResultStatsFromDeclaration = (declaration = '') => {
-    const text = String(declaration || '').replace(/\s+/g, ' ');
-    if (!text) return null;
-
-    // Matches both "찬성(N)표" and "찬성 N표"
-    const yesMatch = text.match(/찬성(?:\(|\s)(\d+)\)?표/);
-    const noMatch = text.match(/반대(?:\(|\s)(\d+)\)?표/);
-    const abstainMatch = text.match(/(?:기권\/무효|기권)(?:\(|\s)(\d+)\)?표/);
-    const totalMatch = text.match(/전체 참석자(?:\(|\s)(\d+)\)?명/);
-
-    if (!yesMatch && !noMatch && !abstainMatch && !totalMatch) {
-        return null;
-    }
-
-    return {
-        votesYes: yesMatch ? parseInt(yesMatch[1], 10) : null,
-        votesNo: noMatch ? parseInt(noMatch[1], 10) : null,
-        votesAbstain: abstainMatch ? parseInt(abstainMatch[1], 10) : null,
-        totalAttendance: totalMatch ? parseInt(totalMatch[1], 10) : null
-    };
-};
 const toProjectorRenderState = ({ projectorMode, currentAgendaId, voteData, projectorData }) => ({
     projectorMode: projectorMode || 'IDLE',
     currentAgendaId: currentAgendaId || 1,
@@ -252,9 +231,13 @@ export default function ProjectorPage() {
     const displayStats = useMemo(() => getAgendaAttendanceDisplayStats({
         agenda: currentAgenda,
         meetingStats,
+        meetingId,
+        attendance,
         mailElectionVotes,
         activeMemberIdSet
-    }), [activeMemberIdSet, currentAgenda, mailElectionVotes, meetingStats]);
+    }), [activeMemberIdSet, attendance, currentAgenda, mailElectionVotes, meetingId, meetingStats]);
+    const waitingAgendaType = normalizeAgendaType(currentAgenda?.type);
+    const waitingIsElection = waitingAgendaType === 'election';
 
     // Stats for WAITING layer
     const waitingStats = useMemo(() => {
@@ -306,7 +289,9 @@ export default function ProjectorPage() {
                     : null)
                 ?? displayStats.total
             )
-            : (isConfirmed ? snapshot.stats.total : displayStats.total);
+            : (isConfirmed
+                ? (snapshot?.stats?.total > 0 ? snapshot.stats.total : displayStats.total)
+                : displayStats.total);
         const baseVotesYes = isResultSnapshot
             ? (
                 (displayVoteData?.resultVotesYes > 0
@@ -333,11 +318,10 @@ export default function ProjectorPage() {
             : (isConfirmed ? snapshot.votes.abstain : liveVoteBuckets.final.abstain);
         const customDeclaration = projectorDeclaration
             || (isConfirmed ? snapshot.declaration : (currentAgenda?.declaration || ''));
-        const parsedDeclarationStats = parseResultStatsFromDeclaration(customDeclaration);
-        const totalAttendance = parsedDeclarationStats?.totalAttendance ?? baseTotalAttendance;
-        const resolvedVotesYes = parsedDeclarationStats?.votesYes ?? baseVotesYes;
-        const resolvedVotesNo = parsedDeclarationStats?.votesNo ?? baseVotesNo;
-        const resolvedVotesAbstain = parsedDeclarationStats?.votesAbstain ?? baseVotesAbstain;
+        const totalAttendance = baseTotalAttendance;
+        const resolvedVotesYes = baseVotesYes;
+        const resolvedVotesNo = baseVotesNo;
+        const resolvedVotesAbstain = baseVotesAbstain;
 
         const currentAgendaType = normalizeAgendaType(currentAgenda?.type);
         const isSpecialVote = currentAgendaType === 'twoThirds';
@@ -496,9 +480,9 @@ export default function ProjectorPage() {
                                 <span className="absolute left-full bottom-[2vh] ml-[1vw] text-[min(2.5vw,3vh)] text-slate-500 font-light whitespace-nowrap">명</span>
                             </div>
                             <div className="flex items-center text-[min(1.5vw,2vh)] text-slate-400 font-medium font-mono mt-[2vh]">
-                                <span className="text-emerald-400">참석 {displayStats.direct}</span>
+                                <span className="text-emerald-400">{waitingIsElection ? '조합원' : '참석'} {displayStats.direct}</span>
                                 <span className="mx-[1vw] text-slate-700">|</span>
-                                <span className="text-blue-400">대리 {displayStats.proxy}</span>
+                                <span className={waitingIsElection ? 'text-amber-300' : 'text-blue-400'}>{waitingIsElection ? '대리제외' : '대리'} {displayStats.proxy}</span>
                                 <span className="mx-[1vw] text-slate-700">|</span>
                                 <span className="text-orange-400">{waitingStats.fixedAttendanceLabel} {waitingStats.fixedAttendanceCount}</span>
                             </div>

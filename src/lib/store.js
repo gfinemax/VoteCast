@@ -626,6 +626,23 @@ const getAgendaIdsForMeeting = (agendas = [], meetingId) => {
     return agendaIds;
 };
 
+const getMeetingIdForAgenda = (agendas = [], agendaId) => {
+    if (!agendaId) return null;
+
+    const sortedAgendas = [...agendas].sort((left, right) => (Number(left?.order_index) || 0) - (Number(right?.order_index) || 0));
+    const agendaIndex = sortedAgendas.findIndex((agenda) => agenda.id === agendaId);
+    if (agendaIndex === -1) return null;
+
+    for (let index = agendaIndex; index >= 0; index -= 1) {
+        const agenda = sortedAgendas[index];
+        if (agenda?.type === 'folder') {
+            return agenda.id;
+        }
+    }
+
+    return null;
+};
+
 // Create Context
 const StoreContext = createContext(null);
 
@@ -1035,6 +1052,9 @@ export function StoreProvider({ children }) {
 
     const reconcileAgendaVoteCountsFromWrittenVotes = React.useCallback(async (agendaRows = null) => {
         const agendasToCheck = Array.isArray(agendaRows) ? agendaRows : stateRef.current.agendas;
+        const agendaContextRows = Array.isArray(agendaRows) && agendaRows.length > 1
+            ? agendaRows
+            : stateRef.current.agendas;
         const targetAgendas = agendasToCheck.filter((agenda) =>
             agenda.type !== 'folder'
             && normalizeAgendaType(agenda.type) !== 'election'
@@ -1053,9 +1073,44 @@ export function StoreProvider({ children }) {
         }
 
         const targetAgendaIds = targetAgendas.map((agenda) => agenda.id);
+        const meetingIdByAgendaId = new Map(
+            targetAgendas.map((agenda) => [agenda.id, getMeetingIdForAgenda(agendaContextRows, agenda.id)])
+        );
+        const targetMeetingIds = Array.from(
+            new Set(
+                targetAgendas
+                    .map((agenda) => meetingIdByAgendaId.get(agenda.id))
+                    .filter(Boolean)
+            )
+        );
+
+        const writtenAttendanceByMeetingId = new Map();
+        if (targetMeetingIds.length) {
+            const { data: writtenAttendanceRows, error: writtenAttendanceError } = await supabase
+                .from('attendance')
+                .select('meeting_id, member_id')
+                .in('meeting_id', targetMeetingIds)
+                .eq('type', 'written');
+
+            if (writtenAttendanceError) {
+                console.error('Failed to load written attendance for agenda reconciliation:', writtenAttendanceError);
+                return false;
+            }
+
+            (writtenAttendanceRows || []).forEach((record) => {
+                const meetingId = record?.meeting_id;
+                const memberId = record?.member_id;
+                if (!meetingId || !memberId) return;
+
+                const memberIdSet = writtenAttendanceByMeetingId.get(meetingId) || new Set();
+                memberIdSet.add(memberId);
+                writtenAttendanceByMeetingId.set(meetingId, memberIdSet);
+            });
+        }
+
         const { data: writtenVotes, error } = await supabase
             .from('written_votes')
-            .select('agenda_id, choice')
+            .select('agenda_id, member_id, choice')
             .in('agenda_id', targetAgendaIds);
 
         if (error) {
@@ -1064,13 +1119,61 @@ export function StoreProvider({ children }) {
         }
 
         const countsByAgendaId = new Map();
+        const voteMemberIdsByAgendaId = new Map();
         (writtenVotes || []).forEach((vote) => {
             const currentCounts = countsByAgendaId.get(vote.agenda_id) || { yes: 0, no: 0, abstain: 0 };
+            const currentMemberIds = voteMemberIdsByAgendaId.get(vote.agenda_id) || new Set();
             if (vote.choice === 'yes' || vote.choice === 'no' || vote.choice === 'abstain') {
                 currentCounts[vote.choice] += 1;
             }
+            if (vote?.member_id) {
+                currentMemberIds.add(vote.member_id);
+            }
             countsByAgendaId.set(vote.agenda_id, currentCounts);
+            voteMemberIdsByAgendaId.set(vote.agenda_id, currentMemberIds);
         });
+
+        const missingVoteRows = [];
+        targetAgendas.forEach((agenda) => {
+            const meetingId = meetingIdByAgendaId.get(agenda.id);
+            if (!meetingId) return;
+
+            const writtenAttendanceMemberIds = writtenAttendanceByMeetingId.get(meetingId) || new Set();
+            const existingVoteMemberIds = voteMemberIdsByAgendaId.get(agenda.id) || new Set();
+
+            writtenAttendanceMemberIds.forEach((memberId) => {
+                if (existingVoteMemberIds.has(memberId)) return;
+
+                missingVoteRows.push({
+                    member_id: memberId,
+                    meeting_id: meetingId,
+                    agenda_id: agenda.id,
+                    choice: 'yes'
+                });
+            });
+        });
+
+        if (missingVoteRows.length) {
+            const { error: backfillError } = await supabase
+                .from('written_votes')
+                .upsert(missingVoteRows, {
+                    onConflict: 'member_id,meeting_id,agenda_id',
+                    ignoreDuplicates: true
+                });
+
+            if (backfillError) {
+                console.error('Failed to backfill missing written votes for agendas:', backfillError);
+            } else {
+                missingVoteRows.forEach((vote) => {
+                    const currentCounts = countsByAgendaId.get(vote.agenda_id) || { yes: 0, no: 0, abstain: 0 };
+                    const currentMemberIds = voteMemberIdsByAgendaId.get(vote.agenda_id) || new Set();
+                    currentCounts.yes += 1;
+                    currentMemberIds.add(vote.member_id);
+                    countsByAgendaId.set(vote.agenda_id, currentCounts);
+                    voteMemberIdsByAgendaId.set(vote.agenda_id, currentMemberIds);
+                });
+            }
+        }
 
         const updates = targetAgendas
             .map((agenda) => {
