@@ -1,9 +1,17 @@
 import React, { useEffect, useState, useRef } from 'react';
 
-const FlipDigit = ({ digit, playSound }) => {
+const FlipDigit = ({ digit, playSound, colorTheme = "slate" }) => {
     // 1. Prepare State for animation logic
     const [currentDigit, setCurrentDigit] = useState(digit);
     const [previousDigit, setPreviousDigit] = useState(digit);
+
+    // Theme logic
+    const themes = {
+        slate: { bg: 'bg-slate-900', top: 'bg-slate-800', border: 'border-slate-950/50', text: 'text-slate-100', split: 'bg-slate-950' },
+        emerald: { bg: 'bg-emerald-950', top: 'bg-emerald-800', border: 'border-emerald-950/50', text: 'text-emerald-50', split: 'bg-emerald-900' },
+        orange: { bg: 'bg-orange-950', top: 'bg-orange-800', border: 'border-orange-950/50', text: 'text-orange-50', split: 'bg-orange-900' }
+    };
+    const t = themes[colorTheme] || themes.slate;
 
     // 2. Logic: If digit prop changes, update state immediately.
     // The previous digit becomes what was just current, and current becomes the new prop.
@@ -14,17 +22,17 @@ const FlipDigit = ({ digit, playSound }) => {
     }
 
     return (
-        <div className="relative w-8 h-12 md:w-11 md:h-16 bg-slate-900 rounded-lg overflow-hidden shrink-0 shadow-lg perspective-1000">
+        <div className={`relative w-8 h-12 md:w-11 md:h-16 ${t.bg} rounded-lg overflow-hidden shrink-0 shadow-lg perspective-1000 transition-colors duration-300`}>
             {/* --- Base Layer (Static) --- */}
             {/* Shows the NEW number normally. This acts as the "background" that gets revealed. */}
             <div className="absolute inset-0 z-0">
-                <div className="absolute top-0 left-0 right-0 h-1/2 overflow-hidden bg-slate-800 border-b border-slate-950/50 rounded-t-lg">
-                    <span className="absolute top-0 left-0 right-0 h-full flex items-center justify-center text-3xl md:text-5xl font-black text-slate-100 translate-y-1/2">
+                <div className={`absolute top-0 left-0 right-0 h-1/2 overflow-hidden ${t.top} border-b ${t.border} rounded-t-lg transition-colors duration-300`}>
+                    <span className={`absolute top-0 left-0 right-0 h-full flex items-center justify-center text-3xl md:text-5xl font-black ${t.text} translate-y-1/2 transition-colors duration-300`}>
                         {currentDigit}
                     </span>
                 </div>
-                <div className="absolute bottom-0 left-0 right-0 h-1/2 overflow-hidden bg-slate-800 rounded-b-lg">
-                    <span className="absolute bottom-0 left-0 right-0 h-full flex items-center justify-center text-3xl md:text-5xl font-black text-slate-100 -translate-y-1/2">
+                <div className={`absolute bottom-0 left-0 right-0 h-1/2 overflow-hidden ${t.top} rounded-b-lg transition-colors duration-300`}>
+                    <span className={`absolute bottom-0 left-0 right-0 h-full flex items-center justify-center text-3xl md:text-5xl font-black ${t.text} -translate-y-1/2 transition-colors duration-300`}>
                         {currentDigit}
                     </span>
                 </div>
@@ -36,10 +44,10 @@ const FlipDigit = ({ digit, playSound }) => {
             <div key={currentDigit} className="absolute inset-0 z-10">
                 {/* Top Flap: Shows OLD number. Flips down (0deg -> -90deg) to hide itself. */}
                 <div
-                    className="absolute top-0 left-0 right-0 h-1/2 overflow-hidden bg-slate-800 border-b border-slate-950/50 rounded-t-lg origin-bottom animate-flip-top backface-hidden"
+                    className={`absolute top-0 left-0 right-0 h-1/2 overflow-hidden ${t.top} border-b ${t.border} rounded-t-lg origin-bottom animate-flip-top backface-hidden`}
                     style={{ zIndex: 20 }}
                 >
-                    <span className="absolute top-0 left-0 right-0 h-full flex items-center justify-center text-3xl md:text-5xl font-black text-slate-100 translate-y-1/2">
+                    <span className={`absolute top-0 left-0 right-0 h-full flex items-center justify-center text-3xl md:text-5xl font-black ${t.text} translate-y-1/2`}>
                         {previousDigit}
                     </span>
                     <div className="absolute inset-0 bg-black/0 animate-[shading-top_0.6s_ease-in_forwards]"></div>
@@ -47,10 +55,10 @@ const FlipDigit = ({ digit, playSound }) => {
 
                 {/* Bottom Flap: Shows NEW number. Flips down (90deg -> 0deg) to reveal itself. */}
                 <div
-                    className="absolute bottom-0 left-0 right-0 h-1/2 overflow-hidden bg-slate-800 rounded-b-lg origin-top animate-flip-bottom backface-hidden"
+                    className={`absolute bottom-0 left-0 right-0 h-1/2 overflow-hidden ${t.top} rounded-b-lg origin-top animate-flip-bottom backface-hidden`}
                     style={{ zIndex: 20 }}
                 >
-                    <span className="absolute bottom-0 left-0 right-0 h-full flex items-center justify-center text-3xl md:text-5xl font-black text-slate-100 -translate-y-1/2">
+                    <span className={`absolute bottom-0 left-0 right-0 h-full flex items-center justify-center text-3xl md:text-5xl font-black ${t.text} -translate-y-1/2`}>
                         {currentDigit}
                     </span>
                     <div className="absolute inset-0 bg-black/0 animate-[shading-bottom_0.6s_ease-out_forwards]"></div>
@@ -58,7 +66,7 @@ const FlipDigit = ({ digit, playSound }) => {
             </div>
 
             {/* Split Line */}
-            <div className="absolute top-1/2 left-0 right-0 h-px bg-slate-950 z-30 shadow-sm opacity-50"></div>
+            <div className={`absolute top-1/2 left-0 right-0 h-px ${t.split} z-30 shadow-sm opacity-50`}></div>
         </div>
     );
 };
@@ -66,7 +74,7 @@ const FlipDigit = ({ digit, playSound }) => {
 // Global for strict sound throttling
 let globalLastPlayedTime = 0;
 
-export default function FlipNumber({ value }) {
+export default function FlipNumber({ value, colorTheme = "slate" }) {
     const digits = value.toString().split('');
     const audioContextRef = React.useRef(null);
     const audioBufferRef = React.useRef(null);
@@ -155,9 +163,9 @@ export default function FlipNumber({ value }) {
     }, [value, playSound]);
 
     return (
-        <div className="flex gap-1">
+        <div className="flex gap-1 group">
             {digits.map((d, i) => (
-                <FlipDigit key={`${i}-${digits.length}`} digit={d} />
+                <FlipDigit key={`${i}-${digits.length}`} digit={d} colorTheme={colorTheme} />
             ))}
         </div>
     );
