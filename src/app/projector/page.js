@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { useStore } from '@/lib/store';
 import { getAgendaAttendanceDisplayStats, getAgendaVoteBuckets, getAttendanceQuorumTarget, getMeetingAttendanceStats, normalizeAgendaType } from '@/lib/store';
 import { supabase } from '@/lib/supabase';
@@ -35,14 +35,17 @@ const summarizeProjectorRenderState = (renderState = {}) => ({
     resultAgendaId: renderState.resultAgendaId || null,
     syncVersion: renderState.syncVersion || 0
 });
+const subscribeMountedState = () => () => {};
+const getMountedClientSnapshot = () => true;
+const getMountedServerSnapshot = () => false;
 
 export default function ProjectorPage() {
     const { state } = useStore();
-    const [isMounted, setIsMounted] = useState(false);
-    
-    useEffect(() => {
-        setIsMounted(true);
-    }, []);
+    const isMounted = useSyncExternalStore(
+        subscribeMountedState,
+        getMountedClientSnapshot,
+        getMountedServerSnapshot
+    );
 
     const { projectorMode: liveProjectorMode, agendas, currentAgendaId: liveCurrentAgendaId, voteData, projectorData, attendance, members, mailElectionVotes } = state;
     const rawRenderState = useMemo(() => toProjectorRenderState({
@@ -588,7 +591,7 @@ export default function ProjectorPage() {
                                 ) : (
                                     <p className="text-[min(3vw,4vh)] font-serif leading-relaxed text-slate-800 font-medium break-keep">
                                         &quot;<span className="font-extrabold underline decoration-slate-300 underline-offset-8 decoration-4">{resultStats.agendaTitle}</span>&quot;은<br />
-                                        전체 참석자 <span className="text-slate-900 font-black">{resultStats.totalAttendance.toLocaleString()}</span>명 중 {resultStats.isSpecialVote ? '3분의 2' : '과반수'} 찬성으로
+                                        총 <span className="text-slate-900 font-black">{resultStats.totalAttendance.toLocaleString()}</span>명 중 {resultStats.isSpecialVote ? '3분의 2' : '과반수'} 찬성으로
                                     </p>
                                 )}
 

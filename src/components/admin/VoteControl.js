@@ -1,10 +1,13 @@
 'use client';
 
-import React, { useMemo, useEffect, useLayoutEffect, useState, useCallback, useRef } from 'react';
+import React, { useMemo, useEffect, useLayoutEffect, useState, useRef } from 'react';
 import { useStore } from '@/lib/store';
-import { getAgendaAttendanceDisplayStats, getAgendaVoteBuckets, getAttendanceQuorumTarget, getElectionAgendaValidationStats, getMeetingAttendanceStats, normalizeAgendaType } from '@/lib/store';
+import { buildDefaultDeclaration, calculateAgendaPass, getAgendaAttendanceDisplayStats, getAgendaVoteBuckets, getAttendanceQuorumTarget, getElectionAgendaValidationStats, getMeetingAttendanceStats, normalizeAgendaType } from '@/lib/store';
 import { CheckCircle2, AlertTriangle, AlertCircle, Trash2, Lock, Unlock, RotateCcw, Save, Wand2, ArrowLeft, ArrowRight, X } from 'lucide-react';
 import Card from '@/components/ui/Card';
+import DeclarationEditor from '@/components/admin/DeclarationEditor';
+import DecisionConfirmModal from '@/components/admin/DecisionConfirmModal';
+import VoteTypeSelector from '@/components/admin/VoteTypeSelector';
 
 const EMPTY_INACTIVE_MEMBER_IDS = [];
 
@@ -36,7 +39,7 @@ export default function VoteControl() {
     const { members, attendance, agendas, currentAgendaId, voteData, projectorMode, projectorData, mailElectionVotes } = state;
     const [confirmReadyAgendaId, setConfirmReadyAgendaId] = useState(null);
     const [confirmModalState, setConfirmModalState] = useState({ isOpen: false, type: null }); // type: 'confirm' | 'reset'
-    const [isConfirmedToastDismissed, setIsConfirmedToastDismissed] = useState(false);
+    const [dismissedConfirmedToastKey, setDismissedConfirmedToastKey] = useState(null);
     const inactiveMemberIds = Array.isArray(voteData?.inactiveMemberIds) ? voteData.inactiveMemberIds : EMPTY_INACTIVE_MEMBER_IDS;
     const activeMemberIdSet = useMemo(() => {
         const inactiveMemberIdSet = new Set(inactiveMemberIds);
@@ -164,41 +167,25 @@ export default function VoteControl() {
     const isDirectSatisfied = !isElection || (displayStats.direct >= directTarget);
     const isQuorumSatisfied = (effectiveTotalAttendance >= quorumTarget) && isDirectSatisfied;
 
-    const calculatePass = useCallback((yesCount, totalCount = effectiveTotalAttendance) => {
-        if (isSpecialVote) {
-            return yesCount >= Math.ceil(totalCount * (2 / 3));
-        }
-        return yesCount > (totalCount / 2);
-    }, [effectiveTotalAttendance, isSpecialVote]);
+    const calculatePass = (yesCount, totalCount = effectiveTotalAttendance) => (
+        calculateAgendaPass(yesCount, totalCount, isSpecialVote)
+    );
     const isPassed = calculatePass(votesYes);
     const totalOnsiteAttendance = displayStats.direct + displayStats.proxy;
-
-    useEffect(() => {
-        setIsConfirmedToastDismissed(false);
-    }, [currentAgendaId, isConfirmed]);
+    const confirmedToastKey = `${currentAgendaId}:${isConfirmed ? 'confirmed' : 'live'}`;
+    const isConfirmedToastDismissed = dismissedConfirmedToastKey === confirmedToastKey;
 
     // 3. Declaration Generation
-    const generateDefaultDeclaration = useCallback((overrides = {}) => {
-        if (!currentAgenda || effectiveTotalAttendance === 0) return '';
-
-        const yesCount = overrides.yes ?? votesYes;
-        const noCount = overrides.no ?? votesNo;
-        const abstainCount = overrides.abstain ?? votesAbstain;
-        const criterion = isSpecialVote ? "3분의 2 이상" : "과반수 이상";
-        const passed = calculatePass(yesCount, effectiveTotalAttendance);
-        const fixedSourceText = isElection ? '우편투표를 포함하여' : '서면결의서를 포함하여';
-
-        const resultReason = passed ? `${criterion} 찬성으로` : '찬성 미달로';
-        const resultSuffix = isElection ? (passed ? '당선' : '낙선') : (passed ? '가결' : '부결');
-        // 일반: "안건명"은 ~를 포함하여 ... 찬성으로 가결 되었음을 선포합니다.
-        // 선거: "안건명"은 ~를 포함하여 ... 찬성으로 후보자는 당선 되었음을 선포합니다.
-        const resultLine = isElection
-            ? `후보자는 ${resultSuffix} 되었음을 선포합니다.`
-            : `${resultSuffix} 되었음을 선포합니다.`;
-        return `"${currentAgenda.title}"은 ${fixedSourceText} 전체 참석자 ${effectiveTotalAttendance.toLocaleString()}명 중
-찬성 ${yesCount}표, 반대 ${noCount}표, 기권 ${abstainCount}표인 ${resultReason}
-${resultLine}`;
-    }, [calculatePass, currentAgenda, effectiveTotalAttendance, isElection, isSpecialVote, votesAbstain, votesNo, votesYes]);
+    const generateDefaultDeclaration = (overrides = {}) => buildDefaultDeclaration({
+        agenda: currentAgenda,
+        effectiveTotalAttendance,
+        isElection,
+        isSpecialVote,
+        votesYes,
+        votesNo,
+        votesAbstain,
+        overrides
+    });
 
     // Use GLOBAL state for declaration editing (prevents revert on re-render)
     const declarationEditState = state.declarationEditState?.[currentAgendaId] || { isEditing: false, isAutoCalc: true };
@@ -229,7 +216,7 @@ ${resultLine}`;
         setDeclarationEditMode(currentAgendaId, isEditingDeclaration, value);
     };
 
-    const syncProjectorDeclaration = useCallback((nextDeclaration, overrides = {}) => {
+    const syncProjectorDeclaration = (nextDeclaration, overrides = {}) => {
         if (projectorMode !== 'RESULT' || !currentAgenda) return;
 
         const totalAttendance = overrides.totalAttendance ?? effectiveTotalAttendance;
@@ -249,27 +236,59 @@ ${resultLine}`;
             isPassed: calculatePass(votesYesForProjector, totalAttendance)
         };
         updateProjectorData(nextProjectorData);
-    }, [calculatePass, currentAgenda, effectiveTotalAttendance, projectorData, projectorMode, updateProjectorData, votesAbstain, votesNo, votesYes]);
+    };
 
     // Save declaration to DB (called when clicking Done)
-    const saveDeclaration = useCallback(() => {
+    const saveDeclaration = () => {
         if (currentAgenda && localDeclaration !== declaration) {
             updateAgenda({ id: currentAgenda.id, declaration: localDeclaration });
             syncProjectorDeclaration(localDeclaration);
         }
-    }, [currentAgenda, declaration, localDeclaration, syncProjectorDeclaration, updateAgenda]);
+    };
+
+    const handleStartDeclarationEdit = () => {
+        if (isConfirmed) return;
+        const initialDeclaration = declaration || generateDefaultDeclaration();
+        setDeclarationDraft({ agendaId: currentAgendaId, value: initialDeclaration });
+        setDeclarationEditMode(currentAgendaId, true, false);
+    };
+
+    const handleFinishDeclarationEdit = () => {
+        saveDeclaration();
+        setIsEditingDeclaration(false);
+    };
 
     // Declaration Auto-Update (only when NOT editing)
     useEffect(() => {
         if (!currentAgenda || isEditingDeclaration || isConfirmed) return;
         if (isAutoCalc) {
-            const newDecl = generateDefaultDeclaration();
+            const newDecl = buildDefaultDeclaration({
+                agenda: currentAgenda,
+                effectiveTotalAttendance,
+                isElection,
+                isSpecialVote,
+                votesYes,
+                votesNo,
+                votesAbstain
+            });
             if (newDecl !== currentAgenda.declaration) {
                 updateAgenda({ id: currentAgenda.id, declaration: newDecl });
-                syncProjectorDeclaration(newDecl);
+                if (projectorMode === 'RESULT') {
+                    updateProjectorData({
+                        ...(projectorData || {}),
+                        agendaId: currentAgenda.id,
+                        agendaTitle: currentAgenda.title,
+                        declaration: newDecl,
+                        votesYes,
+                        votesNo,
+                        votesAbstain,
+                        totalAttendance: effectiveTotalAttendance,
+                        isPassed: calculateAgendaPass(votesYes, effectiveTotalAttendance, isSpecialVote)
+                    });
+                }
             }
         }
-    }, [currentAgenda, generateDefaultDeclaration, isAutoCalc, isConfirmed, isEditingDeclaration, syncProjectorDeclaration, updateAgenda]);
+    }, [currentAgenda, effectiveTotalAttendance, isAutoCalc, isConfirmed, isEditingDeclaration, isElection, isSpecialVote, projectorData, projectorMode, updateAgenda, updateProjectorData, votesAbstain, votesNo, votesYes]);
 
     useEffect(() => {
         if (!hasSplitVoteColumns || isConfirmed) return undefined;
@@ -492,27 +511,6 @@ ${resultLine}`;
         ? `${voteCountDelta}표 부족`
         : `${Math.abs(voteCountDelta)}표 초과`;
     const canConfirmDecision = isReadyToConfirm && !isLocalDirty && !isApplyDisabled;
-    const voteTypeOptions = [
-        {
-            value: 'majority',
-            label: '일반',
-            activeClass: 'bg-blue-600 text-white font-black shadow-[0_0_15px_rgba(37,99,235,0.4)] border-blue-500',
-            tooltipLines: []
-        },
-        {
-            value: 'election',
-            label: '선거',
-            activeClass: 'bg-emerald-600 text-white font-black shadow-[0_0_15px_rgba(5,150,105,0.4)] border-emerald-500',
-            tooltipLines: []
-        },
-        {
-            value: 'twoThirds',
-            label: '해산/규약',
-            activeClass: 'bg-violet-600 text-white font-black shadow-[0_0_15px_rgba(124,58,237,0.4)] border-violet-500',
-            tooltipLines: []
-        }
-    ];
-
     const splitVoteDisplayCards = hasSplitVoteColumns ? [
         {
             key: 'yes',
@@ -579,7 +577,7 @@ ${resultLine}`;
                         </div>
                         <button
                             type="button"
-                            onClick={() => setIsConfirmedToastDismissed(true)}
+                            onClick={() => setDismissedConfirmedToastKey(confirmedToastKey)}
                             className="rounded-lg p-1 text-blue-400 transition-colors hover:bg-blue-50 hover:text-blue-700"
                             aria-label="확정 안내 닫기"
                         >
@@ -696,49 +694,13 @@ ${resultLine}`;
                         </div>
                     </div>
 
-                    {/* Vote Type Selector (Moved to Dark Box Bottom) */}
-                    <div className="flex items-center justify-end pt-3 border-t border-slate-800/80 mt-1">
-                        <div className="flex items-center gap-2">
-                            <div className="flex items-center rounded-lg border border-slate-700 bg-slate-950/50 p-1 shadow-inner">
-                                <button
-                                    type="button"
-                                    onClick={toggleTypeLock}
-                                    disabled={isConfirmed}
-                                    title={isTypeLocked ? '투표 유형 잠금 해제' : '투표 유형 잠금'}
-                                    className={`flex h-7 w-8 items-center justify-center rounded-md transition-all ${
-                                        isTypeLocked
-                                            ? 'bg-amber-500/20 text-amber-400 shadow-sm'
-                                            : 'bg-transparent text-slate-500 hover:bg-slate-800 hover:text-slate-300'
-                                    } disabled:cursor-not-allowed disabled:opacity-50`}
-                                >
-                                    {isTypeLocked ? <Lock size={12} /> : <Unlock size={12} />}
-                                </button>
-
-                                <div className="mx-1.5 h-3 w-px bg-slate-700"></div>
-
-                                <div className="flex items-center">
-                                    {voteTypeOptions.map((option) => {
-                                        const isActive = currentAgendaType === option.value;
-                                        return (
-                                            <div key={option.value}>
-                                                <button
-                                                    onClick={() => handleTypeChange(option.value)}
-                                                    disabled={isConfirmed || isTypeLocked}
-                                                    className={`rounded-md px-3.5 py-1 text-[11px] whitespace-nowrap transition-all border ${
-                                                        isActive
-                                                            ? option.activeClass
-                                                            : 'border-transparent bg-transparent text-slate-500 hover:bg-slate-800 hover:text-slate-300 font-medium'
-                                                    } disabled:cursor-not-allowed disabled:opacity-45`}
-                                                >
-                                                    {option.label}
-                                                </button>
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-                            </div>
-                        </div>
-                    </div>
+                    <VoteTypeSelector
+                        currentAgendaType={currentAgendaType}
+                        isConfirmed={isConfirmed}
+                        isTypeLocked={isTypeLocked}
+                        onToggleLock={toggleTypeLock}
+                        onTypeChange={handleTypeChange}
+                    />
                 </div>
             </section>
                 </div> {/* End of Left Column top grid */}
@@ -1094,57 +1056,15 @@ ${resultLine}`;
             {/* Bottom Grid: Sections 3 and 4 */}
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-stretch">
                 <div className="lg:col-span-4 flex flex-col gap-4">
-                    {/* Section 3: Declaration (Moved to Left Column) */}
-            <section>
-                <div className="flex justify-between items-center mb-1 mt-1">
-                    <h3 className="text-base font-bold text-slate-600 uppercase tracking-wider">
-                        03. 선포 문구
-                    </h3>
-                    {isEditingDeclaration && !isConfirmed ? (
-                        <button
-                            onClick={() => {
-                                saveDeclaration(); // Save to DB first
-                                setIsEditingDeclaration(false);
-                            }}
-                            className="text-xs flex items-center gap-1 px-3 py-1 bg-emerald-500 text-white rounded-full hover:bg-emerald-600 transition-colors font-medium"
-                        >
-                            ✓ 완료
-                        </button>
-                    ) : (
-                        <button
-                            onClick={() => {
-                                if (isConfirmed) return;
-                                const initialDeclaration = declaration || generateDefaultDeclaration();
-                                setDeclarationDraft({ agendaId: currentAgendaId, value: initialDeclaration });
-                                setDeclarationEditMode(currentAgendaId, true, false);
-                            }}
-                            disabled={isConfirmed}
-                            className={`text-xs flex items-center gap-1 px-3 py-1 rounded-full transition-colors font-medium ${isConfirmed ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
-                        >
-                            ✎ 편집
-                        </button>
-                    )}
-                </div>
-
-                <div className="flex flex-col flex-1">
-                    <textarea
-                        value={isEditingDeclaration ? localDeclaration : (declaration || '')}
-                        onChange={(e) => setDeclarationDraft({ agendaId: currentAgendaId, value: e.target.value })}
-                        disabled={!isEditingDeclaration || isConfirmed}
-                        placeholder={isEditingDeclaration ? "선포문구를 입력하세요..." : "편집 버튼을 클릭하면 자동 생성됩니다."}
-                        rows={Math.max(9, ((isEditingDeclaration ? localDeclaration : declaration) || '').split('\n').length)}
-                        className={`w-full p-4 border rounded-2xl outline-none text-base font-serif resize-none min-h-[180px] flex-1 shadow-sm leading-relaxed transition-colors ${isEditingDeclaration && !isConfirmed
-                            ? 'border-blue-300 bg-white text-slate-700 focus:ring-2 focus:ring-blue-500 shadow-blue-100/50'
-                            : 'border-slate-200 bg-slate-50 text-slate-600 cursor-not-allowed'
-                            }`}
+                    <DeclarationEditor
+                        isEditing={isEditingDeclaration}
+                        isConfirmed={isConfirmed}
+                        declaration={declaration}
+                        localDeclaration={localDeclaration}
+                        onChange={(value) => setDeclarationDraft({ agendaId: currentAgendaId, value })}
+                        onStartEdit={handleStartDeclarationEdit}
+                        onFinishEdit={handleFinishDeclarationEdit}
                     />
-                    {isConfirmed && (
-                        <div className="mt-1 text-[10px] text-slate-400 text-right pr-2">
-                            * 이 선포문은 의결 확정 시점에 고정되었습니다.
-                        </div>
-                    )}
-                </div>
-            </section>
                 </div>
                 <div className="lg:col-span-8 flex flex-col gap-4">
                     {/* Section 4: Final Confirmation */}
@@ -1289,49 +1209,12 @@ ${resultLine}`;
                     </button>
                 </div>
             </div>
-            {/* Custom Confirm Modal */}
             {confirmModalState.isOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-                    <div className="bg-white rounded-2xl p-6 shadow-2xl max-w-sm w-full animate-in zoom-in-95 duration-200">
-                        <div className="flex items-center gap-3 text-slate-800 mb-4">
-                            {confirmModalState.type === 'confirm' ? (
-                                <div className="p-2 bg-blue-100 text-blue-600 rounded-full">
-                                    <Lock size={20} />
-                                </div>
-                            ) : (
-                                <div className="p-2 bg-slate-100 text-slate-500 rounded-full">
-                                    <Unlock size={20} />
-                                </div>
-                            )}
-                            <h3 className="text-xl font-bold">
-                                {confirmModalState.type === 'confirm' ? '의결 확정 확인' : '확정 취소 확인'}
-                            </h3>
-                        </div>
-                        <div className="text-slate-600 leading-relaxed mb-8 whitespace-pre-line text-[15px]">
-                            {confirmModalState.type === 'confirm' 
-                                ? "현재 기록 상태로 안건 의결 결과를 확정하시겠습니까?\n\n이후 실시간 성원이 변동되어도 결과는 영구 고정됩니다."
-                                : "이미 확정된 안건 결과를 취소하시겠습니까?\n\n안건이 다시 실시간 성원 데이터에 연동되어 변동될 수 있습니다."}
-                        </div>
-                        <div className="flex justify-end gap-2">
-                            <button
-                                onClick={() => setConfirmModalState({ isOpen: false, type: null })}
-                                className="px-5 py-2.5 rounded-xl text-slate-600 bg-slate-100 hover:bg-slate-200 font-semibold transition-colors disabled:opacity-50"
-                            >
-                                되돌아기기
-                            </button>
-                            <button
-                                onClick={executeModalAction}
-                                className={`px-5 py-2.5 rounded-xl text-white font-semibold shadow-sm transition-all focus:ring-4 ${
-                                    confirmModalState.type === 'confirm' 
-                                    ? 'bg-blue-600 hover:bg-blue-700 focus:ring-blue-100' 
-                                    : 'bg-slate-700 hover:bg-slate-800 focus:ring-slate-200'
-                                }`}
-                            >
-                                {confirmModalState.type === 'confirm' ? '네, 확정합니다' : '네, 취소합니다'}
-                            </button>
-                        </div>
-                    </div>
-                </div>
+                <DecisionConfirmModal
+                    type={confirmModalState.type}
+                    onCancel={() => setConfirmModalState({ isOpen: false, type: null })}
+                    onConfirm={executeModalAction}
+                />
             )}
         </div>
     );

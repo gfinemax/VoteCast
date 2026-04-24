@@ -3,6 +3,11 @@
 import React, { useState, useEffect, useRef, createContext, useContext } from 'react';
 import { supabase } from '@/lib/supabase';
 
+export {
+    buildDefaultDeclaration,
+    calculateAgendaPass
+} from './voteCalculations';
+
 // Initial Empty Data (will be populated from DB)
 const INITIAL_DATA = {
     agendas: [],
@@ -1576,11 +1581,15 @@ export function StoreProvider({ children }) {
         const votesYes = voteBuckets.final.yes;
         const votesNo = voteBuckets.final.no;
         const votesAbstain = voteBuckets.final.abstain;
-        const fixedSourceText = voteBuckets.fixedLabel === '우편투표' ? '우편투표 포함' : '서면결의 포함';
+        const isElectionStore = voteBuckets.fixedLabel === '우편투표';
+        const attendancePrefix = isElectionStore
+            ? `우편투표를 포함한 총 ${total.toLocaleString()}명 중`
+            : `서면결의서를 포함한 총 ${total.toLocaleString()}명 중`;
 
-        const defaultDecl = total > 0 ? `"${targetAgenda.title}" ${fixedSourceText} 찬성(${votesYes})표, 반대(${votesNo})표, 기권(${votesAbstain})표인
-전체 참석자(${total.toLocaleString()})명중 ${criterion} 찬성으로
+        const defaultDecl = total > 0 ? `"${targetAgenda.title}"은 ${attendancePrefix}
+찬성 ${votesYes}표, 반대 ${votesNo}표, 기권 ${votesAbstain}표인 ${criterion} 찬성으로
 "${targetAgenda.title}"은 가결되었음을 선포합니다.` : "";
+
 
         const newVoteData = createStampedVoteData({
             ...vData,
