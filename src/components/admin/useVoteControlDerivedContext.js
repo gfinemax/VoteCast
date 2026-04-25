@@ -118,7 +118,7 @@ export default function useVoteControlDerivedContext({
     const directTarget = Math.ceil(totalMembers * 0.2);
     const isDirectSatisfied = !isElection || (displayStats.direct >= directTarget);
     const isQuorumSatisfied = (effectiveTotalAttendance >= quorumTarget) && isDirectSatisfied;
-    const isPassed = calculateAgendaPass(votesYes, effectiveTotalAttendance, isSpecialVote);
+    const isPassed = isQuorumSatisfied && calculateAgendaPass(votesYes, effectiveTotalAttendance, isSpecialVote);
     const totalOnsiteAttendance = displayStats.direct + displayStats.proxy;
     const voteCountSummary = getVoteCountSummary({
         votesYes,

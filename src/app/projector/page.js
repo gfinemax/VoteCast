@@ -2,7 +2,7 @@
 
 import React, { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { useStore } from '@/lib/store';
-import { getAgendaAttendanceDisplayStats, getAgendaVoteBuckets, getAttendanceQuorumTarget, getMeetingAttendanceStats, normalizeAgendaType } from '@/lib/store';
+import { calculateAgendaPass, getAgendaAttendanceDisplayStats, getAgendaVoteBuckets, getAttendanceQuorumTarget, getMeetingAttendanceStats, normalizeAgendaType } from '@/lib/store';
 import { supabase } from '@/lib/supabase';
 import { CheckCircle2, Settings, Crown, Award } from 'lucide-react';
 import dynamic from 'next/dynamic';
@@ -338,14 +338,7 @@ export default function ProjectorPage() {
         } else if (isConfirmed && snapshot.result) {
             isPassed = snapshot.result === 'PASSED';
         } else {
-            // Realtime Limit
-            const passThreshold = isSpecialVote ? Math.ceil(totalAttendance * (2 / 3)) : (totalAttendance / 2);
-            // Fix logic to match Admin: Special is >=, Majority is >
-            if (isSpecialVote) {
-                isPassed = resolvedVotesYes >= passThreshold;
-            } else {
-                isPassed = resolvedVotesYes > passThreshold;
-            }
+            isPassed = waitingStats.isReadyToOpen && calculateAgendaPass(resolvedVotesYes, totalAttendance, isSpecialVote);
         }
 
         return {
@@ -359,7 +352,7 @@ export default function ProjectorPage() {
             isSpecialVote,
             isElection: normalizeAgendaType(currentAgenda?.type) === 'election'
         };
-    }, [activeMemberIdSet, currentAgenda, displayStats, displayVoteData, mailElectionVotes, projectorMode]);
+    }, [activeMemberIdSet, currentAgenda, displayStats, displayVoteData, mailElectionVotes, projectorMode, waitingStats.isReadyToOpen]);
 
 
 

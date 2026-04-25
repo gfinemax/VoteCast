@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useRef, createContext, useContext } from 'react';
 import { supabase } from '@/lib/supabase';
+import { buildDefaultDeclaration } from './voteCalculations';
 
 export {
     buildDefaultDeclaration,
@@ -1055,7 +1056,7 @@ export function StoreProvider({ children }) {
         return rows;
     }, []);
 
-    const reconcileAgendaVoteCountsFromWrittenVotes = React.useCallback(async (agendaRows = null) => {
+    const reconcileAgendaVoteCountsFromWrittenVotes = React.useCallback(async (agendaRows = null, context = {}) => {
         const agendasToCheck = Array.isArray(agendaRows) ? agendaRows : stateRef.current.agendas;
         const agendaContextRows = Array.isArray(agendaRows) && agendaRows.length > 1
             ? agendaRows
@@ -1089,20 +1090,49 @@ export function StoreProvider({ children }) {
             )
         );
 
-        const writtenAttendanceByMeetingId = new Map();
+        const membersForReconcile = Array.isArray(context.membersRows)
+            ? context.membersRows
+            : stateRef.current.members;
+        const voteDataForReconcile = context.voteData || stateRef.current.voteData || {};
+        const inactiveMemberIdSet = new Set(getInactiveMemberIds(voteDataForReconcile));
+        const activeMemberIdSet = membersForReconcile.length
+            ? new Set(
+                membersForReconcile
+                    .filter((member) => member.is_active !== false && !inactiveMemberIdSet.has(member.id))
+                    .map((member) => member.id)
+            )
+            : null;
+
+        let attendanceRowsForMeetings = [];
         if (targetMeetingIds.length) {
-            const { data: writtenAttendanceRows, error: writtenAttendanceError } = await supabase
-                .from('attendance')
-                .select('meeting_id, member_id')
-                .in('meeting_id', targetMeetingIds)
-                .eq('type', 'written');
+            if (Array.isArray(context.attendanceRows)) {
+                attendanceRowsForMeetings = context.attendanceRows
+                    .filter((record) => targetMeetingIds.includes(record?.meeting_id))
+                    .map(normalizeAttendanceRecord);
+            } else {
+                const { data: attendanceRows, error: attendanceError } = await supabase
+                    .from('attendance')
+                    .select('id, created_at, meeting_id, member_id, type, proxy_name, has_election')
+                    .in('meeting_id', targetMeetingIds);
 
-            if (writtenAttendanceError) {
-                console.error('Failed to load written attendance for agenda reconciliation:', writtenAttendanceError);
-                return false;
+                if (attendanceError) {
+                    console.error('Failed to load attendance for agenda reconciliation:', attendanceError);
+                    return false;
+                }
+
+                attendanceRowsForMeetings = (attendanceRows || []).map(normalizeAttendanceRecord);
             }
+        }
 
-            (writtenAttendanceRows || []).forEach((record) => {
+        const writtenAttendanceByMeetingId = new Map();
+        targetMeetingIds.forEach((meetingId) => {
+            const currentWrittenRecords = getUniqueAttendanceRecords(
+                attendanceRowsForMeetings,
+                meetingId,
+                activeMemberIdSet
+            ).filter((record) => record.type === 'written');
+
+            currentWrittenRecords.forEach((record) => {
                 const meetingId = record?.meeting_id;
                 const memberId = record?.member_id;
                 if (!meetingId || !memberId) return;
@@ -1111,7 +1141,7 @@ export function StoreProvider({ children }) {
                 memberIdSet.add(memberId);
                 writtenAttendanceByMeetingId.set(meetingId, memberIdSet);
             });
-        }
+        });
 
         const { data: writtenVotes, error } = await supabase
             .from('written_votes')
@@ -1126,16 +1156,19 @@ export function StoreProvider({ children }) {
         const countsByAgendaId = new Map();
         const voteMemberIdsByAgendaId = new Map();
         (writtenVotes || []).forEach((vote) => {
-            const currentCounts = countsByAgendaId.get(vote.agenda_id) || { yes: 0, no: 0, abstain: 0 };
-            const currentMemberIds = voteMemberIdsByAgendaId.get(vote.agenda_id) || new Set();
-            if (vote.choice === 'yes' || vote.choice === 'no' || vote.choice === 'abstain') {
-                currentCounts[vote.choice] += 1;
-            }
-            if (vote?.member_id) {
-                currentMemberIds.add(vote.member_id);
-            }
-            countsByAgendaId.set(vote.agenda_id, currentCounts);
-            voteMemberIdsByAgendaId.set(vote.agenda_id, currentMemberIds);
+            const agendaId = vote?.agenda_id;
+            const memberId = vote?.member_id;
+            const meetingId = meetingIdByAgendaId.get(agendaId);
+            const writtenAttendanceMemberIds = writtenAttendanceByMeetingId.get(meetingId) || new Set();
+            if (!agendaId || !memberId || !writtenAttendanceMemberIds.has(memberId)) return;
+            if (!['yes', 'no', 'abstain'].includes(vote.choice)) return;
+
+            const currentCounts = countsByAgendaId.get(agendaId) || { yes: 0, no: 0, abstain: 0 };
+            const currentMemberIds = voteMemberIdsByAgendaId.get(agendaId) || new Set();
+            currentCounts[vote.choice] += 1;
+            currentMemberIds.add(memberId);
+            countsByAgendaId.set(agendaId, currentCounts);
+            voteMemberIdsByAgendaId.set(agendaId, currentMemberIds);
         });
 
         const missingVoteRows = [];
@@ -1259,7 +1292,11 @@ export function StoreProvider({ children }) {
                     console.error('Failed to load mail election votes:', mailElectionVotesError);
                 }
 
-                const didReconcile = await reconcileAgendaVoteCountsFromWrittenVotes(nextAgendas);
+                const didReconcile = await reconcileAgendaVoteCountsFromWrittenVotes(nextAgendas, {
+                    attendanceRows: attendance || [],
+                    membersRows: members || [],
+                    voteData: stateRef.current.voteData
+                });
                 if (didReconcile) {
                     const { data: refreshedAgendas } = await supabase
                         .from('agendas')
@@ -1573,7 +1610,6 @@ export function StoreProvider({ children }) {
             activeMemberIdSet
         });
         const total = attendanceStats.total;
-        const criterion = newType === 'twoThirds' ? "3분의 2 이상" : "과반수 이상";
         const voteBuckets = getAgendaVoteBuckets(targetAgenda, {
             mailElectionVotes: stateRef.current.mailElectionVotes,
             activeMemberIdSet
@@ -1582,13 +1618,22 @@ export function StoreProvider({ children }) {
         const votesNo = voteBuckets.final.no;
         const votesAbstain = voteBuckets.final.abstain;
         const isElectionStore = voteBuckets.fixedLabel === '우편투표';
-        const attendancePrefix = isElectionStore
-            ? `우편투표를 포함한 총 ${total.toLocaleString()}명 중`
-            : `서면결의서를 포함한 총 ${total.toLocaleString()}명 중`;
+        const activeMemberCount = activeMemberIdSet.size;
+        const quorumTarget = getAttendanceQuorumTarget(newType, activeMemberCount);
+        const directTarget = Math.ceil(activeMemberCount * 0.2);
+        const isDirectSatisfied = newType !== 'election' || attendanceStats.direct >= directTarget;
+        const isQuorumSatisfied = total >= quorumTarget && isDirectSatisfied;
 
-        const defaultDecl = total > 0 ? `"${targetAgenda.title}"은 ${attendancePrefix}
-찬성 ${votesYes}표, 반대 ${votesNo}표, 기권 ${votesAbstain}표인 ${criterion} 찬성으로
-"${targetAgenda.title}"은 가결되었음을 선포합니다.` : "";
+        const defaultDecl = buildDefaultDeclaration({
+            agenda: targetAgenda,
+            effectiveTotalAttendance: total,
+            isElection: isElectionStore,
+            isSpecialVote: newType === 'twoThirds',
+            isQuorumSatisfied,
+            votesYes,
+            votesNo,
+            votesAbstain
+        });
 
 
         const newVoteData = createStampedVoteData({

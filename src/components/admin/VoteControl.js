@@ -95,6 +95,7 @@ export default function VoteControl() {
         effectiveTotalAttendance,
         isElection,
         isSpecialVote,
+        isQuorumSatisfied,
         isConfirmed,
         votesYes,
         votesNo,

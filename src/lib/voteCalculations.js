@@ -17,6 +17,7 @@ export const buildDefaultDeclaration = ({
     effectiveTotalAttendance,
     isElection,
     isSpecialVote,
+    isQuorumSatisfied = true,
     votesYes,
     votesNo,
     votesAbstain,
@@ -28,10 +29,12 @@ export const buildDefaultDeclaration = ({
     const noCount = overrides.no ?? votesNo;
     const abstainCount = overrides.abstain ?? votesAbstain;
     const criterion = isSpecialVote ? "3분의 2 이상" : "과반수 이상";
-    const passed = calculateAgendaPass(yesCount, effectiveTotalAttendance, isSpecialVote);
+    const passed = isQuorumSatisfied && calculateAgendaPass(yesCount, effectiveTotalAttendance, isSpecialVote);
     const fixedSourceText = isElection ? '우편투표를 포함하여' : '서면결의서를 포함하여';
 
-    const resultReason = passed ? `${criterion} 찬성으로` : '찬성 미달로';
+    const resultReason = !isQuorumSatisfied
+        ? '성원 정족수 미달로'
+        : (passed ? `${criterion} 찬성으로` : '찬성 미달로');
     const resultSuffix = isElection ? (passed ? '당선' : '낙선') : (passed ? '가결' : '부결');
     const resultLine = isElection
         ? `후보자는 ${resultSuffix} 되었음을 선포합니다.`

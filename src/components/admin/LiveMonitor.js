@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useStore } from '@/lib/store';
-import { getAgendaAttendanceDisplayStats, getAgendaVoteBuckets, getAttendanceQuorumTarget, getKeyboardNavigableAgendaIds, getMeetingAttendanceStats, normalizeAgendaType } from '@/lib/store';
+import { calculateAgendaPass, getAgendaAttendanceDisplayStats, getAgendaVoteBuckets, getAttendanceQuorumTarget, getKeyboardNavigableAgendaIds, getMeetingAttendanceStats, normalizeAgendaType } from '@/lib/store';
 import { Monitor, CheckCircle2, Play, Settings } from 'lucide-react';
 import AlertModal from '@/components/ui/AlertModal';
 import { useProjector } from '@/components/admin/ProjectorContext';
@@ -169,22 +169,9 @@ export default function LiveMonitor({ mode = 'admin' }) {
     const votesNo = isConfirmed ? snapshot.votes.no : liveVoteBuckets.final.no;
     const votesAbstain = isConfirmed ? snapshot.votes.abstain : liveVoteBuckets.final.abstain;
 
-    // Pass Logic based on Vote Type
     const currentAgendaType = currentAgenda?.type || 'majority';
     const normalizedType = normalizeAgendaType(currentAgendaType);
     const isSpecialVote = normalizedType === 'twoThirds';
-
-    let isPassed = false;
-    if (isConfirmed && snapshot.result) {
-        isPassed = snapshot.result === 'PASSED';
-    } else {
-        const passThreshold = isSpecialVote ? Math.ceil(totalAttendance * (2 / 3)) : (totalAttendance / 2);
-        if (isSpecialVote) {
-            isPassed = votesYes >= passThreshold;
-        } else {
-            isPassed = votesYes > passThreshold;
-        }
-    }
 
     // [WAITING SCREEN LOGIC]
     const liveTotalMembers = activeMembers.length;
@@ -195,6 +182,10 @@ export default function LiveMonitor({ mode = 'admin' }) {
     const directAttendance = displayStats.direct;
     const isDirectSatisfied = !isElection || (directAttendance >= directTarget);
     const isReadyToOpen = isTotalQuorumReached && isDirectSatisfied;
+    const isQuorumSatisfied = isTotalQuorumReached && isDirectSatisfied;
+    const isPassed = isConfirmed && snapshot.result
+        ? snapshot.result === 'PASSED'
+        : isQuorumSatisfied && calculateAgendaPass(votesYes, totalAttendance, isSpecialVote);
     const quorumLabel = isSpecialVote ? '3분의 2' : '과반수';
     const quorumLinePosition = isSpecialVote ? '66.66%' : '50%';
     const isPptOnAir = projectorMode === 'PPT' || projectorMode === 'IDLE';
@@ -275,10 +266,6 @@ export default function LiveMonitor({ mode = 'admin' }) {
 
                                 {/* Stats Grid */}
                                 <div className="grid grid-cols-4 gap-1 w-full mb-0.5">
-                                    <div className="flex flex-col items-center bg-slate-50 rounded p-0.5 border border-slate-100">
-                                        <div className="text-[6px] font-bold text-slate-500">총</div>
-                                        <div className="text-[8px] font-black font-mono text-slate-800 tracking-tight">{totalAttendance}</div>
-                                    </div>
                                     <div className="flex flex-col items-center bg-blue-50 rounded p-0.5 border border-blue-100">
                                         <div className="text-[6px] font-bold text-blue-600">찬</div>
                                         <div className="text-[8px] font-black font-mono text-blue-700 tracking-tight">{votesYes}</div>
@@ -290,6 +277,10 @@ export default function LiveMonitor({ mode = 'admin' }) {
                                     <div className="flex flex-col items-center bg-slate-100 rounded p-0.5 border border-slate-200">
                                         <div className="text-[6px] font-bold text-slate-600">무</div>
                                         <div className="text-[8px] font-black font-mono text-slate-700 tracking-tight">{votesAbstain}</div>
+                                    </div>
+                                    <div className="flex flex-col items-center bg-slate-50 rounded p-0.5 border border-slate-100">
+                                        <div className="text-[6px] font-bold text-slate-500">총</div>
+                                        <div className="text-[8px] font-black font-mono text-slate-800 tracking-tight">{totalAttendance}</div>
                                     </div>
                                 </div>
                             </div>

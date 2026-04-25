@@ -11,6 +11,7 @@ export default function useVoteDeclarationSync({
     effectiveTotalAttendance,
     isElection,
     isSpecialVote,
+    isQuorumSatisfied,
     isConfirmed,
     votesYes,
     votesNo,
@@ -34,6 +35,7 @@ export default function useVoteDeclarationSync({
         effectiveTotalAttendance,
         isElection,
         isSpecialVote,
+        isQuorumSatisfied,
         votesYes,
         votesNo,
         votesAbstain,
@@ -57,7 +59,7 @@ export default function useVoteDeclarationSync({
             votesNo: votesNoForProjector,
             votesAbstain: votesAbstainForProjector,
             totalAttendance,
-            isPassed: calculateAgendaPass(votesYesForProjector, totalAttendance, isSpecialVote)
+            isPassed: isQuorumSatisfied && calculateAgendaPass(votesYesForProjector, totalAttendance, isSpecialVote)
         });
     };
 
@@ -103,6 +105,7 @@ export default function useVoteDeclarationSync({
             effectiveTotalAttendance,
             isElection,
             isSpecialVote,
+            isQuorumSatisfied,
             votesYes,
             votesNo,
             votesAbstain
@@ -120,11 +123,11 @@ export default function useVoteDeclarationSync({
                     votesNo,
                     votesAbstain,
                     totalAttendance: effectiveTotalAttendance,
-                    isPassed: calculateAgendaPass(votesYes, effectiveTotalAttendance, isSpecialVote)
+                    isPassed: isQuorumSatisfied && calculateAgendaPass(votesYes, effectiveTotalAttendance, isSpecialVote)
                 });
             }
         }
-    }, [currentAgenda, effectiveTotalAttendance, isAutoCalc, isConfirmed, isEditingDeclaration, isElection, isSpecialVote, projectorData, projectorMode, updateAgenda, updateProjectorData, votesAbstain, votesNo, votesYes]);
+    }, [currentAgenda, effectiveTotalAttendance, isAutoCalc, isConfirmed, isEditingDeclaration, isElection, isQuorumSatisfied, isSpecialVote, projectorData, projectorMode, updateAgenda, updateProjectorData, votesAbstain, votesNo, votesYes]);
 
     return {
         generateDefaultDeclaration,
