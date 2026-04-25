@@ -611,53 +611,67 @@ export default function CheckInPage() {
                     {/* Compact Stats Bar (Always Visible) */}
                     {activeMeetingId && (
                         <div className="px-4 py-2 bg-white">
-                            <div className="relative flex flex-col md:flex-row items-center justify-between md:justify-center py-1 md:py-4 px-2 gap-2" onClick={() => setIsStatsOpen(!isStatsOpen)}>
-
-                                {/* 1. Left: Total Context */}
-                                <div className="md:absolute md:left-0 flex flex-row md:flex-col items-center md:items-start gap-2 md:gap-0 text-sm md:text-base text-slate-500 font-bold tracking-tighter leading-none md:leading-normal">
-                                    <span>전체 {stats.total}명</span>
-                                    <span className="text-emerald-600">총회 출석 {stats.rate}%</span>
+                            <div className="relative flex flex-col py-1 md:py-2 px-1 md:px-2 gap-2 cursor-pointer max-w-xl mx-auto" onClick={() => setIsStatsOpen(!isStatsOpen)}>
+                                
+                                {/* Row 1: Total Context & Detail Button */}
+                                <div className="flex items-center justify-between w-full">
+                                    <div className="flex items-center gap-2 text-[13px] md:text-sm font-black text-slate-500 tracking-tighter leading-none font-sans">
+                                        <span>전체 {stats.total}명</span>
+                                        <div className="w-1 h-1 rounded-full bg-slate-300 hidden md:block"></div>
+                                        <span className={counterMode === 'election' ? "text-orange-600" : "text-emerald-600"}>
+                                            <span className="hidden md:inline">{counterMode === 'election' ? '선거투표율' : '총회출석율'}</span> {counterMode === 'election' ? stats.participantRate : stats.rate}%
+                                        </span>
+                                    </div>
+                                    
+                                    <div className="flex items-center gap-1 text-[11px] font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 px-2 py-1 rounded-full transition-colors shrink-0 shadow-inner">
+                                        {isStatsOpen ? (
+                                            <>접기 <ChevronUp size={12} strokeWidth={3} className="text-slate-400" /></>
+                                        ) : (
+                                            <>통계 <ChevronDown size={12} strokeWidth={3} className="text-slate-400" /></>
+                                        )}
+                                    </div>
                                 </div>
 
-                                {/* 2. Center: Hero Number with Segmented Control */}
-                                <div className="flex flex-col items-center gap-2 group hover:scale-[1.02] transition-transform duration-200">
-                                    {hasElectionAgenda ? (
-                                        <div className="flex bg-slate-100 p-0.5 rounded-lg border border-slate-200/60 shadow-inner">
-                                            <button 
-                                                onClick={(e) => { e.stopPropagation(); setCounterMode('general'); }}
-                                                className={`px-3 py-1.5 text-xs font-bold rounded-md transition-all ${counterMode === 'general' ? 'bg-white text-emerald-700 shadow-sm ring-1 ring-slate-200/50' : 'text-slate-400'}`}
-                                            >
-                                                총회 성원
-                                            </button>
-                                            <button 
-                                                onClick={(e) => { e.stopPropagation(); setCounterMode('election'); }}
-                                                className={`px-3 py-1.5 text-xs font-bold rounded-md transition-all flex items-center gap-1 ${counterMode === 'election' ? 'bg-white text-orange-600 shadow-sm ring-1 ring-slate-200/50' : 'text-slate-400'}`}
-                                            >
-                                                선거 투표권자
-                                            </button>
-                                        </div>
-                                    ) : (
-                                        <div className="text-xs font-bold text-slate-400 tracking-wide mt-1 mb-1">총회 출석</div>
-                                    )}
-                                    <FlipNumber 
-                                        value={counterMode === 'general' || !hasElectionAgenda ? stats.checkedIn : stats.electionCount} 
-                                        colorTheme={counterMode === 'general' || !hasElectionAgenda ? 'emerald' : 'orange'}
-                                    />
-                                    {hasElectionAgenda && stats.participantCount !== stats.checkedIn && counterMode === 'general' && (
-                                        <div className="text-[11px] font-semibold text-amber-600">
-                                            선거 참여 포함 {stats.participantCount}명 ({stats.participantRate}%)
-                                        </div>
-                                    )}
-                                </div>
+                                {/* Row 2: Toggle & Flip Counter */}
+                                <div className="flex flex-row items-center justify-between w-full">
+                                    {/* Segmented Control */}
+                                    <div className="flex flex-col items-start gap-1">
+                                        {hasElectionAgenda ? (
+                                            <div className="flex bg-slate-100 p-0.5 rounded-lg border border-slate-200/60 shadow-inner">
+                                                <button 
+                                                    onClick={(e) => { e.stopPropagation(); setCounterMode('general'); }}
+                                                    className={`px-2.5 py-1 text-[11px] font-black tracking-tight rounded-md transition-all whitespace-nowrap ${counterMode === 'general' ? 'bg-white text-emerald-700 shadow-sm ring-1 ring-slate-200/50' : 'text-slate-400'}`}
+                                                >
+                                                    총회 성원
+                                                </button>
+                                                <button 
+                                                    onClick={(e) => { e.stopPropagation(); setCounterMode('election'); }}
+                                                    className={`px-2.5 py-1 text-[11px] font-black tracking-tight rounded-md transition-all whitespace-nowrap flex items-center gap-1 ${counterMode === 'election' ? 'bg-white text-orange-600 shadow-sm ring-1 ring-slate-200/50' : 'text-slate-400'}`}
+                                                >
+                                                    선거권자
+                                                </button>
+                                            </div>
+                                        ) : (
+                                            <div className="text-[13px] md:text-sm font-black text-slate-700 tracking-wide bg-slate-100 px-3 py-1.5 rounded-lg border border-slate-200/50">
+                                                출석 현황
+                                            </div>
+                                        )}
+                                        
+                                        {hasElectionAgenda && stats.participantCount !== stats.checkedIn && counterMode === 'general' && (
+                                            <div className="text-[10px] font-bold text-amber-600 ml-1">
+                                                *선거참여 포함 {stats.participantCount}명
+                                            </div>
+                                        )}
+                                    </div>
 
-                                {/* 3. Right: Detail Button */}
-                                <button className="md:absolute md:right-0 text-xs font-bold text-white bg-slate-600 hover:bg-slate-700 active:scale-95 transition-all px-2 py-1 md:py-0.5 rounded-full flex items-center gap-1 shadow-md w-full md:w-auto justify-center">
-                                    {isStatsOpen ? (
-                                        <>접기 <ChevronUp size={14} /></>
-                                    ) : (
-                                        <>상세 통계 <ChevronDown size={14} /></>
-                                    )}
-                                </button>
+                                    {/* Flip Counter */}
+                                    <div className="transform scale-[0.80] origin-right shrink-0">
+                                        <FlipNumber 
+                                            value={counterMode === 'general' || !hasElectionAgenda ? stats.checkedIn : stats.electionCount} 
+                                            colorTheme={counterMode === 'general' || !hasElectionAgenda ? 'emerald' : 'orange'}
+                                        />
+                                    </div>
+                                </div>
                             </div>
 
                             {/* Collapsible Detail Stats */}

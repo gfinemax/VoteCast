@@ -384,7 +384,7 @@ export const getElectionAgendaValidationStats = ({
     const uniqueRecords = getUniqueAttendanceRecords(attendance, meetingId, activeMemberIdSet);
     const directElectionIds = new Set(
         uniqueRecords
-            .filter((record) => record.type === 'direct' && record.has_election)
+            .filter((record) => record.type === 'direct')
             .map((record) => record.member_id)
     );
     const proxyElectionIds = new Set(
@@ -429,7 +429,7 @@ export const getElectionAgendaValidationStats = ({
     const missingMailVoteCount = missingMailVoteMemberIds.length;
     const overlapMailVoteCount = overlapMailVoteMemberIds.length;
     const invalidProxyElectionCount = invalidProxyElectionMemberIds.length;
-    const onsiteEligibleCount = Math.max(0, directElectionIds.size - overlapMailVoteCount);
+    const onsiteEligibleCount = directElectionIds.size;
 
     return {
         expectedMailVoteCount: expectedMailVoteIds.size,

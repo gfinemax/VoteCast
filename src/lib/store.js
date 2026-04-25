@@ -325,7 +325,7 @@ export const getAgendaVoteBuckets = (agenda = {}, options = {}) => {
     return {
         hasSplitVoteColumns,
         isElectionAgenda,
-        fixedLabel: isElectionAgenda ? '우편투표' : '서면',
+        fixedLabel: isElectionAgenda ? '우편투표' : '서면결의서',
         fixedParticipantCount: isElectionAgenda ? (mailVoteStats?.participantCount || 0) : null,
         fixed,
         written: fixed,
@@ -501,7 +501,7 @@ export const getAgendaAttendanceDisplayStats = ({
         return {
             ...baseStats,
             isElectionAgenda,
-            fixedAttendanceLabel: '서면',
+            fixedAttendanceLabel: '서면결의서',
             fixedAttendanceCount: baseStats.written,
             mailParticipantCount: 0,
             onsiteEligibleCount: baseStats.direct + baseStats.proxy
@@ -554,7 +554,7 @@ export const getElectionAgendaValidationStats = ({
     const uniqueRecords = getUniqueAttendanceRecords(attendance, meetingId, activeMemberIdSet);
     const directElectionIds = new Set(
         uniqueRecords
-            .filter((record) => record.type === 'direct' && record.has_election)
+            .filter((record) => record.type === 'direct')
             .map((record) => record.member_id)
     );
     const proxyElectionIds = new Set(
@@ -599,7 +599,7 @@ export const getElectionAgendaValidationStats = ({
     const missingMailVoteCount = missingMailVoteMemberIds.length;
     const overlapMailVoteCount = overlapMailVoteMemberIds.length;
     const invalidProxyElectionCount = invalidProxyElectionMemberIds.length;
-    const onsiteEligibleCount = Math.max(0, directElectionIds.size - overlapMailVoteCount);
+    const onsiteEligibleCount = directElectionIds.size;
 
     return {
         expectedMailVoteCount: expectedMailVoteIds.size,
