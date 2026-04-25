@@ -3,6 +3,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useStore } from '@/lib/store';
 import {
+    getElectionAgendaValidationStats,
     getMajorityThreshold,
     getMeetingAttendanceStats,
     getUniqueAttendanceRecords,
@@ -240,6 +241,31 @@ export default function CheckInPage() {
         [meetingAttendanceRecords]
     );
 
+    // Derive Active Agendas (Items inside the current Active Meeting Folder)
+    // Assumption: Agendas are ordered. Meeting is a folder. Items follow it until next folder.
+    const activeAgendas = useMemo(() => {
+        if (!activeMeetingId || agendas.length === 0) return [];
+
+        const folderIndex = agendas.findIndex(a => a.id === activeMeetingId);
+        if (folderIndex === -1) return [];
+
+        const items = [];
+        for (let i = folderIndex + 1; i < agendas.length; i++) {
+            if (agendas[i].type === 'folder') break; // Stop at next folder
+            items.push(agendas[i]);
+        }
+        return items;
+    }, [activeMeetingId, agendas]);
+    const writtenAgendas = useMemo(
+        () => activeAgendas.filter((agenda) => normalizeAgendaType(agenda?.type) !== 'election'),
+        [activeAgendas]
+    );
+    const electionAgendas = useMemo(
+        () => activeAgendas.filter((agenda) => normalizeAgendaType(agenda?.type) === 'election'),
+        [activeAgendas]
+    );
+    const hasElectionAgenda = electionAgendas.length > 0;
+
     // Filter Stats by Active Meeting
     const stats = useMemo(() => {
         // If no active meeting, stats are 0
@@ -253,6 +279,7 @@ export default function CheckInPage() {
             electionCount: 0,
             rate: 0,
             participantRate: 0,
+            electionRate: 0,
             directTarget: Math.ceil(activeMembers.length * 0.2),
             majorityTarget: getMajorityThreshold(activeMembers.length),
             twoThirdsTarget: Math.ceil(activeMembers.length * (2 / 3)),
@@ -265,14 +292,28 @@ export default function CheckInPage() {
         const directCount = meetingStats.direct;
         const proxyCount = meetingStats.proxy;
         const writtenCount = meetingStats.written;
-        const electionCount = meetingStats.election;
+        const electionValidation = hasElectionAgenda
+            ? getElectionAgendaValidationStats({
+                agenda: electionAgendas[0],
+                meetingId: activeMeetingId,
+                attendance,
+                mailElectionVotes,
+                activeMemberIdSet
+            })
+            : null;
+        const electionCount = electionValidation
+            ? electionValidation.expectedTotalVotes
+            : meetingStats.election;
         const checkedInCount = meetingStats.total;
-        const participantCount = meetingStats.participantTotal;
+        const participantCount = hasElectionAgenda
+            ? Math.max(meetingStats.participantTotal, electionCount)
+            : meetingStats.participantTotal;
 
         // Total Members in DB
         const total = activeMembers.length;
         const rate = total > 0 ? ((checkedInCount / total) * 100).toFixed(1) : 0;
         const participantRate = total > 0 ? ((participantCount / total) * 100).toFixed(1) : 0;
+        const electionRate = total > 0 ? ((electionCount / total) * 100).toFixed(1) : 0;
 
         // Targets
         const directTarget = Math.ceil(total * 0.2);
@@ -289,6 +330,7 @@ export default function CheckInPage() {
             electionCount,
             rate,
             participantRate,
+            electionRate,
             directTarget,
             majorityTarget,
             twoThirdsTarget,
@@ -296,7 +338,7 @@ export default function CheckInPage() {
             isMajorityMet: checkedInCount >= majorityTarget,
             isTwoThirdsMet: checkedInCount >= twoThirdsTarget
         };
-    }, [activeMeetingId, activeMemberIdSet, activeMembers.length, attendance]);
+    }, [activeMeetingId, activeMemberIdSet, activeMembers.length, attendance, electionAgendas, hasElectionAgenda, mailElectionVotes]);
 
     const filteredMembers = useMemo(() => {
         if (!searchTerm) return activeMembers;
@@ -400,24 +442,6 @@ export default function CheckInPage() {
     const [isCancelModalOpen, setIsCancelModalOpen] = useState(false);
     const [cancelMemberId, setCancelMemberId] = useState(null);
 
-    // Derive Active Agendas (Items inside the current Active Meeting Folder)
-    // Assumption: Agendas are ordered. Meeting is a folder. Items follow it until next folder.
-    const activeAgendas = (() => {
-        if (!activeMeetingId || agendas.length === 0) return [];
-
-        const folderIndex = agendas.findIndex(a => a.id === activeMeetingId);
-        if (folderIndex === -1) return [];
-
-        const items = [];
-        for (let i = folderIndex + 1; i < agendas.length; i++) {
-            if (agendas[i].type === 'folder') break; // Stop at next folder
-            items.push(agendas[i]);
-        }
-        return items;
-    })();
-    const writtenAgendas = activeAgendas.filter((agenda) => normalizeAgendaType(agenda?.type) !== 'election');
-    const electionAgendas = activeAgendas.filter((agenda) => normalizeAgendaType(agenda?.type) === 'election');
-    const hasElectionAgenda = electionAgendas.length > 0;
     const electionAgendaIdSet = useMemo(
         () => new Set(electionAgendas.map((agenda) => agenda.id)),
         [electionAgendas]
@@ -619,7 +643,7 @@ export default function CheckInPage() {
                                         <span>전체 {stats.total}명</span>
                                         <div className="w-1 h-1 rounded-full bg-slate-300 hidden md:block"></div>
                                         <span className={counterMode === 'election' ? "text-orange-600" : "text-emerald-600"}>
-                                            <span className="hidden md:inline">{counterMode === 'election' ? '선거투표율' : '총회출석율'}</span> {counterMode === 'election' ? stats.participantRate : stats.rate}%
+                                            <span className="hidden md:inline">{counterMode === 'election' ? '선거투표율' : '총회출석율'}</span> {counterMode === 'election' ? stats.electionRate : stats.rate}%
                                         </span>
                                     </div>
                                     

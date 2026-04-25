@@ -138,6 +138,81 @@ const applyWrittenVoteDeltaToAgendaList = (agendas = [], votes = [], delta = 1) 
     });
 };
 
+const buildWrittenVotePreviewPayload = (agendas = [], meetingId = null, votes = []) => {
+    if (!meetingId) return [];
+
+    const meetingAgendaIds = new Set(getAgendaIdsForMeeting(agendas, meetingId));
+    const choiceByAgendaId = new Map();
+    (votes || []).forEach((vote) => {
+        const agendaId = parseInt(vote?.agenda_id, 10);
+        const choice = vote?.choice;
+        if (!agendaId || !['yes', 'no', 'abstain'].includes(choice)) return;
+        choiceByAgendaId.set(agendaId, choice);
+    });
+
+    return agendas
+        .filter((agenda) => (
+            meetingAgendaIds.has(agenda.id)
+            && agenda.type !== 'folder'
+            && normalizeAgendaType(agenda.type) !== 'election'
+            && [
+                'written_yes',
+                'written_no',
+                'written_abstain',
+                'onsite_yes',
+                'onsite_no',
+                'onsite_abstain'
+            ].every((field) => Object.prototype.hasOwnProperty.call(agenda, field))
+        ))
+        .map((agenda) => ({
+            agenda_id: agenda.id,
+            choice: choiceByAgendaId.get(agenda.id) || 'yes'
+        }));
+};
+
+const applyMailElectionVotePreview = (mailElectionVotes = [], {
+    memberId,
+    meetingId,
+    votes = [],
+    action = 'upsert'
+} = {}) => {
+    if (!memberId || !meetingId || !Array.isArray(votes) || !votes.length) {
+        return mailElectionVotes;
+    }
+
+    const normalizedVotes = votes
+        .map((vote) => ({
+            agenda_id: parseInt(vote?.agenda_id, 10),
+            choice: vote?.choice
+        }))
+        .filter((vote) => vote.agenda_id && ['yes', 'no', 'abstain'].includes(vote.choice));
+
+    if (!normalizedVotes.length) return mailElectionVotes;
+
+    const targetAgendaIds = new Set(normalizedVotes.map((vote) => vote.agenda_id));
+    const remainingVotes = mailElectionVotes.filter((vote) => !(
+        vote?.member_id === memberId
+        && vote?.meeting_id === meetingId
+        && targetAgendaIds.has(vote?.agenda_id)
+    ));
+
+    if (action === 'remove') {
+        return remainingVotes;
+    }
+
+    const createdAt = new Date().toISOString();
+    const previewRows = normalizedVotes.map((vote) => ({
+        id: `preview-mail-${meetingId}-${memberId}-${vote.agenda_id}`,
+        member_id: memberId,
+        meeting_id: meetingId,
+        agenda_id: vote.agenda_id,
+        choice: vote.choice,
+        created_at: createdAt
+    }));
+
+    return [...remainingVotes, ...previewRows];
+};
+
 export const getKeyboardNavigableAgendaIds = (agendas = []) => {
     const groups = [];
     let currentGroup = { folder: null, items: [] };
@@ -1476,6 +1551,21 @@ export function StoreProvider({ children }) {
                 await reconcileAgendaVoteCountsFromWrittenVotes(targetAgendas);
                 await refreshAgendasFromDb();
             })
+            .on('broadcast', { event: 'mail_election_votes_preview' }, (msg) => {
+                const { memberId, meetingId, action } = msg.payload || {};
+                const votes = Array.isArray(msg.payload?.votes) ? msg.payload.votes : [];
+                if (!memberId || !meetingId || !votes.length) return;
+                console.log('[Broadcast] Mail election vote preview received:', action, votes.length);
+                setState(prev => ({
+                    ...prev,
+                    mailElectionVotes: applyMailElectionVotePreview(prev.mailElectionVotes, {
+                        memberId,
+                        meetingId,
+                        votes,
+                        action
+                    })
+                }));
+            })
             .on('broadcast', { event: 'mail_election_votes_changed' }, async () => {
                 await refreshMailElectionVotesFromDb();
             })
@@ -1725,13 +1815,17 @@ export function StoreProvider({ children }) {
 
             pendingAttendanceOpsRef.current.add(attendanceKey);
             const agendaTypeById = new Map(stateRef.current.agendas.map((agenda) => [agenda.id, normalizeAgendaType(agenda?.type)]));
-            const writtenVotePayload = (meetingType === 'written' ? writtenVotes : []).filter((vote) => (
+            const providedWrittenVotePayload = (meetingType === 'written' ? writtenVotes : []).filter((vote) => (
                 agendaTypeById.get(vote?.agenda_id) && agendaTypeById.get(vote.agenda_id) !== 'election'
             ));
+            const writtenVotePayload = meetingType === 'written'
+                ? buildWrittenVotePreviewPayload(stateRef.current.agendas, meetingId, providedWrittenVotePayload)
+                : [];
             const electionVotePayload = (electionMode === 'mail' ? electionVotes : []).filter((vote) => (
                 agendaTypeById.get(vote?.agenda_id) === 'election'
             ));
             let didApplyWrittenPreview = false;
+            let didApplyMailPreview = false;
 
             try {
                 // Optimistic Update (Attendance Only)
@@ -1762,6 +1856,24 @@ export function StoreProvider({ children }) {
                         payload: { meetingId, votes: writtenVotePayload, delta: 1 }
                     });
                     didApplyWrittenPreview = true;
+                }
+
+                if (electionVotePayload.length) {
+                    setState(prev => ({
+                        ...prev,
+                        mailElectionVotes: applyMailElectionVotePreview(prev.mailElectionVotes, {
+                            memberId,
+                            meetingId,
+                            votes: electionVotePayload,
+                            action: 'upsert'
+                        })
+                    }));
+                    attendanceSyncChannelRef.current?.send({
+                        type: 'broadcast',
+                        event: 'mail_election_votes_preview',
+                        payload: { memberId, meetingId, votes: electionVotePayload, action: 'upsert' }
+                    });
+                    didApplyMailPreview = true;
                 }
 
                 // Broadcast to other clients BEFORE RPC (RPC can be slow)
@@ -1812,6 +1924,22 @@ export function StoreProvider({ children }) {
                                         payload: { meetingId, votes: writtenVotePayload, delta: -1 }
                                     });
                                 }
+                            if (didApplyMailPreview) {
+                                setState(prev => ({
+                                    ...prev,
+                                    mailElectionVotes: applyMailElectionVotePreview(prev.mailElectionVotes, {
+                                        memberId,
+                                        meetingId,
+                                        votes: electionVotePayload,
+                                        action: 'remove'
+                                    })
+                                }));
+                                attendanceSyncChannelRef.current?.send({
+                                    type: 'broadcast',
+                                    event: 'mail_election_votes_preview',
+                                    payload: { memberId, meetingId, votes: electionVotePayload, action: 'remove' }
+                                });
+                            }
                             return { ok: false, error: fallbackError };
                         }
                     } else {
@@ -1830,6 +1958,22 @@ export function StoreProvider({ children }) {
                                 type: 'broadcast',
                                 event: 'written_votes_preview',
                                 payload: { meetingId, votes: writtenVotePayload, delta: -1 }
+                            });
+                        }
+                        if (didApplyMailPreview) {
+                            setState(prev => ({
+                                ...prev,
+                                mailElectionVotes: applyMailElectionVotePreview(prev.mailElectionVotes, {
+                                    memberId,
+                                    meetingId,
+                                    votes: electionVotePayload,
+                                    action: 'remove'
+                                })
+                            }));
+                            attendanceSyncChannelRef.current?.send({
+                                type: 'broadcast',
+                                event: 'mail_election_votes_preview',
+                                payload: { memberId, meetingId, votes: electionVotePayload, action: 'remove' }
                             });
                         }
                         return { ok: false, error };
@@ -1959,9 +2103,12 @@ export function StoreProvider({ children }) {
             }
 
             const agendaTypeById = new Map(stateRef.current.agendas.map((agenda) => [agenda.id, normalizeAgendaType(agenda?.type)]));
-            const writtenVotePayload = (meetingType === 'written' ? writtenVotes : []).filter((vote) => (
+            const providedWrittenVotePayload = (meetingType === 'written' ? writtenVotes : []).filter((vote) => (
                 agendaTypeById.get(vote?.agenda_id) && agendaTypeById.get(vote.agenda_id) !== 'election'
             ));
+            const writtenVotePayload = meetingType === 'written'
+                ? buildWrittenVotePreviewPayload(stateRef.current.agendas, meetingId, providedWrittenVotePayload)
+                : [];
             const electionVotePayload = (electionMode === 'mail' ? electionVotes : []).filter((vote) => (
                 agendaTypeById.get(vote?.agenda_id) === 'election'
             ));
@@ -2056,7 +2203,9 @@ export function StoreProvider({ children }) {
             const hadElectionAttendance = existingRecords.some((record) => record.has_election);
             pendingAttendanceOpsRef.current.add(attendanceKey);
             let writtenVotePayload = [];
+            let mailElectionVotePayload = [];
             let didApplyWrittenPreview = false;
+            let didApplyMailPreview = false;
 
             try {
                 if (hadWrittenAttendance) {
@@ -2069,7 +2218,12 @@ export function StoreProvider({ children }) {
                 }
 
                 if (hadElectionAttendance) {
-                    await refreshMailElectionVotesFromDb();
+                    const { data: existingMailVotes } = await supabase
+                        .from('mail_election_votes')
+                        .select('agenda_id, choice')
+                        .eq('member_id', memberId)
+                        .eq('meeting_id', meetingId);
+                    mailElectionVotePayload = Array.isArray(existingMailVotes) ? existingMailVotes : [];
                 }
 
                 setState(prev => ({
@@ -2088,6 +2242,24 @@ export function StoreProvider({ children }) {
                         payload: { meetingId, votes: writtenVotePayload, delta: -1 }
                     });
                     didApplyWrittenPreview = true;
+                }
+
+                if (mailElectionVotePayload.length) {
+                    setState(prev => ({
+                        ...prev,
+                        mailElectionVotes: applyMailElectionVotePreview(prev.mailElectionVotes, {
+                            memberId,
+                            meetingId,
+                            votes: mailElectionVotePayload,
+                            action: 'remove'
+                        })
+                    }));
+                    attendanceSyncChannelRef.current?.send({
+                        type: 'broadcast',
+                        event: 'mail_election_votes_preview',
+                        payload: { memberId, meetingId, votes: mailElectionVotePayload, action: 'remove' }
+                    });
+                    didApplyMailPreview = true;
                 }
 
                 // Broadcast to other clients BEFORE RPC (RPC can be slow)
@@ -2124,6 +2296,22 @@ export function StoreProvider({ children }) {
                                     payload: { meetingId, votes: writtenVotePayload, delta: 1 }
                                 });
                             }
+                            if (didApplyMailPreview) {
+                                setState(prev => ({
+                                    ...prev,
+                                    mailElectionVotes: applyMailElectionVotePreview(prev.mailElectionVotes, {
+                                        memberId,
+                                        meetingId,
+                                        votes: mailElectionVotePayload,
+                                        action: 'upsert'
+                                    })
+                                }));
+                                attendanceSyncChannelRef.current?.send({
+                                    type: 'broadcast',
+                                    event: 'mail_election_votes_preview',
+                                    payload: { memberId, meetingId, votes: mailElectionVotePayload, action: 'upsert' }
+                                });
+                            }
                             return;
                         }
                     } else {
@@ -2137,6 +2325,22 @@ export function StoreProvider({ children }) {
                                 type: 'broadcast',
                                 event: 'written_votes_preview',
                                 payload: { meetingId, votes: writtenVotePayload, delta: 1 }
+                            });
+                        }
+                        if (didApplyMailPreview) {
+                            setState(prev => ({
+                                ...prev,
+                                mailElectionVotes: applyMailElectionVotePreview(prev.mailElectionVotes, {
+                                    memberId,
+                                    meetingId,
+                                    votes: mailElectionVotePayload,
+                                    action: 'upsert'
+                                })
+                            }));
+                            attendanceSyncChannelRef.current?.send({
+                                type: 'broadcast',
+                                event: 'mail_election_votes_preview',
+                                payload: { memberId, meetingId, votes: mailElectionVotePayload, action: 'upsert' }
                             });
                         }
                         return;
