@@ -387,7 +387,7 @@ export const getElectionAgendaValidationStats = ({
     const uniqueRecords = getUniqueAttendanceRecords(attendance, meetingId, activeMemberIdSet);
     const directElectionIds = new Set(
         uniqueRecords
-            .filter((record) => record.type === 'direct')
+            .filter((record) => record.type === 'direct' && record.has_election)
             .map((record) => record.member_id)
     );
     const proxyElectionIds = new Set(
