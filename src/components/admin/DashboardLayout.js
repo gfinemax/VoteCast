@@ -63,7 +63,7 @@ export default function DashboardLayout({ title, subtitle, sidebarContent, sideb
             {isMounted && (
                 <button
                     onClick={toggleSidebar}
-                    className="absolute z-30 flex items-center justify-center w-6 h-14 bg-white border border-slate-200 shadow-md rounded-r-xl hover:bg-slate-50 hover:text-blue-600 transition-all duration-300 ease-in-out text-slate-400 focus:outline-none"
+                    className="absolute z-30 flex items-center justify-center w-6 h-14 bg-blue-600 shadow-md shadow-blue-600/20 rounded-r-lg hover:bg-blue-700 hover:w-7 transition-all duration-300 ease-in-out text-white focus:outline-none border border-l-0 border-blue-700"
                     style={{
                         top: '50vh',
                         transform: 'translateY(-50%)',
@@ -71,7 +71,7 @@ export default function DashboardLayout({ title, subtitle, sidebarContent, sideb
                     }}
                     title={isCollapsed ? "사이드바 펼치기" : "사이드바 접기"}
                 >
-                    {isCollapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
+                    {isCollapsed ? <ChevronRight size={16} strokeWidth={3} /> : <ChevronLeft size={16} strokeWidth={3} />}
                 </button>
             )}
 
