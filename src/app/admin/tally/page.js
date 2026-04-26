@@ -179,12 +179,12 @@ function SummaryTab({ audit, finalResults }) {
         ['직접 출석', stats.direct],
         ['대리 참석', stats.proxy],
         ['서면결의서', stats.written],
-        ['출석 인정', stats.total]
+        ['성원(의결)', stats.total]
     ];
 
     if (hasElection) {
         statItems.push(['우편투표', mailVoteCount]);
-        statItems.push(['선거 참여', stats.election]);
+        statItems.push(['성원(선거)', stats.election]);
     }
 
     const standardResults = finalResults.filter((r) => !r.isElection);
@@ -243,7 +243,7 @@ function SummaryTab({ audit, finalResults }) {
         <div className="space-y-4">
             <div className={`grid gap-3 ${hasElection ? 'grid-cols-2 md:grid-cols-4 xl:grid-cols-7' : 'grid-cols-2 md:grid-cols-3 xl:grid-cols-5'}`}>
                 {statItems.map(([label, value]) => (
-                    <Card key={label} className="p-4">
+                    <Card key={label} className="p-4 text-center">
                         <div className="text-xs font-bold text-slate-400">{label}</div>
                         <div className="mt-2 text-2xl font-black text-slate-900">{formatNumber(value)}</div>
                     </Card>
