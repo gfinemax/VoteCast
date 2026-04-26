@@ -188,6 +188,7 @@ export const checkInMember = ({
     type,
     hasElection,
     proxyName,
+    ballotIssued,
     votes,
     electionVotes
 }) => (
@@ -197,6 +198,7 @@ export const checkInMember = ({
         p_type: type,
         p_has_election: hasElection,
         p_proxy_name: proxyName,
+        p_ballot_issued: ballotIssued,
         p_votes: votes,
         p_election_votes: electionVotes
     })
@@ -208,6 +210,7 @@ export const replaceCheckInMember = ({
     type,
     hasElection,
     proxyName,
+    ballotIssued,
     votes,
     electionVotes
 }) => (
@@ -217,6 +220,7 @@ export const replaceCheckInMember = ({
         p_type: type,
         p_has_election: hasElection,
         p_proxy_name: proxyName,
+        p_ballot_issued: ballotIssued,
         p_votes: votes,
         p_election_votes: electionVotes
     })

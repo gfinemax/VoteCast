@@ -18,7 +18,8 @@ CREATE TABLE IF NOT EXISTS mail_election_votes (
 );
 
 ALTER TABLE attendance
-ADD COLUMN IF NOT EXISTS has_election BOOLEAN NOT NULL DEFAULT FALSE;
+ADD COLUMN IF NOT EXISTS has_election BOOLEAN NOT NULL DEFAULT FALSE,
+ADD COLUMN IF NOT EXISTS ballot_issued BOOLEAN NOT NULL DEFAULT FALSE;
 
 CREATE INDEX IF NOT EXISTS idx_written_votes_member ON written_votes(member_id);
 CREATE INDEX IF NOT EXISTS idx_written_votes_agenda ON written_votes(agenda_id);
@@ -44,6 +45,7 @@ CREATE OR REPLACE FUNCTION check_in_member(
     p_meeting_id INTEGER,
     p_type TEXT DEFAULT NULL,
     p_has_election BOOLEAN DEFAULT FALSE,
+    p_ballot_issued BOOLEAN DEFAULT FALSE,
     p_proxy_name TEXT DEFAULT NULL,
     p_votes JSONB DEFAULT NULL,
     p_election_votes JSONB DEFAULT NULL
@@ -55,8 +57,8 @@ DECLARE
     v_choice TEXT;
 BEGIN
     -- Insert Attendance
-    INSERT INTO attendance (member_id, meeting_id, type, has_election, proxy_name)
-    VALUES (p_member_id, p_meeting_id, p_type, COALESCE(p_has_election, FALSE), p_proxy_name);
+    INSERT INTO attendance (member_id, meeting_id, type, has_election, ballot_issued, proxy_name)
+    VALUES (p_member_id, p_meeting_id, p_type, COALESCE(p_has_election, FALSE), COALESCE(p_ballot_issued, FALSE), p_proxy_name);
 
     -- Process Votes if provided
     IF p_type = 'written' AND p_votes IS NOT NULL THEN
@@ -178,6 +180,7 @@ CREATE OR REPLACE FUNCTION replace_check_in_member(
     p_meeting_id INTEGER,
     p_type TEXT DEFAULT NULL,
     p_has_election BOOLEAN DEFAULT FALSE,
+    p_ballot_issued BOOLEAN DEFAULT FALSE,
     p_proxy_name TEXT DEFAULT NULL,
     p_votes JSONB DEFAULT NULL,
     p_election_votes JSONB DEFAULT NULL
@@ -190,6 +193,7 @@ BEGIN
         p_meeting_id,
         p_type,
         p_has_election,
+        p_ballot_issued,
         p_proxy_name,
         p_votes,
         p_election_votes

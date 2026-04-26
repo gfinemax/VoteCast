@@ -255,7 +255,8 @@ const normalizeAttendanceRecord = (record = {}) => ({
     ...record,
     type: record?.type || null,
     proxy_name: record?.proxy_name || null,
-    has_election: normalizeAttendanceBoolean(record?.has_election)
+    has_election: normalizeAttendanceBoolean(record?.has_election),
+    ballot_issued: normalizeAttendanceBoolean(record?.ballot_issued)
 });
 
 const normalizeCheckInPayload = (inputOrType = 'direct', proxyName = null, votes = null) => {
@@ -279,6 +280,7 @@ const normalizeCheckInPayload = (inputOrType = 'direct', proxyName = null, votes
             meetingType,
             hasElection: electionMode !== 'none',
             electionMode,
+            ballotIssued: !!inputOrType.ballotIssued,
             proxyName: normalizedProxyName,
             writtenVotes,
             electionVotes
@@ -291,6 +293,7 @@ const normalizeCheckInPayload = (inputOrType = 'direct', proxyName = null, votes
         meetingType,
         hasElection: false,
         electionMode: 'none',
+        ballotIssued: false,
         proxyName: meetingType === 'proxy' ? (String(proxyName || '').trim() || null) : null,
         writtenVotes: meetingType === 'written' && Array.isArray(votes) ? votes : [],
         electionVotes: []
@@ -1106,7 +1109,12 @@ export function StoreProvider({ children }) {
                 console.warn("Table 'mail_election_votes' not found yet. Skipping load.");
                 return [];
             }
-            console.error('Failed to refresh mail election votes:', error);
+            console.error('Failed to refresh mail election votes:', {
+                message: error.message,
+                code: error.code,
+                details: error.details,
+                hint: error.hint
+            });
             return null;
         }
 
@@ -1800,6 +1808,7 @@ export function StoreProvider({ children }) {
                 meetingType,
                 hasElection,
                 electionMode,
+                ballotIssued,
                 proxyName: normalizedProxyName,
                 writtenVotes,
                 electionVotes
@@ -1836,6 +1845,7 @@ export function StoreProvider({ children }) {
                     meeting_id: meetingId,
                     type: meetingType,
                     has_election: hasElection,
+                    ballot_issued: ballotIssued,
                     proxy_name: normalizedProxyName,
                     created_at: new Date().toISOString()
                 });
@@ -1890,6 +1900,7 @@ export function StoreProvider({ children }) {
                     p_meeting_id: meetingId,
                     p_type: meetingType,
                     p_has_election: hasElection,
+                    p_ballot_issued: ballotIssued,
                     p_proxy_name: normalizedProxyName,
                     p_votes: writtenVotePayload.length ? writtenVotePayload : null,
                     p_election_votes: electionVotePayload.length ? electionVotePayload : null
@@ -2062,6 +2073,7 @@ export function StoreProvider({ children }) {
                     ? ((electionVoteRows || []).length ? 'mail' : 'onsite')
                     : 'none',
                 proxyName: attendanceRecord?.proxy_name || '',
+                ballotIssued: !!attendanceRecord?.ballot_issued,
                 writtenVotes,
                 electionVotes
             };
@@ -2090,6 +2102,7 @@ export function StoreProvider({ children }) {
                 meetingType,
                 hasElection,
                 electionMode,
+                ballotIssued,
                 proxyName: normalizedProxyName,
                 writtenVotes,
                 electionVotes
@@ -2122,6 +2135,7 @@ export function StoreProvider({ children }) {
                     p_meeting_id: meetingId,
                     p_type: meetingType,
                     p_has_election: hasElection,
+                    p_ballot_issued: ballotIssued,
                     p_proxy_name: normalizedProxyName,
                     p_votes: writtenVotePayload.length ? writtenVotePayload : null,
                     p_election_votes: electionVotePayload.length ? electionVotePayload : null
@@ -2139,6 +2153,7 @@ export function StoreProvider({ children }) {
                             p_meeting_id: meetingId,
                             p_type: meetingType,
                             p_has_election: hasElection,
+                            p_ballot_issued: ballotIssued,
                             p_proxy_name: normalizedProxyName,
                             p_votes: writtenVotePayload.length ? writtenVotePayload : null,
                             p_election_votes: electionVotePayload.length ? electionVotePayload : null

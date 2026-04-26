@@ -366,6 +366,9 @@ export default function VoteControl() {
                 progressPercent={progressPercent}
                 onPrevious={() => moveAgendaSelection(-1)}
                 onNext={() => moveAgendaSelection(1)}
+                onApply={handleApplyLocalVotes}
+                onToggleAutoCalc={setIsAutoCalc}
+                isAutoCalc={isAutoCalc}
             />
             {confirmModalState.isOpen && (
                 <DecisionConfirmModal

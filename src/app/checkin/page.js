@@ -224,6 +224,7 @@ export default function CheckInPage() {
         memberId: null,
         meetingType: 'direct',
         electionMode: 'none',
+        ballotIssued: false,
         proxyName: '',
         writtenVotes: {},
         electionVotes: {}
@@ -393,6 +394,7 @@ export default function CheckInPage() {
             memberId: member.id,
             meetingType: 'direct',
             electionMode: hasElectionAgenda ? 'onsite' : 'none',
+            ballotIssued: hasElectionAgenda,
             proxyName: member.proxy || "",
             writtenVotes: buildInitialWrittenVotes(writtenAgendas),
             electionVotes: hasElectionAgenda ? buildInitialElectionVotes(electionAgendas) : {}
@@ -410,6 +412,7 @@ export default function CheckInPage() {
             memberId: member.id,
             meetingType: record.type || 'none',
             electionMode: hasElectionAgenda && record.has_election ? 'onsite' : 'none',
+            ballotIssued: !!record.ballot_issued,
             proxyName: record.proxy_name || member.proxy || '',
             writtenVotes: {},
             electionVotes: {}
@@ -427,6 +430,7 @@ export default function CheckInPage() {
                 memberId: member.id,
                 meetingType: detail.meetingType || 'none',
                 electionMode: hasElectionAgenda ? (detail.electionMode || 'none') : 'none',
+                ballotIssued: !!detail.ballotIssued,
                 proxyName: detail.proxyName || member.proxy || '',
                 writtenVotes: detail.writtenVotes || {},
                 electionVotes: hasElectionAgenda ? (detail.electionVotes || {}) : {}
@@ -601,6 +605,7 @@ export default function CheckInPage() {
         const payload = {
             meetingType: checkInForm.meetingType === 'none' ? null : checkInForm.meetingType,
             electionMode: checkInForm.electionMode,
+            ballotIssued: checkInForm.ballotIssued,
             proxyName: checkInForm.meetingType === 'proxy' ? checkInForm.proxyName.trim() : null,
             writtenVotes: checkInForm.meetingType === 'written' ? votesArray : [],
             electionVotes: checkInForm.electionMode === 'mail' ? electionVotesArray : []
@@ -988,6 +993,20 @@ export default function CheckInPage() {
                                     <p className="text-xs text-slate-500">
                                         현장투표를 선택하면 본인 참석으로 맞춰지고, 본인 참석 상태에서 우편투표를 선택하면 총회 불참으로 전환됩니다.
                                     </p>
+                                    {checkInForm.electionMode === 'onsite' && (
+                                        <div className="flex items-center justify-between p-4 rounded-2xl bg-amber-50 border border-amber-200">
+                                            <div>
+                                                <div className="text-sm font-bold text-amber-900">현장 투표용지 수령</div>
+                                                <p className="text-xs text-amber-700">현장에서 선거 투표용지를 지급한 경우 체크하세요.</p>
+                                            </div>
+                                            <button
+                                                onClick={() => setCheckInForm(prev => ({ ...prev, ballotIssued: !prev.ballotIssued }))}
+                                                className={`w-14 h-8 rounded-full transition-all relative ${checkInForm.ballotIssued ? 'bg-amber-500' : 'bg-slate-300'}`}
+                                            >
+                                                <div className={`absolute top-1 w-6 h-6 rounded-full bg-white transition-all ${checkInForm.ballotIssued ? 'left-7' : 'left-1'}`} />
+                                            </button>
+                                        </div>
+                                    )}
                                 </section>
                             )}
 

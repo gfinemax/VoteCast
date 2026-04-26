@@ -6,6 +6,8 @@ import {
     AlertTriangle,
     ArrowLeft,
     CheckCircle2,
+    ChevronDown,
+    ChevronUp,
     ClipboardCheck,
     FileText,
     PenLine,
@@ -35,7 +37,6 @@ import {
     getDefaultMeetingId
 } from '@/lib/tallyCalculations';
 import {
-    getElectionChoiceLabel,
     getElectionRule
 } from '@/lib/electionRules';
 
@@ -83,12 +84,7 @@ const getChoiceClass = (choice) => {
     return 'bg-amber-50 text-amber-700 border-amber-200';
 };
 
-const getElectionChoiceClass = (agenda, choice, electionAgendas = []) => {
-    if (choice === 'no' && getElectionRule(agenda, electionAgendas).isContest) {
-        return 'bg-slate-100 text-slate-600 border-slate-200';
-    }
-    return getChoiceClass(choice);
-};
+
 
 const getAttendanceClass = (type) => {
     if (type === 'direct') return 'border-cyan-200 bg-cyan-50 text-cyan-700';
@@ -354,22 +350,54 @@ function SummaryTab({ audit, finalResults }) {
 function MatrixTab({ audit }) {
     const [searchTerm, setSearchTerm] = useState('');
     const normalizedSearchTerm = searchTerm.trim().toLowerCase();
-    const rows = useMemo(() => {
-        if (!normalizedSearchTerm) return audit.memberRows;
+    const [sortConfig, setSortConfig] = useState({ key: 'attendanceType', direction: null }); // null, 'asc', 'desc'
 
-        return audit.memberRows.filter((row) => (
-            [
-                row.member.id,
-                row.member.unit,
-                row.member.name,
-                row.member.proxy,
-                row.proxyName
-            ]
-                .map((value) => String(value || '').toLowerCase())
-                .join(' ')
-                .includes(normalizedSearchTerm)
-        ));
-    }, [audit.memberRows, normalizedSearchTerm]);
+    const toggleSort = (key) => {
+        setSortConfig((prev) => ({
+            key,
+            direction: prev.key === key && prev.direction === 'asc' ? 'desc' : (prev.key === key && prev.direction === 'desc' ? null : 'asc')
+        }));
+    };
+
+    const rows = useMemo(() => {
+        let filtered = audit.memberRows;
+        if (normalizedSearchTerm) {
+            filtered = filtered.filter((row) => (
+                [
+                    row.member.id,
+                    row.member.unit,
+                    row.member.name,
+                    row.member.proxy,
+                    row.proxyName
+                ]
+                    .map((value) => String(value || '').toLowerCase())
+                    .join(' ')
+                    .includes(normalizedSearchTerm)
+            ));
+        }
+
+        if (!sortConfig.direction) return filtered;
+
+        const ATTENDANCE_SORT_ORDER = {
+            'written': 1,
+            'direct': 2,
+            'proxy': 3,
+            'none': 4
+        };
+
+        return [...filtered].sort((left, right) => {
+            if (sortConfig.key === 'attendanceType') {
+                const leftOrder = ATTENDANCE_SORT_ORDER[left.attendanceType] || 99;
+                const rightOrder = ATTENDANCE_SORT_ORDER[right.attendanceType] || 99;
+
+                if (sortConfig.direction === 'asc') {
+                    return leftOrder - rightOrder;
+                }
+                return rightOrder - leftOrder;
+            }
+            return 0;
+        });
+    }, [audit.memberRows, normalizedSearchTerm, sortConfig]);
     const agendaShortLabelById = useMemo(() => {
         const labels = new Map();
         audit.standardAgendas.forEach((agenda, index) => {
@@ -401,7 +429,19 @@ function MatrixTab({ audit }) {
                         <tr>
                             <th rowSpan={2} className="sticky left-0 z-20 w-12 bg-slate-50 px-1 py-2 text-center whitespace-nowrap">ID</th>
                             <th rowSpan={2} className="sticky left-12 z-20 w-[72px] bg-slate-50 px-1 py-2 whitespace-nowrap">조합원</th>
-                            <th rowSpan={2} className="sticky left-[120px] z-20 w-20 bg-slate-50 px-1 py-2 text-center whitespace-nowrap">참석방식</th>
+                            <th
+                                rowSpan={2}
+                                onClick={() => toggleSort('attendanceType')}
+                                className="sticky left-[120px] z-20 w-24 cursor-pointer bg-slate-50 px-1 py-2 text-center whitespace-nowrap hover:bg-slate-100"
+                            >
+                                <div className="flex items-center justify-center gap-1">
+                                    참석방식
+                                    <div className="flex flex-col text-[10px] leading-[0.6]">
+                                        <ChevronUp size={10} className={sortConfig.key === 'attendanceType' && sortConfig.direction === 'asc' ? 'text-blue-600' : 'text-slate-300'} />
+                                        <ChevronDown size={10} className={sortConfig.key === 'attendanceType' && sortConfig.direction === 'desc' ? 'text-blue-600' : 'text-slate-300'} />
+                                    </div>
+                                </div>
+                            </th>
                             <th rowSpan={2} className="sticky left-[200px] z-20 w-16 bg-slate-50 px-1 py-2 text-center whitespace-nowrap">대리인</th>
                             {audit.standardAgendas.length > 0 && (
                                 <th colSpan={audit.standardAgendas.length} className="border-b border-slate-200 px-1 py-2 text-center text-slate-600">
@@ -454,13 +494,28 @@ function MatrixTab({ audit }) {
                                         </span>
                                     </td>
                                 ))}
-                                {row.electionVotes.map((vote) => (
-                                    <td key={`${row.member.id}-${vote.agendaId}`} className="w-28 px-1 py-3 text-center">
-                                        <span className={`inline-flex rounded-full border px-2 py-0.5 text-[11px] font-bold ${getElectionChoiceClass(vote.agenda, vote.choice || 'missing', audit.electionAgendas)}`}>
-                                            {getElectionChoiceLabel(vote.agenda, vote.choice || 'missing', audit.electionAgendas)}
-                                        </span>
-                                    </td>
-                                ))}
+                                {row.electionVotes.map((vote) => {
+                                    const hasMailVote = !!vote.choice;
+                                    const hasOnsiteBallot = !!row.record?.ballot_issued;
+                                    
+                                    return (
+                                        <td key={`${row.member.id}-${vote.agendaId}`} className="w-28 px-1 py-3 text-center">
+                                            {hasMailVote ? (
+                                                <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-bold text-emerald-700">
+                                                    ✓ 투표함
+                                                </span>
+                                            ) : hasOnsiteBallot ? (
+                                                <span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-bold text-amber-700">
+                                                    현장투표 ✓
+                                                </span>
+                                            ) : (
+                                                <span className="inline-flex rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-bold text-slate-400">
+                                                    –
+                                                </span>
+                                            )}
+                                        </td>
+                                    );
+                                })}
                                 <td className="w-24 px-1 py-3 text-center">
                                     {row.issues.length > 0 ? (
                                         <div className="space-y-1">
