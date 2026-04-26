@@ -196,12 +196,12 @@ function SummaryTab({ audit, finalResults }) {
                 <thead className={`text-left text-xs font-bold uppercase tracking-[0.12em] ${isElection ? 'bg-indigo-50 text-indigo-700' : 'bg-slate-50 text-slate-500'}`}>
                     <tr>
                         <th className="px-5 py-3">{isElection ? '후보자/안건' : '안건'}</th>
-                        <th className="px-5 py-3 text-right">출석</th>
-                        <th className="px-5 py-3 text-right">찬성</th>
-                        <th className="px-5 py-3 text-right">{isElection ? '반대(선택안함)' : '반대'}</th>
-                        <th className="px-5 py-3 text-right">기권/무효</th>
-                        <th className="px-5 py-3">결과</th>
-                        <th className="px-5 py-3">상태</th>
+                        <th className="px-5 py-3 text-center">출석</th>
+                        <th className="px-5 py-3 text-center">찬성</th>
+                        <th className="px-5 py-3 text-center">{isElection ? '반대(선택안함)' : '반대'}</th>
+                        <th className="px-5 py-3 text-center">기권/무효</th>
+                        <th className="px-5 py-3 text-center">결과</th>
+                        <th className="px-5 py-3 text-center">상태</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -211,16 +211,16 @@ function SummaryTab({ audit, finalResults }) {
                                 <div className="font-bold text-slate-900">{result.title}</div>
                                 <div className="mt-1 text-xs text-slate-500">{result.thresholdLabel}</div>
                             </td>
-                            <td className="px-5 py-3 text-right font-semibold">{formatNumber(result.attendanceCount)}</td>
-                            <td className="px-5 py-3 text-right font-semibold text-emerald-700">{formatNumber(result.final.yes)}</td>
-                            <td className="px-5 py-3 text-right font-semibold text-rose-700">{formatNumber(result.final.no)}</td>
-                            <td className="px-5 py-3 text-right font-semibold text-slate-700">{formatNumber(result.final.abstain)}</td>
-                            <td className="px-5 py-3">
+                            <td className="px-5 py-3 text-center font-semibold">{formatNumber(result.attendanceCount)}</td>
+                            <td className="px-5 py-3 text-center font-semibold text-emerald-700">{formatNumber(result.final.yes)}</td>
+                            <td className="px-5 py-3 text-center font-semibold text-rose-700">{formatNumber(result.final.no)}</td>
+                            <td className="px-5 py-3 text-center font-semibold text-slate-700">{formatNumber(result.final.abstain)}</td>
+                            <td className="px-5 py-3 text-center">
                                 <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-bold ${getResultClass(result.result)}`}>
                                     {result.result}
                                 </span>
                             </td>
-                            <td className="px-5 py-3">
+                            <td className="px-5 py-3 text-center">
                                 <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-bold ${getStatusClass(result.mismatch)}`}>
                                     {result.mismatch ? '불일치' : '정상'}
                                 </span>
@@ -456,11 +456,11 @@ function ManualTab({
                 <thead className={`text-left text-xs font-bold uppercase tracking-[0.12em] ${isElection ? 'bg-indigo-50 text-indigo-700' : 'bg-slate-50 text-slate-500'}`}>
                     <tr>
                         <th className="px-5 py-3">{isElection ? '후보자/안건' : '안건'}</th>
-                        <th className="px-5 py-3 text-right">출석</th>
-                        <th className="px-5 py-3 text-right">찬성</th>
-                        <th className="px-5 py-3 text-right">{isElection ? '반대(선택안함)' : '반대'}</th>
-                        <th className="px-5 py-3 text-right">기권/무효</th>
-                        <th className="px-5 py-3">결과</th>
+                        <th className="px-5 py-3 text-center">출석</th>
+                        <th className="px-5 py-3 text-center">찬성</th>
+                        <th className="px-5 py-3 text-center">{isElection ? '반대(선택안함)' : '반대'}</th>
+                        <th className="px-5 py-3 text-center">기권/무효</th>
+                        <th className="px-5 py-3 text-center">결과</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -472,7 +472,7 @@ function ManualTab({
                             <tr key={result.id} className="border-t border-slate-100">
                                 <td className="px-5 py-3 font-bold text-slate-900">{result.title}</td>
                                 {['attendanceCount', 'yes', 'no', 'abstain'].map((field) => (
-                                    <td key={field} className="px-5 py-3 text-right">
+                                    <td key={field} className="px-5 py-3 text-center">
                                         {editable ? (
                                             <NumberInput
                                                 value={manual[field]}
@@ -485,7 +485,7 @@ function ManualTab({
                                         )}
                                     </td>
                                 ))}
-                                <td className="px-5 py-3">
+                                <td className="px-5 py-3 text-center">
                                     <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-bold ${getResultClass(result.result)}`}>
                                         {result.result}
                                     </span>
