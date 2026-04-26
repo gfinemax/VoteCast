@@ -124,7 +124,7 @@ export default function AdminPage() {
                         <div className="flex-grow"></div>
                         <Link
                             href="/admin/tally"
-                            className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 transition-colors hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700"
+                            className="inline-flex items-center gap-2 rounded-lg border border-lime-500 bg-[#eaff00] px-3 py-2 text-xs font-bold text-slate-900 shadow-[0_0_15px_rgba(234,255,0,0.3)] transition-all hover:bg-[#f2ff4d] hover:shadow-[0_0_20px_rgba(234,255,0,0.5)]"
                         >
                             <ClipboardCheck size={14} />
                             검산 및 확인서
