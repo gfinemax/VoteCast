@@ -1010,7 +1010,7 @@ export default function AdminTallyPage() {
                 <div className="flex-grow"></div>
                 <Link
                     href="/admin"
-                    className="flex h-9 items-center gap-2 rounded-md border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 transition-colors hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700"
+                    className="flex h-9 items-center gap-2 rounded-md border border-lime-500 bg-[#eaff00] px-3 text-xs font-bold text-slate-900 shadow-[0_0_15px_rgba(234,255,0,0.3)] transition-all hover:bg-[#f2ff4d] hover:shadow-[0_0_20px_rgba(234,255,0,0.5)]"
                 >
                     <ArrowLeft size={14} />
                     메인 제어로 돌아가기
