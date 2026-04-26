@@ -459,13 +459,20 @@ function MatrixTab({ audit }) {
                             {audit.standardAgendas.map((agenda) => (
                                 <th key={agenda.id} className="w-20 px-1 py-2 text-center">{agendaShortLabelById.get(agenda.id)}</th>
                             ))}
-                            {audit.electionAgendas.map((agenda) => (
-                                <th key={agenda.id} className="w-28 bg-indigo-50 px-1 py-2 text-center text-indigo-700">
-                                    <span className="block truncate" title={agenda.title || getElectionRule(agenda, audit.electionAgendas).label}>
-                                        {agenda.title || getElectionRule(agenda, audit.electionAgendas).label}
-                                    </span>
-                                </th>
-                            ))}
+                            {audit.electionAgendas.map((agenda) => {
+                                const fullLabel = agenda.title || getElectionRule(agenda, audit.electionAgendas).label;
+                                // "조합장후보 안동연 찬반투표" -> "조합장후보"
+                                // "이사후보1 송동환 찬반투표" -> "이사후보1"
+                                const shortLabel = fullLabel.replace(/^(조합장후보|이사후보\d+)\s+.*\s+찬반투표$/, '$1');
+                                
+                                return (
+                                    <th key={agenda.id} className="w-28 bg-indigo-50 px-1 py-2 text-center text-indigo-700">
+                                        <span className="block truncate font-black" title={fullLabel}>
+                                            {shortLabel}
+                                        </span>
+                                    </th>
+                                );
+                            })}
                         </tr>
                     </thead>
                     <tbody>
@@ -502,7 +509,7 @@ function MatrixTab({ audit }) {
                                         <td key={`${row.member.id}-${vote.agendaId}`} className="w-28 px-1 py-3 text-center">
                                             {hasMailVote ? (
                                                 <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-bold text-emerald-700">
-                                                    ✓ 투표함
+                                                    우편투표 ✓
                                                 </span>
                                             ) : hasOnsiteBallot ? (
                                                 <span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-bold text-amber-700">

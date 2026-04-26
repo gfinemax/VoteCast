@@ -394,7 +394,7 @@ export default function CheckInPage() {
             memberId: member.id,
             meetingType: 'direct',
             electionMode: hasElectionAgenda ? 'onsite' : 'none',
-            ballotIssued: hasElectionAgenda,
+            ballotIssued: false,
             proxyName: member.proxy || "",
             writtenVotes: buildInitialWrittenVotes(writtenAgendas),
             electionVotes: hasElectionAgenda ? buildInitialElectionVotes(electionAgendas) : {}
