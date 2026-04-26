@@ -63,7 +63,7 @@ export default function DashboardLayout({ title, subtitle, sidebarContent, sideb
             {isMounted && (
                 <button
                     onClick={toggleSidebar}
-                    className="absolute z-30 flex items-center justify-center gap-0.5 h-10 px-1.5 bg-lime-400 hover:bg-lime-500 shadow-lg drop-shadow-md rounded-r-lg transition-all duration-300 ease-in-out text-slate-900 font-extrabold tracking-wider text-[9px] focus:outline-none border-y border-r border-lime-500 border-b-[3px] border-b-lime-600"
+                    className="absolute z-30 flex flex-col items-center justify-center gap-1.5 w-7 h-28 py-2 bg-lime-400 hover:bg-lime-500 shadow-lg drop-shadow-md rounded-r-lg transition-all duration-300 ease-in-out text-slate-900 font-extrabold tracking-widest text-[9px] focus:outline-none border-y border-r border-lime-500 border-b-[3px] border-b-lime-600"
                     style={{
                         top: '50vh',
                         transform: 'translateY(-50%)',
@@ -74,11 +74,11 @@ export default function DashboardLayout({ title, subtitle, sidebarContent, sideb
                     {isCollapsed ? (
                         <>
                             <ChevronRight size={14} strokeWidth={3} />
-                            <span className="pr-0.5 leading-none">SIDEBAR</span>
+                            <span className="leading-none" style={{ writingMode: 'vertical-rl' }}>SIDEBAR</span>
                         </>
                     ) : (
                         <>
-                            <span className="pl-0.5 leading-none">WIDE</span>
+                            <span className="leading-none" style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}>WIDE</span>
                             <ChevronLeft size={14} strokeWidth={3} />
                         </>
                     )}
