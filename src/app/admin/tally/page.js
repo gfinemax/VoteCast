@@ -174,19 +174,6 @@ function SummaryTab({ audit, finalResults }) {
         mailVoteCount = uniqueMailVoteMembers.size;
     }
 
-    const statItems = [
-        ['전체 조합원', audit.activeMembers.length],
-        ['직접 출석', stats.direct],
-        ['대리 참석', stats.proxy],
-        ['서면결의서', stats.written],
-        ['성원(의결)', stats.total]
-    ];
-
-    if (hasElection) {
-        statItems.push(['우편투표', mailVoteCount]);
-        statItems.push(['성원(선거)', stats.election]);
-    }
-
     const standardResults = finalResults.filter((r) => !r.isElection);
     const electionResults = finalResults.filter((r) => r.isElection);
 
@@ -241,13 +228,68 @@ function SummaryTab({ audit, finalResults }) {
 
     return (
         <div className="space-y-4">
-            <div className={`grid gap-3 ${hasElection ? 'grid-cols-2 md:grid-cols-4 xl:grid-cols-7' : 'grid-cols-2 md:grid-cols-3 xl:grid-cols-5'}`}>
-                {statItems.map(([label, value]) => (
-                    <Card key={label} className="p-4 text-center">
-                        <div className="text-xs font-bold text-slate-400">{label}</div>
-                        <div className="mt-2 text-2xl font-black text-slate-900">{formatNumber(value)}</div>
+            {/* 상단 통계 영역 */}
+            <div className="flex flex-col xl:flex-row gap-4">
+                {/* 기초 데이터 영역 - 형광 파랑 */}
+                <Card className="flex flex-col items-center justify-center p-6 border-cyan-400 bg-cyan-50 shadow-md xl:w-48 shrink-0 relative overflow-hidden">
+                    <div className="absolute top-0 right-0 w-16 h-16 bg-cyan-200 rounded-bl-full -mr-8 -mt-8 opacity-50 pointer-events-none"></div>
+                    <div className="text-sm font-extrabold text-cyan-700 relative z-10">전체 조합원</div>
+                    <div className="mt-2 text-4xl font-black text-cyan-900 relative z-10">{formatNumber(audit.activeMembers.length)}</div>
+                </Card>
+
+                <div className="flex-1 flex flex-col md:flex-row gap-4">
+                    {/* 의결 안건 성원 영역 */}
+                    <Card className="flex-1 p-4 border-slate-200 bg-white flex flex-col">
+                        <div className="flex items-center gap-2 mb-3 px-1">
+                            <div className="w-1.5 h-4 bg-slate-400 rounded-full"></div>
+                            <h3 className="text-sm font-bold text-slate-700">일반 안건 성원 집계</h3>
+                        </div>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 flex-1">
+                            <Card className="p-4 text-center border-lime-400 bg-[#f4ffcc] shadow-sm col-span-2 md:col-span-1 flex flex-col justify-center relative overflow-hidden">
+                                <div className="absolute bottom-0 right-0 w-16 h-16 bg-lime-200 rounded-tl-full -mr-6 -mb-6 opacity-40 pointer-events-none"></div>
+                                <div className="text-[11px] font-extrabold text-lime-700 relative z-10">성원(의결)</div>
+                                <div className="mt-1 text-3xl font-black text-lime-900 relative z-10">{formatNumber(stats.total)}</div>
+                            </Card>
+                            <Card className="p-4 text-center border-slate-100 bg-slate-50 flex flex-col justify-center">
+                                <div className="text-[11px] font-bold text-slate-400">직접 출석</div>
+                                <div className="mt-1 text-xl font-black text-slate-700">{formatNumber(stats.direct)}</div>
+                            </Card>
+                            <Card className="p-4 text-center border-slate-100 bg-slate-50 flex flex-col justify-center">
+                                <div className="text-[11px] font-bold text-slate-400">대리 참석</div>
+                                <div className="mt-1 text-xl font-black text-slate-700">{formatNumber(stats.proxy)}</div>
+                            </Card>
+                            <Card className="p-4 text-center border-slate-100 bg-slate-50 flex flex-col justify-center">
+                                <div className="text-[11px] font-bold text-slate-400">서면결의서</div>
+                                <div className="mt-1 text-xl font-black text-slate-700">{formatNumber(stats.written)}</div>
+                            </Card>
+                        </div>
                     </Card>
-                ))}
+
+                    {/* 선거 안건 성원 영역 */}
+                    {hasElection && (
+                        <Card className="flex-[0.75] p-4 border-slate-200 bg-white flex flex-col">
+                            <div className="flex items-center gap-2 mb-3 px-1">
+                                <div className="w-1.5 h-4 bg-slate-400 rounded-full"></div>
+                                <h3 className="text-sm font-bold text-slate-700">선거 안건 성원 집계</h3>
+                            </div>
+                            <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 flex-1">
+                                <Card className="p-4 text-center border-fuchsia-400 bg-fuchsia-50 shadow-sm col-span-2 lg:col-span-1 flex flex-col justify-center relative overflow-hidden">
+                                    <div className="absolute top-0 left-0 w-16 h-16 bg-fuchsia-200 rounded-br-full -ml-8 -mt-8 opacity-40 pointer-events-none"></div>
+                                    <div className="text-[11px] font-extrabold text-fuchsia-700 relative z-10">성원(선거)</div>
+                                    <div className="mt-1 text-3xl font-black text-fuchsia-900 relative z-10">{formatNumber(stats.election)}</div>
+                                </Card>
+                                <Card className="p-4 text-center border-slate-100 bg-slate-50 flex flex-col justify-center">
+                                    <div className="text-[11px] font-bold text-slate-400">우편투표</div>
+                                    <div className="mt-1 text-xl font-black text-slate-700">{formatNumber(mailVoteCount)}</div>
+                                </Card>
+                                <Card className="p-4 text-center border-slate-100 bg-slate-50 flex flex-col justify-center">
+                                    <div className="text-[11px] font-bold text-slate-400">현장 투표</div>
+                                    <div className="mt-1 text-xl font-black text-slate-700">{formatNumber(stats.election - mailVoteCount)}</div>
+                                </Card>
+                            </div>
+                        </Card>
+                    )}
+                </div>
             </div>
 
             <Card className="overflow-hidden">
