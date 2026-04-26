@@ -351,6 +351,8 @@ export const getAgendaAttendanceDisplayStats = ({
 
     return {
         ...baseStats,
+        direct: electionValidation.directCount,
+        proxy: electionValidation.proxyCount,
         isElectionAgenda,
         fixedAttendanceLabel: '우편투표',
         fixedAttendanceCount: electionValidation.actualMailVoteCount,
@@ -373,6 +375,8 @@ export const getElectionAgendaValidationStats = ({
         missingMailVoteCount: 0,
         overlapMailVoteCount: 0,
         invalidProxyElectionCount: 0,
+        directCount: 0,
+        proxyCount: 0,
         onsiteEligibleCount: 0,
         expectedTotalVotes: 0,
         missingMailVoteMemberIds: [],
@@ -432,7 +436,9 @@ export const getElectionAgendaValidationStats = ({
     const missingMailVoteCount = missingMailVoteMemberIds.length;
     const overlapMailVoteCount = overlapMailVoteMemberIds.length;
     const invalidProxyElectionCount = invalidProxyElectionMemberIds.length;
-    const onsiteEligibleCount = directElectionIds.size;
+    const directCount = directElectionIds.size;
+    const proxyCount = proxyElectionIds.size;
+    const onsiteEligibleCount = directCount;
 
     return {
         expectedMailVoteCount: expectedMailVoteIds.size,
@@ -443,6 +449,8 @@ export const getElectionAgendaValidationStats = ({
         missingMailVoteMemberIds,
         overlapMailVoteMemberIds,
         invalidProxyElectionMemberIds,
+        directCount,
+        proxyCount,
         onsiteEligibleCount,
         expectedTotalVotes: onsiteEligibleCount + actualMailVoteIds.size
     };
