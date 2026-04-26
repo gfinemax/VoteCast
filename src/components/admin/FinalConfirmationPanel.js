@@ -23,9 +23,10 @@ export default function FinalConfirmationPanel({
     isElection = false
 }) {
     const allowsSpecialResult = !isElection;
-    const isSpecialResult = allowsSpecialResult && (resultStatus === 'conditional_approved' || resultStatus === 'withdrawn');
+    const isSpecialResult = allowsSpecialResult && (resultStatus === 'conditional_approved' || resultStatus === 'withdrawn' || resultStatus === 'adjourned');
     const isWithdrawnResult = allowsSpecialResult && resultStatus === 'withdrawn';
-    const confirmationLabel = isElection ? '선거 결과 최종 확정' : (isWithdrawnResult ? '상정 철회로 최종 확정' : '안건 결과 최종 확정');
+    const isAdjournedResult = allowsSpecialResult && resultStatus === 'adjourned';
+    const confirmationLabel = isElection ? '선거 결과 최종 확정' : (isWithdrawnResult ? '상정 철회로 최종 확정' : (isAdjournedResult ? '유회 처리로 최종 확정' : '안건 결과 최종 확정'));
 
     return (
         <section className="flex flex-col flex-1">
@@ -43,7 +44,7 @@ export default function FinalConfirmationPanel({
                     <div className="flex flex-col items-center gap-3">
                         {isSpecialResult && (
                             <div className="rounded-full border border-slate-200 bg-white px-4 py-1.5 text-sm font-bold text-slate-700 shadow-sm">
-                                확정 결과: {resultStatus === 'withdrawn' ? '상정 철회' : '조건부 가결'}
+                                확정 결과: {resultStatus === 'withdrawn' ? '상정 철회' : (resultStatus === 'adjourned' ? '유회 (성원 미달)' : '조건부 가결')}
                             </div>
                         )}
                         <div className="flex items-center gap-2 text-blue-700 font-bold bg-blue-50/50 border border-blue-100 px-5 py-2.5 rounded-xl shadow-sm">
@@ -59,17 +60,18 @@ export default function FinalConfirmationPanel({
                         </button>
                     </div>
                 ) : (
-                    <div className="flex flex-col items-center gap-2.5 w-full max-w-md">
+                    <div className="flex flex-col items-center gap-2.5 w-full max-w-2xl">
                         {allowsSpecialResult && (
                             <div className="w-full rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
                                 <div className="mb-2 text-xs font-bold uppercase tracking-[0.14em] text-slate-400">
                                     결과 처리 방식
                                 </div>
-                                <div className="grid grid-cols-3 gap-1.5">
+                                <div className="grid grid-cols-4 gap-1.5">
                                     {[
                                         { value: 'normal', label: '일반 확정' },
                                         { value: 'conditional_approved', label: '조건부 가결' },
-                                        { value: 'withdrawn', label: '상정 철회' }
+                                        { value: 'withdrawn', label: '상정 철회' },
+                                        { value: 'adjourned', label: '유회 처리' }
                                     ].map((option) => (
                                         <button
                                             key={option.value}
@@ -91,7 +93,11 @@ export default function FinalConfirmationPanel({
                                             value={resultReason}
                                             onChange={(event) => onResultReasonChange(event.target.value)}
                                             rows={3}
-                                            placeholder={resultStatus === 'withdrawn' ? '상정 철회 사유를 입력하세요.' : '조건 또는 사유를 입력하세요.'}
+                                            placeholder={
+                                                resultStatus === 'withdrawn' 
+                                                    ? '상정 철회 사유를 입력하세요.' 
+                                                    : (resultStatus === 'adjourned' ? '유회 관련 메모를 입력하세요 (선택사항).' : '조건 또는 사유를 입력하세요.')
+                                            }
                                             className={`w-full resize-none rounded-lg border px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500 ${
                                                 resultReasonError ? 'border-rose-300 bg-rose-50' : 'border-slate-300 bg-white'
                                             }`}
@@ -112,7 +118,7 @@ export default function FinalConfirmationPanel({
                                 onChange={(event) => onReadyChange(event.target.checked)}
                             />
                             <span className="font-semibold text-slate-700">
-                                {isElection ? '선거 결과를 확인하였으며, 확정합니다.' : (isWithdrawnResult ? '상정 철회 사유를 확인하였으며, 확정합니다.' : '모든 결과를 확인하였으며, 확정합니다.')}
+                                {isElection ? '선거 결과를 확인하였으며, 확정합니다.' : (isWithdrawnResult ? '상정 철회 사유를 확인하였으며, 확정합니다.' : (isAdjournedResult ? '정족수 미달에 따른 유회를 확인하였으며, 확정합니다.' : '모든 결과를 확인하였으며, 확정합니다.'))}
                             </span>
                         </label>
                         {isLocalDirty && (
@@ -126,7 +132,7 @@ export default function FinalConfirmationPanel({
                                 </p>
                             </div>
                         )}
-                        {!isWithdrawnResult && !isLocalDirty && !isVoteCountValid && (
+                        {!isWithdrawnResult && !isAdjournedResult && !isLocalDirty && !isVoteCountValid && (
                             <div className="w-full rounded-xl border border-rose-300 bg-rose-50/80 px-4 py-3 text-center text-sm font-bold text-rose-800 shadow-sm">
                                 <div className="flex items-center justify-center gap-2 mb-1">
                                     <AlertCircle size={18} className="text-rose-600" />
@@ -138,7 +144,7 @@ export default function FinalConfirmationPanel({
                                 </p>
                             </div>
                         )}
-                        {!isWithdrawnResult && !isLocalDirty && hasElectionValidationIssue && isVoteCountValid && (
+                        {!isWithdrawnResult && !isAdjournedResult && !isLocalDirty && hasElectionValidationIssue && isVoteCountValid && (
                             <div className="w-full rounded-xl border border-amber-300 bg-amber-50/80 px-4 py-3 text-center text-sm font-bold text-amber-800 shadow-sm">
                                 <div className="flex items-center justify-center gap-2 mb-1">
                                     <AlertTriangle size={18} className="text-amber-600" />

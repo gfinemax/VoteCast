@@ -22,6 +22,7 @@ const getResultStatusFromAgenda = (agenda) => {
     const snapshotResult = agenda?.vote_snapshot?.result;
     if (snapshotResult === 'WITHDRAWN') return 'withdrawn';
     if (snapshotResult === 'CONDITIONAL_PASSED') return 'conditional_approved';
+    if (snapshotResult === 'ADJOURNED') return 'adjourned';
     if (agenda?.is_withdrawn) return 'withdrawn';
     return 'normal';
 };
@@ -187,6 +188,7 @@ export default function VoteControl() {
         isLocalDirty,
         resultStatus: activeResultStatus,
         resultReason: activeResultReason,
+        isElection: isElection,
         updateAgenda,
         setConfirmReadyAgendaId
     });
@@ -223,11 +225,11 @@ export default function VoteControl() {
         isApplyDisabled,
         voteCountStatusText
     } = voteCountSummary;
-    const isSpecialResultDraft = activeResultStatus === 'withdrawn' || activeResultStatus === 'conditional_approved';
-    const resultReasonError = isSpecialResultDraft && !String(activeResultReason || '').trim()
+    const isSpecialResultDraft = activeResultStatus === 'withdrawn' || activeResultStatus === 'conditional_approved' || activeResultStatus === 'adjourned';
+    const resultReasonError = (activeResultStatus === 'withdrawn' || activeResultStatus === 'conditional_approved') && !String(activeResultReason || '').trim()
         ? (activeResultStatus === 'withdrawn' ? '상정 철회 사유를 입력해야 합니다.' : '조건 또는 사유를 입력해야 합니다.')
         : '';
-    const canConfirmDecision = activeResultStatus === 'withdrawn'
+    const canConfirmDecision = (activeResultStatus === 'withdrawn' || activeResultStatus === 'adjourned')
         ? isReadyToConfirm && !isLocalDirty && !resultReasonError
         : (activeResultStatus === 'conditional_approved'
             ? isReadyToConfirm && !isLocalDirty && !isApplyDisabled && !resultReasonError

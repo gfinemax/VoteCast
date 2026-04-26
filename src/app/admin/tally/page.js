@@ -70,6 +70,7 @@ const getResultClass = (result) => {
     if (result === '조건부 가결') return 'bg-amber-50 text-amber-700 border-amber-200';
     if (['가결', '당선', '1차 당선권', '다득표 확인'].includes(result)) return 'bg-emerald-50 text-emerald-700 border-emerald-200';
     if (result === '결선 확인') return 'bg-amber-50 text-amber-700 border-amber-200';
+    if (result?.includes('성원 미달') || result?.includes('유회')) return 'bg-amber-50 text-amber-600 border-amber-200';
     return 'bg-rose-50 text-rose-700 border-rose-200';
 };
 
@@ -711,7 +712,7 @@ function CertificatePreview({
             <div id="certificate-print-area" className="bg-white px-8 py-10 text-slate-950 shadow-sm ring-1 ring-slate-200 print:shadow-none print:ring-0">
                 <div className="text-center">
                     <div className="text-sm font-bold text-slate-700">대방동 지역주택조합</div>
-                    <h1 className="mt-3 text-2xl font-black tracking-normal">선거관리위원회 투표결과 확인서</h1>
+                    <h1 className="mt-[6px] text-[28px] font-black tracking-normal">선거관리위원회 투표결과 확인서</h1>
                 </div>
 
                 <section className="mt-8">
@@ -737,7 +738,7 @@ function CertificatePreview({
                     <h2 className="border-b-2 border-slate-900 pb-2 text-base font-black">참석 현황</h2>
                     <table className="mt-3 w-full border-collapse text-center text-sm">
                         <thead>
-                            <tr className="bg-slate-100">
+                            <tr className="bg-slate-50">
                                 <th className="border border-slate-400 px-2 py-2">전체 조합원 수</th>
                                 <th className="border border-slate-400 px-2 py-2">직접 출석</th>
                                 <th className="border border-slate-400 px-2 py-2">대리 참석</th>
@@ -759,16 +760,16 @@ function CertificatePreview({
 
                 <section className="mt-7">
                     <h2 className="border-b-2 border-slate-900 pb-2 text-base font-black">일반 안건 의결 결과</h2>
-                    <table className="mt-3 w-full border-collapse text-center text-sm">
+                    <table className="mt-3 w-full border-collapse text-center text-sm table-fixed">
                         <thead>
-                            <tr className="bg-slate-100">
-                                <th className="border border-slate-400 px-2 py-2">안건</th>
-                                <th className="border border-slate-400 px-2 py-2">출석</th>
-                                <th className="border border-slate-400 px-2 py-2">찬성</th>
-                                <th className="border border-slate-400 px-2 py-2">반대</th>
-                                <th className="border border-slate-400 px-2 py-2">기권·무효</th>
-                                <th className="border border-slate-400 px-2 py-2">결과</th>
-                                <th className="border border-slate-400 px-2 py-2">비고</th>
+                            <tr className="bg-slate-50">
+                                <th className="border border-slate-400 px-2 py-2 w-[43%]">안건</th>
+                                <th className="border border-slate-400 px-1 py-2 w-[8%]">출석</th>
+                                <th className="border border-slate-400 px-1 py-2 w-[8%]">찬성</th>
+                                <th className="border border-slate-400 px-1 py-2 w-[8%]">반대</th>
+                                <th className="border border-slate-400 px-1 py-2 w-[8%]">무효</th>
+                                <th className="border border-slate-400 px-2 py-2 w-[13%]">결과</th>
+                                <th className="border border-slate-400 px-2 py-2 w-[12%]">비고</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -782,8 +783,10 @@ function CertificatePreview({
                                     <td className="border border-slate-400 px-2 py-2">{formatNumber(result.final.yes)}표</td>
                                     <td className="border border-slate-400 px-2 py-2">{formatNumber(result.final.no)}표</td>
                                     <td className="border border-slate-400 px-2 py-2">{formatNumber(result.final.abstain)}표</td>
-                                    <td className="border border-slate-400 px-2 py-2 font-bold">{result.result}</td>
-                                    <td className="border border-slate-400 px-2 py-2 text-left text-xs leading-relaxed">{result.resultReason || '-'}</td>
+                                    <td className="border border-slate-400 px-2 py-2 font-bold whitespace-pre-line">
+                                        {result.result === '유회 (성원 미달)' ? '유회\n(성원 미달)' : result.result}
+                                    </td>
+                                    <td className="border border-slate-400 px-2 py-2 text-center text-xs leading-relaxed">{result.resultReason || '-'}</td>
                                 </tr>
                             ))}
                             {standardResults.length === 0 && (
@@ -800,16 +803,16 @@ function CertificatePreview({
                 {hasElection && (
                     <section className="mt-7">
                         <h2 className="border-b-2 border-slate-900 pb-2 text-base font-black">임원 선거 투표 결과</h2>
-                        <table className="mt-3 w-full border-collapse text-center text-sm">
+                        <table className="mt-3 w-full border-collapse text-center text-sm table-fixed">
                             <thead>
-                                <tr className="bg-slate-100">
-                                    <th className="border border-slate-400 px-2 py-2">후보자/선거</th>
-                                    <th className="border border-slate-400 px-2 py-2">출석</th>
-                                    <th className="border border-slate-400 px-2 py-2">득표/찬성</th>
-                                    <th className="border border-slate-400 px-2 py-2">미선택/반대</th>
-                                    <th className="border border-slate-400 px-2 py-2">무효·기권</th>
-                                    <th className="border border-slate-400 px-2 py-2">결과</th>
-                                    <th className="border border-slate-400 px-2 py-2">비고</th>
+                                <tr className="bg-slate-50">
+                                    <th className="border border-slate-400 px-2 py-2 w-[43%]">후보자/선거</th>
+                                    <th className="border border-slate-400 px-1 py-2 w-[8%]">출석</th>
+                                    <th className="border border-slate-400 px-1 py-2 w-[8%]">찬성</th>
+                                    <th className="border border-slate-400 px-1 py-2 w-[8%]">반대</th>
+                                    <th className="border border-slate-400 px-1 py-2 w-[8%]">무효</th>
+                                    <th className="border border-slate-400 px-2 py-2 w-[13%]">결과</th>
+                                    <th className="border border-slate-400 px-2 py-2 w-[12%]">비고</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -823,8 +826,10 @@ function CertificatePreview({
                                         <td className="border border-slate-400 px-2 py-2">{formatNumber(result.final.yes)}표</td>
                                         <td className="border border-slate-400 px-2 py-2">{formatNumber(result.final.no)}표</td>
                                         <td className="border border-slate-400 px-2 py-2">{formatNumber(result.final.abstain)}표</td>
-                                        <td className="border border-slate-400 px-2 py-2 font-bold">{result.result}</td>
-                                        <td className="border border-slate-400 px-2 py-2 text-left text-xs leading-relaxed">{result.resultReason || '-'}</td>
+                                        <td className="border border-slate-400 px-2 py-2 font-bold whitespace-pre-line">
+                                            {result.result === '유회 (성원 미달)' ? '유회\n(성원 미달)' : result.result}
+                                        </td>
+                                        <td className="border border-slate-400 px-2 py-2 text-center text-xs leading-relaxed">{result.resultReason || '-'}</td>
                                     </tr>
                                 ))}
                             </tbody>
@@ -832,42 +837,22 @@ function CertificatePreview({
                     </section>
                 )}
 
-                <section className="mt-7">
+                <section className="mt-7 print:break-before-page">
                     <h2 className="border-b-2 border-slate-900 pb-2 text-base font-black">선거관리위원회 확인</h2>
                     <p className="mt-4 text-sm leading-7">
                         위 선거관리위원회는 본 총회의 참석 현황, 안건별 의결 결과 및 임원 선거 결과를 확인하였으며,
                         집계 과정이 공정하게 관리·운영되었고 위 기재된 집계 내용이 실제 투표 및 의결 결과와
                         다름이 없음을 확인합니다.
                     </p>
-                    <div className="mt-4 text-sm text-slate-700">
-                        집계 방식: {CONFIRMATION_SOURCE_LABELS[sourceType]} · 확정 시각: {confirmation?.confirmedAt ? new Date(confirmation.confirmedAt).toLocaleString('ko-KR') : '미확정'}
-                    </div>
-                    <div className="mt-8 text-center text-base font-bold">{formatKoreanDate(confirmation?.certificateDate || new Date())}</div>
+                    <div className="mt-[8cm] text-center text-base font-bold">{formatKoreanDate(confirmation?.certificateDate || new Date())}</div>
 
-                    <div className="no-print mt-5 grid gap-2">
-                        {committeeMembers.map((member, index) => (
-                            <div key={`${member.role}-${index}`} className="grid grid-cols-[160px_1fr] gap-2">
-                                <input
-                                    value={member.role}
-                                    onChange={(event) => updateCommitteeMember(index, 'role', event.target.value)}
-                                    className="rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-blue-500"
-                                />
-                                <input
-                                    value={member.name}
-                                    onChange={(event) => updateCommitteeMember(index, 'name', event.target.value)}
-                                    className="rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-blue-500"
-                                />
-                            </div>
-                        ))}
-                    </div>
 
-                    <table className="mt-5 w-full border-collapse text-center text-sm">
+                    <table className="mt-5 w-2/3 mx-auto border-collapse text-center text-sm">
                         <thead>
-                            <tr className="bg-slate-100">
+                            <tr className="bg-slate-50">
                                 <th className="border border-slate-400 px-2 py-2">직위</th>
                                 <th className="border border-slate-400 px-2 py-2">성명</th>
-                                <th className="border border-slate-400 px-2 py-2">서명</th>
-                                <th className="border border-slate-400 px-2 py-2">날인</th>
+                                <th className="border border-slate-400 px-2 py-2">서명 또는 날인</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -875,14 +860,13 @@ function CertificatePreview({
                                 <tr key={`${member.role}-signature-${index}`}>
                                     <td className="border border-slate-400 px-2 py-4">{member.role || '-'}</td>
                                     <td className="border border-slate-400 px-2 py-4">{member.name || '-'}</td>
-                                    <td className="border border-slate-400 px-2 py-4"></td>
-                                    <td className="border border-slate-400 px-2 py-4">(인)</td>
+                                    <td className="border border-slate-400 px-2 py-4 text-center text-slate-300">(인)</td>
                                 </tr>
                             ))}
                         </tbody>
                     </table>
 
-                    <div className="mt-8 text-center text-base font-bold">대방동 지역주택조합 선거관리위원회</div>
+                    <div className="mt-28 text-center text-[30px] font-black leading-tight">대방동 지역주택조합 선거관리위원회</div>
                 </section>
             </div>
         </div>
@@ -1085,26 +1069,49 @@ export default function AdminTallyPage() {
         >
             <style jsx global>{`
                 @media print {
+                    /* Reset scroll containers for printing */
+                    html, body {
+                        height: auto !important;
+                        overflow: visible !important;
+                    }
+                    
+                    /* Reset dashboard layout constraints */
+                    div[class*="h-screen"],
+                    div[class*="h-full"],
+                    main,
+                    .overflow-hidden,
+                    .overflow-y-auto {
+                        height: auto !important;
+                        overflow: visible !important;
+                        position: static !important;
+                    }
+
                     body * {
                         visibility: hidden !important;
                     }
+                    
                     #certificate-print-area,
                     #certificate-print-area * {
                         visibility: visible !important;
                     }
+                    
                     #certificate-print-area {
                         position: absolute !important;
                         left: 0 !important;
                         top: 0 !important;
                         width: 100% !important;
                         box-shadow: none !important;
+                        padding: 0 !important;
+                        margin: 0 !important;
                     }
+
                     .no-print {
                         display: none !important;
                     }
+
                     @page {
                         size: A4;
-                        margin: 14mm;
+                        margin: 15mm;
                     }
                 }
             `}</style>

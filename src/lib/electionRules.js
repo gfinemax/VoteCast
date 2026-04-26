@@ -195,8 +195,12 @@ export const getElectionQuorumConditionLabel = (agenda, electionAgendas = [], qu
 };
 
 
-export const getElectionResultLabel = (agenda, yesCount, attendanceCount, electionAgendas = []) => {
+export const getElectionResultLabel = (agenda, yesCount, attendanceCount, electionAgendas = [], quorumTarget = 0) => {
     const rule = getElectionRule(agenda, electionAgendas);
+
+    if (attendanceCount < quorumTarget) {
+        return '유회 (성원 미달)';
+    }
 
     if (rule.method === ELECTION_METHODS.PLURALITY) {
         return '다득표 확인';
@@ -206,7 +210,7 @@ export const getElectionResultLabel = (agenda, yesCount, attendanceCount, electi
         return Number(yesCount) >= getMajorityThreshold(attendanceCount) ? '1차 당선권' : '결선 확인';
     }
 
-    return Number(yesCount) >= getMajorityThreshold(attendanceCount) ? '당선' : '낙선';
+    return Number(yesCount) >= getMajorityThreshold(attendanceCount) ? '당선' : '미선출';
 };
 
 export const getDefaultElectionChoice = (agenda, electionAgendas = []) => (

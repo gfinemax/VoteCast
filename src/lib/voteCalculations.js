@@ -25,24 +25,26 @@ export const buildDefaultDeclaration = ({
 }) => {
     if (!agenda || effectiveTotalAttendance === 0) return '';
 
+    const fixedSourceText = isElection ? '우편투표를 포함한' : '서면결의서를 포함한';
+    const totalAttendanceText = `${effectiveTotalAttendance.toLocaleString()}명`;
+
+    if (!isQuorumSatisfied) {
+        return `"${agenda.title}"은 ${fixedSourceText} 총 ${totalAttendanceText}으로 조합규약에서 정한 의사정족수에 미달하였습니다. 이에 따라 본 안건은 유회되었음을 선포합니다.`;
+    }
+
     const yesCount = overrides.yes ?? votesYes;
     const noCount = overrides.no ?? votesNo;
     const abstainCount = overrides.abstain ?? votesAbstain;
     const criterion = isSpecialVote ? "3분의 2 이상" : "과반수 이상";
-    const passed = isQuorumSatisfied && calculateAgendaPass(yesCount, effectiveTotalAttendance, isSpecialVote);
-    const fixedSourceText = isElection ? '우편투표를 포함하여' : '서면결의서를 포함하여';
+    const passed = calculateAgendaPass(yesCount, effectiveTotalAttendance, isSpecialVote);
 
-    const resultReason = !isQuorumSatisfied
-        ? '성원 정족수 미달로'
-        : (passed ? `${criterion} 찬성으로` : '찬성 미달로');
+    const resultReason = passed ? `${criterion} 찬성으로` : '찬성 미달로';
     const resultSuffix = isElection ? (passed ? '당선' : '낙선') : (passed ? '가결' : '부결');
     const resultLine = isElection
         ? `후보자는 ${resultSuffix} 되었음을 선포합니다.`
         : `${resultSuffix} 되었음을 선포합니다.`;
 
-    const attendancePrefix = isElection 
-        ? `우편투표를 포함한 총 ${effectiveTotalAttendance.toLocaleString()}명 중` 
-        : `서면결의서를 포함한 총 ${effectiveTotalAttendance.toLocaleString()}명 중`;
+    const attendancePrefix = `${fixedSourceText} 총 ${totalAttendanceText} 중`;
 
     return `"${agenda.title}"은 ${attendancePrefix}
 찬성 ${yesCount}표, 반대 ${noCount}표, 기권 ${abstainCount}표인 ${resultReason}
