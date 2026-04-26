@@ -59,11 +59,11 @@ export default function DashboardLayout({ title, subtitle, sidebarContent, sideb
                 </div>
             </aside>
 
-            {/* Floating Toggle Button (A-Option) */}
+            {/* Floating Toggle Button */}
             {isMounted && (
                 <button
                     onClick={toggleSidebar}
-                    className="absolute z-30 flex items-center justify-center w-6 h-14 bg-blue-600 shadow-md shadow-blue-600/20 rounded-r-lg hover:bg-blue-700 hover:w-7 transition-all duration-300 ease-in-out text-white focus:outline-none border border-l-0 border-blue-700"
+                    className="absolute z-30 flex items-center justify-center gap-1 h-14 px-2.5 bg-lime-400 hover:bg-lime-500 shadow-md shadow-lime-500/30 rounded-r-xl transition-all duration-300 ease-in-out text-slate-900 font-extrabold tracking-wider text-[10px] focus:outline-none border border-l-0 border-lime-500"
                     style={{
                         top: '50vh',
                         transform: 'translateY(-50%)',
@@ -71,7 +71,17 @@ export default function DashboardLayout({ title, subtitle, sidebarContent, sideb
                     }}
                     title={isCollapsed ? "사이드바 펼치기" : "사이드바 접기"}
                 >
-                    {isCollapsed ? <ChevronRight size={16} strokeWidth={3} /> : <ChevronLeft size={16} strokeWidth={3} />}
+                    {isCollapsed ? (
+                        <>
+                            <ChevronRight size={16} strokeWidth={3} />
+                            <span className="pr-0.5">SIDEBAR</span>
+                        </>
+                    ) : (
+                        <>
+                            <span className="pl-0.5">WIDE</span>
+                            <ChevronLeft size={16} strokeWidth={3} />
+                        </>
+                    )}
                 </button>
             )}
 
