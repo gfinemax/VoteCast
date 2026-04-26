@@ -123,18 +123,18 @@ export default function AdminPage() {
                     <div className="flex gap-2 items-center flex-grow">
                         <div className="flex-grow"></div>
                         <Link
-                            href="/admin/members"
-                            className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 transition-colors hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700"
-                        >
-                            <Users size={14} />
-                            조합원 관리
-                        </Link>
-                        <Link
                             href="/admin/tally"
                             className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 transition-colors hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700"
                         >
                             <ClipboardCheck size={14} />
                             검산 및 확인서
+                        </Link>
+                        <Link
+                            href="/admin/members"
+                            className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 transition-colors hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700"
+                        >
+                            <Users size={14} />
+                            조합원 관리
                         </Link>
 
                         <FullscreenToggle />
