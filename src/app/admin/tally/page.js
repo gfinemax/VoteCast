@@ -98,14 +98,6 @@ function NumberInput({ value, onChange }) {
 function SidebarContent({ groups, selectedMeetingId, setSelectedMeetingId, audit, confirmation }) {
     return (
         <div className="p-4 space-y-4">
-            <Link
-                href="/admin"
-                className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition-colors hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700"
-            >
-                <ArrowLeft size={16} />
-                메인 제어로 돌아가기
-            </Link>
-
             <Card className="p-4">
                 <div className="flex items-start gap-3">
                     <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-700">
@@ -1016,6 +1008,13 @@ export default function AdminTallyPage() {
             </h2>
             <div className="flex flex-grow items-center gap-2">
                 <div className="flex-grow"></div>
+                <Link
+                    href="/admin"
+                    className="flex h-9 items-center gap-2 rounded-md border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 transition-colors hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700"
+                >
+                    <ArrowLeft size={14} />
+                    메인 제어로 돌아가기
+                </Link>
                 <Button variant="secondary" className="h-9 px-3 text-xs" onClick={handleResetManualValues}>
                     <RotateCcw size={14} />
                     수기값 초기화
