@@ -187,6 +187,58 @@ function SummaryTab({ audit, finalResults }) {
         statItems.push(['선거 참여', stats.election]);
     }
 
+    const standardResults = finalResults.filter((r) => !r.isElection);
+    const electionResults = finalResults.filter((r) => r.isElection);
+
+    const renderTable = (results, isElection) => (
+        <div className="overflow-x-auto">
+            <table className="min-w-full text-sm">
+                <thead className={`text-left text-xs font-bold uppercase tracking-[0.12em] ${isElection ? 'bg-indigo-50 text-indigo-700' : 'bg-slate-50 text-slate-500'}`}>
+                    <tr>
+                        <th className="px-5 py-3">{isElection ? '후보자/안건' : '안건'}</th>
+                        <th className="px-5 py-3 text-right">출석</th>
+                        <th className="px-5 py-3 text-right">찬성</th>
+                        <th className="px-5 py-3 text-right">{isElection ? '반대(선택안함)' : '반대'}</th>
+                        <th className="px-5 py-3 text-right">기권/무효</th>
+                        <th className="px-5 py-3">결과</th>
+                        <th className="px-5 py-3">상태</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {results.map((result) => (
+                        <tr key={result.id} className="border-t border-slate-100">
+                            <td className="px-5 py-3">
+                                <div className="font-bold text-slate-900">{result.title}</div>
+                                <div className="mt-1 text-xs text-slate-500">{result.thresholdLabel}</div>
+                            </td>
+                            <td className="px-5 py-3 text-right font-semibold">{formatNumber(result.attendanceCount)}</td>
+                            <td className="px-5 py-3 text-right font-semibold text-emerald-700">{formatNumber(result.final.yes)}</td>
+                            <td className="px-5 py-3 text-right font-semibold text-rose-700">{formatNumber(result.final.no)}</td>
+                            <td className="px-5 py-3 text-right font-semibold text-slate-700">{formatNumber(result.final.abstain)}</td>
+                            <td className="px-5 py-3">
+                                <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-bold ${getResultClass(result.result)}`}>
+                                    {result.result}
+                                </span>
+                            </td>
+                            <td className="px-5 py-3">
+                                <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-bold ${getStatusClass(result.mismatch)}`}>
+                                    {result.mismatch ? '불일치' : '정상'}
+                                </span>
+                            </td>
+                        </tr>
+                    ))}
+                    {results.length === 0 && (
+                        <tr>
+                            <td colSpan={7} className="px-5 py-12 text-center text-sm text-slate-400">
+                                해당되는 안건이 없습니다.
+                            </td>
+                        </tr>
+                    )}
+                </tbody>
+            </table>
+        </div>
+    );
+
     return (
         <div className="space-y-4">
             <div className={`grid gap-3 ${hasElection ? 'grid-cols-2 md:grid-cols-4 xl:grid-cols-7' : 'grid-cols-2 md:grid-cols-3 xl:grid-cols-5'}`}>
@@ -201,60 +253,25 @@ function SummaryTab({ audit, finalResults }) {
             <Card className="overflow-hidden">
                 <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
                     <div>
-                        <div className="text-sm font-bold text-slate-900">안건별 집계 현황</div>
-                        <div className="text-xs text-slate-500">프로그램 자동 집계와 최종 확정 대상 값을 비교합니다.</div>
+                        <div className="text-sm font-bold text-slate-900">일반 의결 안건 집계 현황</div>
+                        <div className="text-xs text-slate-500">프로그램 집계와 수기 확정값을 비교합니다. (기준: 일반 안건 출석)</div>
                     </div>
                     <span className={`rounded-full border px-3 py-1 text-xs font-bold ${getStatusClass(audit.hasIssues)}`}>
                         {audit.hasIssues ? '확인 필요' : '정상'}
                     </span>
                 </div>
-                <div className="overflow-x-auto">
-                    <table className="min-w-full text-sm">
-                        <thead className="bg-slate-50 text-left text-xs font-bold uppercase tracking-[0.12em] text-slate-500">
-                            <tr>
-                                <th className="px-5 py-3">안건</th>
-                                <th className="px-5 py-3 text-right">출석</th>
-                                <th className="px-5 py-3 text-right">찬성</th>
-                                <th className="px-5 py-3 text-right">반대</th>
-                                <th className="px-5 py-3 text-right">기권/무효</th>
-                                <th className="px-5 py-3">결과</th>
-                                <th className="px-5 py-3">상태</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {finalResults.map((result) => (
-                                <tr key={result.id} className="border-t border-slate-100">
-                                    <td className="px-5 py-3">
-                                        <div className="font-bold text-slate-900">{result.title}</div>
-                                        <div className="mt-1 text-xs text-slate-500">{result.thresholdLabel}</div>
-                                    </td>
-                                    <td className="px-5 py-3 text-right font-semibold">{formatNumber(result.attendanceCount)}</td>
-                                    <td className="px-5 py-3 text-right font-semibold text-emerald-700">{formatNumber(result.final.yes)}</td>
-                                    <td className="px-5 py-3 text-right font-semibold text-rose-700">{formatNumber(result.final.no)}</td>
-                                    <td className="px-5 py-3 text-right font-semibold text-slate-700">{formatNumber(result.final.abstain)}</td>
-                                    <td className="px-5 py-3">
-                                        <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-bold ${getResultClass(result.result)}`}>
-                                            {result.result}
-                                        </span>
-                                    </td>
-                                    <td className="px-5 py-3">
-                                        <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-bold ${getStatusClass(result.mismatch)}`}>
-                                            {result.mismatch ? '불일치' : '정상'}
-                                        </span>
-                                    </td>
-                                </tr>
-                            ))}
-                            {finalResults.length === 0 && (
-                                <tr>
-                                    <td colSpan={7} className="px-5 py-12 text-center text-sm text-slate-400">
-                                        선택된 총회에 안건이 없습니다.
-                                    </td>
-                                </tr>
-                            )}
-                        </tbody>
-                    </table>
-                </div>
+                {renderTable(standardResults, false)}
             </Card>
+
+            {hasElection && (
+                <Card className="overflow-hidden">
+                    <div className="border-b border-slate-200 px-5 py-4">
+                        <div className="text-sm font-bold text-slate-900">임원 선거 투표 결과 현황</div>
+                        <div className="text-xs text-slate-500">프로그램 집계와 수기 확정값을 비교합니다. (기준: 선거 참여 출석)</div>
+                    </div>
+                    {renderTable(electionResults, true)}
+                </Card>
+            )}
 
             <Card className="overflow-hidden">
                 <div className="border-b border-slate-200 px-5 py-4">
@@ -429,6 +446,65 @@ function ManualTab({
         }));
     };
 
+    const standardResults = finalResults.filter((r) => !r.isElection);
+    const electionResults = finalResults.filter((r) => r.isElection);
+    const hasElection = electionResults.length > 0;
+
+    const renderTable = (results, isElection) => (
+        <div className="overflow-x-auto">
+            <table className="min-w-full text-sm">
+                <thead className={`text-left text-xs font-bold uppercase tracking-[0.12em] ${isElection ? 'bg-indigo-50 text-indigo-700' : 'bg-slate-50 text-slate-500'}`}>
+                    <tr>
+                        <th className="px-5 py-3">{isElection ? '후보자/안건' : '안건'}</th>
+                        <th className="px-5 py-3 text-right">출석</th>
+                        <th className="px-5 py-3 text-right">찬성</th>
+                        <th className="px-5 py-3 text-right">{isElection ? '반대(선택안함)' : '반대'}</th>
+                        <th className="px-5 py-3 text-right">기권/무효</th>
+                        <th className="px-5 py-3">결과</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {results.map((result) => {
+                        const manual = manualResults[result.id] || {};
+                        const editable = sourceType === 'manual';
+
+                        return (
+                            <tr key={result.id} className="border-t border-slate-100">
+                                <td className="px-5 py-3 font-bold text-slate-900">{result.title}</td>
+                                {['attendanceCount', 'yes', 'no', 'abstain'].map((field) => (
+                                    <td key={field} className="px-5 py-3 text-right">
+                                        {editable ? (
+                                            <NumberInput
+                                                value={manual[field]}
+                                                onChange={(value) => updateManualResult(result.id, field, value)}
+                                            />
+                                        ) : (
+                                            <span className="font-semibold text-slate-800">
+                                                {formatNumber(field === 'attendanceCount' ? result.attendanceCount : result.final[field])}
+                                            </span>
+                                        )}
+                                    </td>
+                                ))}
+                                <td className="px-5 py-3">
+                                    <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-bold ${getResultClass(result.result)}`}>
+                                        {result.result}
+                                    </span>
+                                </td>
+                            </tr>
+                        );
+                    })}
+                    {results.length === 0 && (
+                        <tr>
+                            <td colSpan={6} className="px-5 py-12 text-center text-sm text-slate-400">
+                                해당되는 안건이 없습니다.
+                            </td>
+                        </tr>
+                    )}
+                </tbody>
+            </table>
+        </div>
+    );
+
     return (
         <div className="space-y-4">
             <Card className="p-5">
@@ -454,55 +530,21 @@ function ManualTab({
 
             <Card className="overflow-hidden">
                 <div className="border-b border-slate-200 px-5 py-4">
-                    <div className="text-sm font-bold text-slate-900">최종 확정값</div>
-                    <div className="text-xs text-slate-500">수기 확정 모드에서만 숫자를 직접 수정할 수 있습니다.</div>
+                    <div className="text-sm font-bold text-slate-900">일반 의결 안건 최종 확정 현황</div>
+                    <div className="text-xs text-slate-500">일반 안건의 수기 확정 모드에서만 숫자를 직접 수정할 수 있습니다.</div>
                 </div>
-                <div className="overflow-x-auto">
-                    <table className="min-w-full text-sm">
-                        <thead className="bg-slate-50 text-left text-xs font-bold uppercase tracking-[0.12em] text-slate-500">
-                            <tr>
-                                <th className="px-5 py-3">안건</th>
-                                <th className="px-5 py-3 text-right">출석</th>
-                                <th className="px-5 py-3 text-right">찬성</th>
-                                <th className="px-5 py-3 text-right">반대</th>
-                                <th className="px-5 py-3 text-right">기권/무효</th>
-                                <th className="px-5 py-3">결과</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {finalResults.map((result) => {
-                                const manual = manualResults[result.id] || {};
-                                const editable = sourceType === 'manual';
-
-                                return (
-                                    <tr key={result.id} className="border-t border-slate-100">
-                                        <td className="px-5 py-3 font-bold text-slate-900">{result.title}</td>
-                                        {['attendanceCount', 'yes', 'no', 'abstain'].map((field) => (
-                                            <td key={field} className="px-5 py-3 text-right">
-                                                {editable ? (
-                                                    <NumberInput
-                                                        value={manual[field]}
-                                                        onChange={(value) => updateManualResult(result.id, field, value)}
-                                                    />
-                                                ) : (
-                                                    <span className="font-semibold text-slate-800">
-                                                        {formatNumber(field === 'attendanceCount' ? result.attendanceCount : result.final[field])}
-                                                    </span>
-                                                )}
-                                            </td>
-                                        ))}
-                                        <td className="px-5 py-3">
-                                            <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-bold ${getResultClass(result.result)}`}>
-                                                {result.result}
-                                            </span>
-                                        </td>
-                                    </tr>
-                                );
-                            })}
-                        </tbody>
-                    </table>
-                </div>
+                {renderTable(standardResults, false)}
             </Card>
+
+            {hasElection && (
+                <Card className="overflow-hidden">
+                    <div className="border-b border-slate-200 px-5 py-4">
+                        <div className="text-sm font-bold text-slate-900">임원 선거 투표 최종 확정 현황</div>
+                        <div className="text-xs text-slate-500">선거 안건의 수기 확정 모드에서만 숫자를 직접 수정할 수 있습니다.</div>
+                    </div>
+                    {renderTable(electionResults, true)}
+                </Card>
+            )}
 
             <Card className="p-5 space-y-4">
                 <div>
@@ -547,6 +589,10 @@ function CertificatePreview({
             currentIndex === index ? { ...member, [field]: value } : member
         )));
     };
+
+    const standardResults = finalResults.filter((r) => !r.isElection);
+    const electionResults = finalResults.filter((r) => r.isElection);
+    const hasElection = electionResults.length > 0;
 
     return (
         <div className="space-y-4">
@@ -641,7 +687,7 @@ function CertificatePreview({
                 </section>
 
                 <section className="mt-7">
-                    <h2 className="border-b-2 border-slate-900 pb-2 text-base font-black">안건별 의결 결과</h2>
+                    <h2 className="border-b-2 border-slate-900 pb-2 text-base font-black">일반 안건 의결 결과</h2>
                     <table className="mt-3 w-full border-collapse text-center text-sm">
                         <thead>
                             <tr className="bg-slate-100">
@@ -654,7 +700,7 @@ function CertificatePreview({
                             </tr>
                         </thead>
                         <tbody>
-                            {finalResults.map((result, index) => (
+                            {standardResults.map((result, index) => (
                                 <tr key={result.id}>
                                     <td className="border border-slate-400 px-2 py-2 text-left">
                                         제{index + 1}호 {result.title}
@@ -667,9 +713,49 @@ function CertificatePreview({
                                     <td className="border border-slate-400 px-2 py-2 font-bold">{result.result}</td>
                                 </tr>
                             ))}
+                            {standardResults.length === 0 && (
+                                <tr>
+                                    <td colSpan={6} className="border border-slate-400 px-2 py-4 text-slate-400">
+                                        일반 의결 안건이 없습니다.
+                                    </td>
+                                </tr>
+                            )}
                         </tbody>
                     </table>
                 </section>
+
+                {hasElection && (
+                    <section className="mt-7">
+                        <h2 className="border-b-2 border-slate-900 pb-2 text-base font-black">임원 선거 투표 결과</h2>
+                        <table className="mt-3 w-full border-collapse text-center text-sm">
+                            <thead>
+                                <tr className="bg-slate-100">
+                                    <th className="border border-slate-400 px-2 py-2">후보자/안건</th>
+                                    <th className="border border-slate-400 px-2 py-2">출석</th>
+                                    <th className="border border-slate-400 px-2 py-2">찬성</th>
+                                    <th className="border border-slate-400 px-2 py-2">반대(선택안함)</th>
+                                    <th className="border border-slate-400 px-2 py-2">무효·기권</th>
+                                    <th className="border border-slate-400 px-2 py-2">결과</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {electionResults.map((result) => (
+                                    <tr key={result.id}>
+                                        <td className="border border-slate-400 px-2 py-2 text-left font-bold text-slate-900">
+                                            {result.title}
+                                            <div className="mt-1 font-normal text-xs text-slate-600">{result.thresholdLabel}</div>
+                                        </td>
+                                        <td className="border border-slate-400 px-2 py-2">{formatNumber(result.attendanceCount)}명</td>
+                                        <td className="border border-slate-400 px-2 py-2">{formatNumber(result.final.yes)}표</td>
+                                        <td className="border border-slate-400 px-2 py-2">{formatNumber(result.final.no)}표</td>
+                                        <td className="border border-slate-400 px-2 py-2">{formatNumber(result.final.abstain)}표</td>
+                                        <td className="border border-slate-400 px-2 py-2 font-bold">{result.result}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </section>
+                )}
 
                 <section className="mt-7">
                     <h2 className="border-b-2 border-slate-900 pb-2 text-base font-black">선거관리위원회 확인</h2>
