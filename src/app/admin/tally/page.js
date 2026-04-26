@@ -161,18 +161,36 @@ function SidebarContent({ groups, selectedMeetingId, setSelectedMeetingId, audit
 
 function SummaryTab({ audit, finalResults }) {
     const stats = audit.meetingStats;
+    const hasElection = audit.electionAgendas?.length > 0;
+    let mailVoteCount = 0;
+    
+    if (hasElection) {
+        const uniqueMailVoteMembers = new Set();
+        audit.memberRows?.forEach((row) => {
+            if (row.electionVotes?.some((vote) => !!vote.choice)) {
+                uniqueMailVoteMembers.add(row.member.id);
+            }
+        });
+        mailVoteCount = uniqueMailVoteMembers.size;
+    }
+
+    const statItems = [
+        ['전체 조합원', audit.activeMembers.length],
+        ['직접 출석', stats.direct],
+        ['대리 참석', stats.proxy],
+        ['서면결의서', stats.written],
+        ['출석 인정', stats.total]
+    ];
+
+    if (hasElection) {
+        statItems.push(['우편투표', mailVoteCount]);
+        statItems.push(['선거 참여', stats.election]);
+    }
 
     return (
         <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-3 xl:grid-cols-6">
-                {[
-                    ['전체 조합원', audit.activeMembers.length],
-                    ['직접 출석', stats.direct],
-                    ['대리 참석', stats.proxy],
-                    ['서면결의서', stats.written],
-                    ['출석 인정', stats.total],
-                    ['선거 참여', stats.election]
-                ].map(([label, value]) => (
+            <div className={`grid gap-3 ${hasElection ? 'grid-cols-2 md:grid-cols-4 xl:grid-cols-7' : 'grid-cols-2 md:grid-cols-3 xl:grid-cols-5'}`}>
+                {statItems.map(([label, value]) => (
                     <Card key={label} className="p-4">
                         <div className="text-xs font-bold text-slate-400">{label}</div>
                         <div className="mt-2 text-2xl font-black text-slate-900">{formatNumber(value)}</div>
