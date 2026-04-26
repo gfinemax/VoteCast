@@ -1,35 +1,79 @@
 'use client';
 
-import React from 'react';
-import { FileText } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { FileText, ChevronLeft, ChevronRight } from 'lucide-react';
 
 export default function DashboardLayout({ title, subtitle, sidebarContent, sidebarFooter, headerContent, fixedTopContent, children }) {
+    const [isCollapsed, setIsCollapsed] = useState(false);
+    const [isMounted, setIsMounted] = useState(false);
+
+    // 컴포넌트 마운트 시, 저장된 사이드바 상태를 불러옵니다.
+    useEffect(() => {
+        setIsMounted(true);
+        const storedValue = localStorage.getItem('votecast_sidebar_collapsed');
+        if (storedValue === 'true') {
+            setIsCollapsed(true);
+        }
+    }, []);
+
+    const toggleSidebar = () => {
+        const newValue = !isCollapsed;
+        setIsCollapsed(newValue);
+        localStorage.setItem('votecast_sidebar_collapsed', newValue.toString());
+    };
+
     return (
-        <div className="flex h-screen bg-slate-50 font-sans text-slate-800 overflow-hidden">
+        <div className="flex h-screen bg-slate-50 font-sans text-slate-800 overflow-hidden relative">
             {/* Sidebar */}
-            <aside className="w-80 bg-white border-r border-slate-200 flex flex-col shadow-lg z-10 relative shrink-0">
-                <div className="p-6 border-b border-slate-100 shrink-0">
-                    <h1 className="text-xl font-bold text-slate-900 flex items-center gap-2">
-                        <div className="w-8 h-8 bg-slate-900 rounded-lg flex items-center justify-center text-white">
-                            <FileText size={18} />
-                        </div>
-                        {title}
-                    </h1>
-                    <p className="text-xs text-slate-500 mt-1">{subtitle}</p>
-                </div>
-
-                {/* Scrollable Sidebar Content */}
-                <div className="flex-1 overflow-y-auto">
-                    {sidebarContent}
-                </div>
-
-                {/* Sticky Sidebar Footer */}
-                {sidebarFooter && (
-                    <div className="shrink-0 z-20">
-                        {sidebarFooter}
+            <aside 
+                className={`bg-white border-r border-slate-200 flex flex-col shadow-lg z-10 shrink-0 transition-all duration-300 ease-in-out ${
+                    isCollapsed ? 'w-0 overflow-hidden' : 'w-80'
+                }`}
+            >
+                {/* 
+                  컨텐츠의 너비를 20rem(w-80)으로 고정해주어야, 
+                  aside 래퍼의 폭이 0으로 줄어들 때 내부 글자가 찌그러지지 않고 부드럽게 가려집니다.
+                */}
+                <div className="w-80 flex flex-col h-full">
+                    <div className="p-6 border-b border-slate-100 shrink-0">
+                        <h1 className="text-xl font-bold text-slate-900 flex items-center gap-2">
+                            <div className="w-8 h-8 bg-slate-900 rounded-lg flex items-center justify-center text-white">
+                                <FileText size={18} />
+                            </div>
+                            {title}
+                        </h1>
+                        <p className="text-xs text-slate-500 mt-1">{subtitle}</p>
                     </div>
-                )}
+
+                    {/* Scrollable Sidebar Content */}
+                    <div className="flex-1 overflow-y-auto">
+                        {sidebarContent}
+                    </div>
+
+                    {/* Sticky Sidebar Footer */}
+                    {sidebarFooter && (
+                        <div className="shrink-0 z-20">
+                            {sidebarFooter}
+                        </div>
+                    )}
+                </div>
             </aside>
+
+            {/* Floating Toggle Button (A-Option) */}
+            {isMounted && (
+                <button
+                    onClick={toggleSidebar}
+                    className="absolute z-30 flex items-center justify-center w-6 h-14 bg-white border border-slate-200 shadow-md rounded-r-xl hover:bg-slate-50 hover:text-blue-600 transition-all duration-300 ease-in-out text-slate-400 focus:outline-none"
+                    style={{
+                        top: '50vh',
+                        transform: 'translateY(-50%)',
+                        left: isCollapsed ? '0px' : '320px', // 320px = w-80
+                    }}
+                    title={isCollapsed ? "사이드바 펼치기" : "사이드바 접기"}
+                >
+                    {isCollapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
+                </button>
+            )}
 
             {/* Main Content */}
             <main className="flex-1 flex flex-col h-full overflow-hidden relative">
