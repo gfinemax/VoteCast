@@ -1,32 +1,12 @@
 
 > votecast@0.1.0 dev
-> next dev --webpack -p 3000
+> next dev --webpack
 
 ▲ Next.js 16.1.2 (webpack)
-- Local:         http://localhost:3000
-- Network:       http://192.168.219.105:3000
+- Local:         http://localhost:3001
+- Network:       http://192.168.219.105:3001
 - Environments: .env.local
 
 ✓ Starting...
-✓ Ready in 2.9s
-[Supabase Init] URL present: true, Key present: true
-[Supabase Init] URL length: 40
-[Supabase Init] Creating real client...
- GET /login 200 in 4.0s (compile: 3.6s, proxy.ts: 10ms, render: 318ms)
-[Supabase Init] URL present: true, Key present: true
-[Supabase Init] URL length: 40
-[Supabase Init] Creating real client...
- GET /admin/tally 200 in 4.8s (compile: 2.7s, proxy.ts: 1705ms, render: 398ms)
- GET /admin/tally 200 in 274ms (compile: 11ms, proxy.ts: 159ms, render: 104ms)
- GET /admin/tally 200 in 607ms (compile: 328ms, proxy.ts: 223ms, render: 56ms)
- GET /admin/tally 200 in 106ms (compile: 6ms, proxy.ts: 76ms, render: 24ms)
- GET /admin/tally 200 in 626ms (compile: 304ms, proxy.ts: 255ms, render: 67ms)
- GET /admin/tally 200 in 79ms (compile: 6ms, proxy.ts: 55ms, render: 18ms)
- GET /admin/tally 200 in 489ms (compile: 292ms, proxy.ts: 140ms, render: 56ms)
- GET /admin/tally 200 in 68ms (compile: 6ms, proxy.ts: 46ms, render: 16ms)
- GET /admin/tally 200 in 735ms (compile: 581ms, proxy.ts: 104ms, render: 50ms)
- GET /admin/tally 200 in 67ms (compile: 6ms, proxy.ts: 44ms, render: 17ms)
- GET /admin/tally 200 in 432ms (compile: 257ms, proxy.ts: 137ms, render: 39ms)
- GET /admin/tally 200 in 76ms (compile: 6ms, proxy.ts: 53ms, render: 18ms)
- GET /admin/tally 200 in 493ms (compile: 298ms, proxy.ts: 140ms, render: 55ms)
- GET /admin/tally 200 in 77ms (compile: 5ms, proxy.ts: 56ms, render: 16ms)
+  Suggestion: If you intended to restart next dev, terminate the other process, and then try again.
+[?25h

@@ -7,6 +7,10 @@ import {
     getUniqueAttendanceRecords,
     normalizeAgendaType
 } from '@/lib/voteCalculations';
+import {
+    getElectionResultLabel,
+    getElectionThresholdLabel
+} from '@/lib/electionRules';
 
 export const VOTE_CHOICE_LABELS = {
     yes: '찬성',
@@ -116,23 +120,49 @@ const buildVoteLookup = (votes = []) => {
     return lookup;
 };
 
-const getResultLabel = (agenda, yesCount, attendanceCount) => {
+const getAgendaSpecialResult = (agenda = {}) => {
+    const snapshot = agenda?.vote_snapshot || {};
+    if (snapshot.result === 'WITHDRAWN' || agenda?.is_withdrawn) {
+        return {
+            result: '상정 철회',
+            resultReason: snapshot.resultReason || agenda?.withdrawal_reason || '',
+            isWithdrawn: true
+        };
+    }
+    if (snapshot.result === 'CONDITIONAL_PASSED') {
+        return {
+            result: snapshot.resultLabel || '조건부 가결',
+            resultReason: snapshot.resultReason || '',
+            isWithdrawn: false
+        };
+    }
+    return null;
+};
+
+const getResultLabel = (agenda, yesCount, attendanceCount, electionAgendas = []) => {
+    const specialResult = getAgendaSpecialResult(agenda);
+    if (specialResult) return specialResult.result;
+
     const agendaType = normalizeAgendaType(agenda?.type);
     const passed = calculateAgendaPass(yesCount, attendanceCount, agendaType === 'twoThirds');
 
     if (agendaType === 'election') {
-        return passed ? '당선' : '낙선';
+        return getElectionResultLabel(agenda, yesCount, attendanceCount, electionAgendas);
     }
     return passed ? '가결' : '부결';
 };
 
-const getThresholdLabel = (agenda, attendanceCount) => {
+const getThresholdLabel = (agenda, attendanceCount, electionAgendas = []) => {
+    if (getAgendaSpecialResult(agenda)?.isWithdrawn) {
+        return '상정 철회로 투표 미실시';
+    }
+
     const agendaType = normalizeAgendaType(agenda?.type);
     if (agendaType === 'twoThirds') {
         return `출석 인원 3분의 2 이상 (${Math.ceil((Number(attendanceCount) || 0) * (2 / 3)).toLocaleString()}명 이상)`;
     }
     if (agendaType === 'election') {
-        return `출석 인원 과반수 (${Math.floor((Number(attendanceCount) || 0) / 2 + 1).toLocaleString()}명 이상)`;
+        return getElectionThresholdLabel(agenda, attendanceCount, electionAgendas);
     }
     return `출석 인원 과반수 (${Math.floor((Number(attendanceCount) || 0) / 2 + 1).toLocaleString()}명 이상)`;
 };
@@ -181,7 +211,8 @@ export const buildTallyAudit = ({
         };
         const totalVotes = finalTotals.yes + finalTotals.no + finalTotals.abstain;
         const attendanceCount = displayStats.total;
-        const mismatch = totalVotes !== attendanceCount;
+        const specialResult = getAgendaSpecialResult(agenda);
+        const mismatch = specialResult?.isWithdrawn ? false : totalVotes !== attendanceCount;
         const isElection = agendaType === 'election';
 
         return {
@@ -198,8 +229,10 @@ export const buildTallyAudit = ({
             final: finalTotals,
             totalVotes,
             mismatch,
-            result: getResultLabel(agenda, finalTotals.yes, attendanceCount),
-            thresholdLabel: getThresholdLabel(agenda, attendanceCount),
+            result: getResultLabel(agenda, finalTotals.yes, attendanceCount, electionAgendas),
+            resultReason: specialResult?.resultReason || '',
+            isWithdrawn: !!specialResult?.isWithdrawn,
+            thresholdLabel: getThresholdLabel(agenda, attendanceCount, electionAgendas),
             quorumTarget: getAttendanceQuorumTarget(agendaType, activeMembers.length)
         };
     });
@@ -208,10 +241,12 @@ export const buildTallyAudit = ({
         const record = attendanceByMemberId.get(member.id) || null;
         const standardVotes = standardAgendas.map((agenda) => ({
             agendaId: agenda.id,
+            agenda,
             choice: writtenVoteLookup.get(`${member.id}:${agenda.id}`) || null
         }));
         const electionVotes = electionAgendas.map((agenda) => ({
             agendaId: agenda.id,
+            agenda,
             choice: mailElectionVoteLookup.get(`${member.id}:${agenda.id}`) || null
         }));
         const issues = [];
@@ -326,9 +361,9 @@ export const applyManualResults = (agendaResults = [], manualResults = {}, sourc
             attendanceCount,
             final,
             totalVotes,
-            mismatch: totalVotes !== attendanceCount,
-            result: getResultLabel(result.agenda, final.yes, attendanceCount),
-            thresholdLabel: getThresholdLabel(result.agenda, attendanceCount)
+            mismatch: result.isWithdrawn ? false : totalVotes !== attendanceCount,
+            result: getResultLabel(result.agenda, final.yes, attendanceCount, agendaResults.filter((item) => item.isElection).map((item) => item.agenda)),
+            thresholdLabel: getThresholdLabel(result.agenda, attendanceCount, agendaResults.filter((item) => item.isElection).map((item) => item.agenda))
         };
     })
 );

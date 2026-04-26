@@ -11,6 +11,12 @@ import {
     normalizeAgendaType,
     sanitizeElectionModeForMeetingType
 } from '@/lib/store';
+import {
+    getDefaultElectionChoice,
+    getElectionChoiceLabel,
+    getElectionRule,
+    isChairContestAgenda
+} from '@/lib/electionRules';
 import { Search, UserCheck, AlertCircle, Clock, Check, RotateCcw, ChevronDown, ChevronUp, User, FileText, Pencil, Loader2 } from 'lucide-react';
 import FlipNumber from '@/components/ui/FlipNumber';
 import FullscreenToggle from '@/components/ui/FullscreenToggle';
@@ -51,7 +57,7 @@ const buildInitialWrittenVotes = (agendas = []) => {
 const buildInitialElectionVotes = (agendas = []) => {
     const initialVotes = {};
     agendas.forEach((agenda) => {
-        initialVotes[agenda.id] = 'yes';
+        initialVotes[agenda.id] = getDefaultElectionChoice(agenda, agendas);
     });
     return initialVotes;
 };
@@ -463,6 +469,15 @@ export default function CheckInPage() {
     }, [activeMemberIdSet, electionAgendaIdSet, mailElectionVotes, meetingAttendanceRecords]);
 
     const selectedCheckInMember = members.find((member) => member.id === checkInForm.memberId) || null;
+    const chairContestAgendas = useMemo(
+        () => electionAgendas.filter((agenda) => isChairContestAgenda(agenda, electionAgendas)),
+        [electionAgendas]
+    );
+    const isChairContestSelectionValid = (
+        checkInForm.electionMode !== 'mail'
+        || chairContestAgendas.length < 2
+        || chairContestAgendas.filter((agenda) => checkInForm.electionVotes?.[agenda.id] === 'yes').length === 1
+    );
     const isWrittenComplete = (
         checkInForm.meetingType !== 'written'
         || writtenAgendas.every((agenda) => ['yes', 'no', 'abstain'].includes(checkInForm.writtenVotes?.[agenda.id]))
@@ -470,6 +485,7 @@ export default function CheckInPage() {
     const isMailElectionComplete = (
         checkInForm.electionMode !== 'mail'
         || electionAgendas.every((agenda) => ['yes', 'no', 'abstain'].includes(checkInForm.electionVotes?.[agenda.id]))
+        && isChairContestSelectionValid
     );
 
     const isSubmitDisabled = (
@@ -500,6 +516,22 @@ export default function CheckInPage() {
                     ? (Object.keys(prev.electionVotes || {}).length ? prev.electionVotes : buildInitialElectionVotes(electionAgendas))
                     : prev.electionVotes
             };
+        });
+    };
+
+    const handleElectionVoteChoice = (agenda, choice) => {
+        setCheckInForm((prev) => {
+            const nextVotes = { ...prev.electionVotes, [agenda.id]: choice };
+
+            if (choice === 'yes' && isChairContestAgenda(agenda, electionAgendas)) {
+                chairContestAgendas.forEach((chairAgenda) => {
+                    if (chairAgenda.id !== agenda.id) {
+                        nextVotes[chairAgenda.id] = 'no';
+                    }
+                });
+            }
+
+            return { ...prev, electionVotes: nextVotes };
         });
     };
 
@@ -1028,19 +1060,16 @@ export default function CheckInPage() {
                                     <div className="flex items-center justify-between gap-3">
                                         <div>
                                             <div className="text-sm font-bold text-slate-800">우편투표 입력</div>
-                                            <p className="text-xs text-slate-500">선거 안건별 찬성, 반대, 기권을 선택합니다.</p>
+                                            <p className="text-xs text-slate-500">경선은 후보 선택, 찬반 선거는 찬성·반대 기준으로 입력합니다.</p>
                                         </div>
                                         <button
                                             onClick={() => setCheckInForm((prev) => {
-                                                const nextVotes = { ...prev.electionVotes };
-                                                electionAgendas.forEach((agenda) => {
-                                                    nextVotes[agenda.id] = 'yes';
-                                                });
+                                                const nextVotes = buildInitialElectionVotes(electionAgendas);
                                                 return { ...prev, electionVotes: nextVotes };
                                             })}
                                             className="px-3 py-1.5 bg-amber-100 text-amber-700 rounded-lg text-xs font-bold hover:bg-amber-200 transition-colors"
                                         >
-                                            전체 찬성
+                                            기본값 적용
                                         </button>
                                     </div>
 
@@ -1048,33 +1077,41 @@ export default function CheckInPage() {
                                         {electionAgendas.length === 0 ? (
                                             <p className="text-center text-slate-400 py-6">우편투표 대상 선거 안건이 없습니다.</p>
                                         ) : (
-                                            electionAgendas.map((agenda) => (
-                                                <div key={agenda.id} className="flex flex-col gap-2">
-                                                    <span className="text-sm font-bold text-slate-700 break-keep leading-tight">
-                                                        {agenda.title}
-                                                    </span>
-                                                    <div className="flex bg-slate-100 rounded-lg p-1">
-                                                        <button
-                                                            onClick={() => setCheckInForm((prev) => ({ ...prev, electionVotes: { ...prev.electionVotes, [agenda.id]: 'yes' } }))}
-                                                            className={`flex-1 py-2 rounded-md text-sm font-bold transition-all ${checkInForm.electionVotes[agenda.id] === 'yes' ? 'bg-white text-emerald-600 shadow-sm ring-1 ring-slate-200' : 'text-slate-400 hover:text-slate-600'}`}
-                                                        >
-                                                            찬성
-                                                        </button>
-                                                        <button
-                                                            onClick={() => setCheckInForm((prev) => ({ ...prev, electionVotes: { ...prev.electionVotes, [agenda.id]: 'no' } }))}
-                                                            className={`flex-1 py-2 rounded-md text-sm font-bold transition-all ${checkInForm.electionVotes[agenda.id] === 'no' ? 'bg-white text-red-500 shadow-sm ring-1 ring-slate-200' : 'text-slate-400 hover:text-slate-600'}`}
-                                                        >
-                                                            반대
-                                                        </button>
-                                                        <button
-                                                            onClick={() => setCheckInForm((prev) => ({ ...prev, electionVotes: { ...prev.electionVotes, [agenda.id]: 'abstain' } }))}
-                                                            className={`flex-1 py-2 rounded-md text-sm font-bold transition-all ${checkInForm.electionVotes[agenda.id] === 'abstain' ? 'bg-white text-slate-600 shadow-sm ring-1 ring-slate-200' : 'text-slate-400 hover:text-slate-600'}`}
-                                                        >
-                                                            기권
-                                                        </button>
+                                            electionAgendas.map((agenda) => {
+                                                const rule = getElectionRule(agenda, electionAgendas);
+                                                return (
+                                                    <div key={agenda.id} className="flex flex-col gap-2">
+                                                        <div>
+                                                            <span className="text-sm font-bold text-slate-700 break-keep leading-tight">
+                                                                {agenda.title}
+                                                            </span>
+                                                            <span className="ml-2 align-middle text-[10px] font-black text-amber-700">
+                                                                {rule.label}
+                                                            </span>
+                                                        </div>
+                                                        <div className="flex bg-slate-100 rounded-lg p-1">
+                                                            <button
+                                                                onClick={() => handleElectionVoteChoice(agenda, 'yes')}
+                                                                className={`flex-1 py-2 rounded-md text-sm font-bold transition-all ${checkInForm.electionVotes[agenda.id] === 'yes' ? 'bg-white text-emerald-600 shadow-sm ring-1 ring-slate-200' : 'text-slate-400 hover:text-slate-600'}`}
+                                                            >
+                                                                {getElectionChoiceLabel(agenda, 'yes', electionAgendas)}
+                                                            </button>
+                                                            <button
+                                                                onClick={() => handleElectionVoteChoice(agenda, 'no')}
+                                                                className={`flex-1 py-2 rounded-md text-sm font-bold transition-all ${checkInForm.electionVotes[agenda.id] === 'no' ? `bg-white ${rule.isContest ? 'text-slate-600' : 'text-red-500'} shadow-sm ring-1 ring-slate-200` : 'text-slate-400 hover:text-slate-600'}`}
+                                                            >
+                                                                {getElectionChoiceLabel(agenda, 'no', electionAgendas)}
+                                                            </button>
+                                                            <button
+                                                                onClick={() => handleElectionVoteChoice(agenda, 'abstain')}
+                                                                className={`flex-1 py-2 rounded-md text-sm font-bold transition-all ${checkInForm.electionVotes[agenda.id] === 'abstain' ? 'bg-white text-slate-600 shadow-sm ring-1 ring-slate-200' : 'text-slate-400 hover:text-slate-600'}`}
+                                                            >
+                                                                {getElectionChoiceLabel(agenda, 'abstain', electionAgendas)}
+                                                            </button>
+                                                        </div>
                                                     </div>
-                                                </div>
-                                            ))
+                                                );
+                                            })
                                         )}
                                     </div>
                                 </section>
@@ -1099,6 +1136,9 @@ export default function CheckInPage() {
                                     })}
                                     {hasElectionAgenda && !isMailElectionComplete && (
                                         <span className="text-xs font-semibold text-red-500">우편투표를 선택한 경우 모든 선거 안건에 응답해야 합니다.</span>
+                                    )}
+                                    {hasElectionAgenda && checkInForm.electionMode === 'mail' && !isChairContestSelectionValid && (
+                                        <span className="text-xs font-semibold text-red-500">조합장 경선 우편투표는 후보 1명만 선택해야 합니다.</span>
                                     )}
                                     {!isWrittenComplete && (
                                         <span className="text-xs font-semibold text-red-500">서면결의를 선택한 경우 모든 총회 안건에 응답해야 합니다.</span>

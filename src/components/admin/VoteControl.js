@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useStore } from '@/lib/store';
 import AttendanceSummaryPanel from '@/components/admin/AttendanceSummaryPanel';
 import ConfirmedDecisionToast from '@/components/admin/ConfirmedDecisionToast';
@@ -18,6 +18,14 @@ import useVoteDeclarationSync from '@/components/admin/useVoteDeclarationSync';
 import useVoteInputHandlers from '@/components/admin/useVoteInputHandlers';
 import useSplitVoteAutoFocus from '@/components/admin/useSplitVoteAutoFocus';
 
+const getResultStatusFromAgenda = (agenda) => {
+    const snapshotResult = agenda?.vote_snapshot?.result;
+    if (snapshotResult === 'WITHDRAWN') return 'withdrawn';
+    if (snapshotResult === 'CONDITIONAL_PASSED') return 'conditional_approved';
+    if (agenda?.is_withdrawn) return 'withdrawn';
+    return 'normal';
+};
+
 export default function VoteControl() {
     const { state, actions } = useStore();
     const { updateAgenda, setDeclarationEditMode, setAgendaTypeLock, updateProjectorData, moveAgendaSelection } = actions;
@@ -27,6 +35,11 @@ export default function VoteControl() {
         agendaId: null,
         values: { yes: 0, no: 0, abstain: 0 },
         dirty: false
+    });
+    const [resultDraft, setResultDraft] = useState({
+        agendaId: null,
+        status: null,
+        reason: ''
     });
     const {
         currentAgenda,
@@ -61,7 +74,7 @@ export default function VoteControl() {
         displayStats,
         voteCountSummary,
         splitVoteDisplayCards,
-        canConfirmDecision
+        canConfirmDecision: baseCanConfirmDecision
     } = useVoteControlDerivedContext({
         members,
         attendance,
@@ -72,6 +85,16 @@ export default function VoteControl() {
         localVoteDraft,
         confirmReadyAgendaId
     });
+    const currentAgendaResultSnapshot = currentAgenda?.vote_snapshot;
+    const currentAgendaResultDraftId = currentAgenda?.id || null;
+    const currentAgendaInitialResultStatus = getResultStatusFromAgenda(currentAgenda);
+    const currentAgendaWithdrawalReason = currentAgenda?.withdrawal_reason || '';
+    const activeResultStatus = resultDraft.agendaId === currentAgendaResultDraftId
+        ? (resultDraft.status || 'normal')
+        : currentAgendaInitialResultStatus;
+    const activeResultReason = resultDraft.agendaId === currentAgendaResultDraftId
+        ? resultDraft.reason
+        : (currentAgendaResultSnapshot?.resultReason || currentAgendaWithdrawalReason || '');
     const confirmedDecisionToast = useConfirmedDecisionToast({
         currentAgendaId,
         isConfirmed
@@ -162,9 +185,29 @@ export default function VoteControl() {
         votesAbstain,
         isPassed,
         isLocalDirty,
+        resultStatus: activeResultStatus,
+        resultReason: activeResultReason,
         updateAgenda,
         setConfirmReadyAgendaId
     });
+    const currentMeetingElectionAgendas = useMemo(() => {
+        const currentIndex = agendas.findIndex((agenda) => agenda.id === currentAgendaId);
+        if (currentIndex < 0) return [];
+
+        let folderIndex = currentIndex;
+        while (folderIndex >= 0 && agendas[folderIndex]?.type !== 'folder') {
+            folderIndex -= 1;
+        }
+
+        const startIndex = folderIndex >= 0 ? folderIndex + 1 : 0;
+        const items = [];
+        for (let index = startIndex; index < agendas.length; index += 1) {
+            const agenda = agendas[index];
+            if (index !== startIndex && agenda?.type === 'folder') break;
+            if (agenda?.type === 'election') items.push(agenda);
+        }
+        return items;
+    }, [agendas, currentAgendaId]);
 
     if (!currentAgenda) return <div className="p-10 text-center text-slate-400">안건을 선택해주세요.</div>;
 
@@ -180,6 +223,31 @@ export default function VoteControl() {
         isApplyDisabled,
         voteCountStatusText
     } = voteCountSummary;
+    const isSpecialResultDraft = activeResultStatus === 'withdrawn' || activeResultStatus === 'conditional_approved';
+    const resultReasonError = isSpecialResultDraft && !String(activeResultReason || '').trim()
+        ? (activeResultStatus === 'withdrawn' ? '상정 철회 사유를 입력해야 합니다.' : '조건 또는 사유를 입력해야 합니다.')
+        : '';
+    const canConfirmDecision = activeResultStatus === 'withdrawn'
+        ? isReadyToConfirm && !isLocalDirty && !resultReasonError
+        : (activeResultStatus === 'conditional_approved'
+            ? isReadyToConfirm && !isLocalDirty && !isApplyDisabled && !resultReasonError
+            : baseCanConfirmDecision);
+    const handleResultStatusChange = (status) => {
+        setResultDraft((prev) => ({
+            agendaId: currentAgendaId,
+            status,
+            reason: status === 'normal' ? '' : (prev.agendaId === currentAgendaId ? prev.reason : activeResultReason)
+        }));
+        setConfirmReadyAgendaId(null);
+    };
+    const handleResultReasonChange = (reason) => {
+        setResultDraft((prev) => ({
+            ...prev,
+            agendaId: currentAgendaId,
+            reason
+        }));
+        setConfirmReadyAgendaId(null);
+    };
 
     return (
         <div className="space-y-2 pb-2">
@@ -188,8 +256,11 @@ export default function VoteControl() {
             )}
             <VoteAgendaHeader
                 title={currentAgenda.title}
+                agenda={currentAgenda}
+                electionAgendas={currentMeetingElectionAgendas}
                 isSpecialVote={isSpecialVote}
                 currentAgendaType={currentAgendaType}
+                quorumTarget={quorumTarget}
             />
 
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-stretch mb-4">
@@ -247,6 +318,7 @@ export default function VoteControl() {
                         onLocalVoteChange={handleLocalVoteChange}
                         localVotes={localVotes}
                         onAutoSum={handleAutoSum}
+                        isQuorumSatisfied={isQuorumSatisfied}
                     />
                 </div>
             </div>
@@ -274,6 +346,12 @@ export default function VoteControl() {
                         effectiveTotalAttendance={effectiveTotalAttendance}
                         hasElectionValidationIssue={hasElectionValidationIssue}
                         canConfirmDecision={canConfirmDecision}
+                        resultStatus={activeResultStatus}
+                        resultReason={activeResultReason}
+                        resultReasonError={resultReasonError}
+                        isElection={isElection}
+                        onResultStatusChange={handleResultStatusChange}
+                        onResultReasonChange={handleResultReasonChange}
                         onReadyChange={(checked) => setConfirmReadyAgendaId(checked ? currentAgendaId : null)}
                         onResetDecision={handleResetDecision}
                         onConfirmDecision={handleConfirmDecision}

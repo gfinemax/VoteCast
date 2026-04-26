@@ -1,6 +1,6 @@
 'use client';
 
-import { Lock } from 'lucide-react';
+import { Lock, ShieldAlert } from 'lucide-react';
 import SplitVoteInputPanel from '@/components/admin/SplitVoteInputPanel';
 import StandardVoteInputPanel from '@/components/admin/StandardVoteInputPanel';
 
@@ -33,14 +33,18 @@ export default function VoteInputSection({
     primaryOnsiteInputRef,
     onLocalVoteChange,
     localVotes,
-    onAutoSum
+    onAutoSum,
+    isQuorumSatisfied
 }) {
+    const isQuorumLocked = !isQuorumSatisfied && !isConfirmed;
+
     return (
         <section className={`flex flex-col flex-1 ${isConfirmed ? "pointer-events-none opacity-90" : ""}`}>
             <div className="flex justify-between items-end mb-1">
                 <h3 className="text-base font-bold text-slate-600 uppercase tracking-wider flex items-center gap-2">
                     02. 투표결과 입력
                     {isConfirmed && <Lock size={14} className="text-slate-400" />}
+                    {isQuorumLocked && <ShieldAlert size={14} className="text-amber-500" />}
                 </h3>
             </div>
             <div className={`flex flex-col flex-1 ${hasSplitVoteColumns ? '' : `p-3 rounded-2xl border ${isConfirmed ? 'bg-slate-50 border-slate-200 opacity-90' : 'bg-white border-slate-200 shadow-sm'}`}`}>
@@ -74,6 +78,7 @@ export default function VoteInputSection({
                             splitVoteDisplayCards={splitVoteDisplayCards}
                             primaryOnsiteInputRef={primaryOnsiteInputRef}
                             onLocalVoteChange={onLocalVoteChange}
+                            isQuorumLocked={isQuorumLocked}
                         />
                     ) : (
                         <StandardVoteInputPanel
@@ -91,6 +96,7 @@ export default function VoteInputSection({
                             onReset={onReset}
                             onAutoSum={onAutoSum}
                             onLocalVoteChange={onLocalVoteChange}
+                            isQuorumLocked={isQuorumLocked}
                         />
                     )}
                 </div>

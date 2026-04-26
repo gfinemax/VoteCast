@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase';
 import { useStore } from '@/lib/store';
 import { Plus, Trash2, Edit2, FolderOpen, ChevronDown, ChevronRight, FolderPlus, CheckCircle2, Play, Link2, FileText, Upload, Loader2, AlertTriangle, GripVertical, Lock, Unlock } from 'lucide-react';
 import Button from '@/components/ui/Button';
+import { ELECTION_METHOD_SETTING_OPTIONS } from '@/lib/electionRules';
 
 const GHOST_GROUP_ID = 'ghost';
 
@@ -49,6 +50,7 @@ export default function AgendaList() {
     const [editPresentationType, setEditPresentationType] = useState('URL');
     const [editPresentationSource, setEditPresentationSource] = useState("");
     const [editStartPage, setEditStartPage] = useState("");
+    const [editElectionMethod, setEditElectionMethod] = useState('auto');
     const [isUploading, setIsUploading] = useState(false);
     const [showAdvanced, setShowAdvanced] = useState(false);
     const [expandedFolders, setExpandedFolders] = useState({});
@@ -164,6 +166,7 @@ export default function AgendaList() {
         setEditPresentationType(agenda.presentation_type || 'URL');
         setEditPresentationSource(agenda.presentation_source || "");
         setEditStartPage(agenda.start_page || "");
+        setEditElectionMethod(agenda.election_method || 'auto');
     };
 
     const getDisplayFileName = (url) => {
@@ -218,16 +221,32 @@ export default function AgendaList() {
         }
     };
 
-    const handleEdit = () => {
+    const handleEdit = async () => {
         if (!editTitle.trim()) return;
 
-        actions.updateAgenda({
+        const currentAgenda = agendas.find((agenda) => agenda.id === editingId);
+        const nextAgenda = {
             id: editingId,
             title: editTitle,
             presentation_type: editPresentationType,
             presentation_source: editPresentationSource,
             start_page: parseInt(editStartPage) || null
-        });
+        };
+
+        if (currentAgenda?.type === 'election') {
+            nextAgenda.election_method = editElectionMethod === 'auto' ? null : editElectionMethod;
+        }
+
+        const result = await actions.updateAgenda(nextAgenda);
+        if (!result?.ok) {
+            const message = result?.error?.message || '안건 저장에 실패했습니다.';
+            if (message.includes('election_method')) {
+                alert('선거 방식 저장 컬럼이 아직 DB에 없습니다.\nSupabase에 add_election_method_to_agendas.sql을 먼저 적용해 주세요.');
+            } else {
+                alert(message);
+            }
+            return;
+        }
 
         setEditingId(null);
     };
@@ -537,6 +556,8 @@ export default function AgendaList() {
                         setEditPresentationSource={setEditPresentationSource}
                         editStartPage={editStartPage}
                         setEditStartPage={setEditStartPage}
+                        editElectionMethod={editElectionMethod}
+                        setEditElectionMethod={setEditElectionMethod}
                         isUploading={isUploading}
                         showAdvanced={showAdvanced}
                         setShowAdvanced={setShowAdvanced}
@@ -665,6 +686,8 @@ function AgendaGroup({
     setEditPresentationSource,
     editStartPage,
     setEditStartPage,
+    editElectionMethod,
+    setEditElectionMethod,
     isUploading,
     showAdvanced,
     setShowAdvanced,
@@ -829,6 +852,8 @@ function AgendaGroup({
                             setEditPresentationSource={setEditPresentationSource}
                             editStartPage={editStartPage}
                             setEditStartPage={setEditStartPage}
+                            editElectionMethod={editElectionMethod}
+                            setEditElectionMethod={setEditElectionMethod}
                             isUploading={isUploading}
                             showAdvanced={showAdvanced}
                             setShowAdvanced={setShowAdvanced}
@@ -912,6 +937,8 @@ function AgendaItem({
     setEditPresentationSource,
     editStartPage,
     setEditStartPage,
+    editElectionMethod,
+    setEditElectionMethod,
     isUploading,
     showAdvanced,
     setShowAdvanced,
@@ -938,6 +965,20 @@ function AgendaItem({
     const isDragged = draggedAgendaId === agenda.id;
     const isDropBefore = dropTarget?.type === 'before' && dropTarget.agendaId === agenda.id;
     const isDropAfter = dropTarget?.type === 'after' && dropTarget.agendaId === agenda.id;
+    const isAgendaFinalized = !!agenda.declaration || !!agenda.vote_snapshot;
+    const resultBadge = (() => {
+        const snapshotResult = agenda?.vote_snapshot?.result;
+        if (snapshotResult === 'WITHDRAWN' || agenda?.is_withdrawn) {
+            return { label: '상정 철회', className: currentAgendaId === agenda.id ? 'bg-white/15 text-slate-100 border-white/20' : 'bg-slate-100 text-slate-600 border-slate-200' };
+        }
+        if (snapshotResult === 'CONDITIONAL_PASSED') {
+            return { label: '조건부 가결', className: currentAgendaId === agenda.id ? 'bg-amber-300/20 text-amber-100 border-amber-200/30' : 'bg-amber-50 text-amber-700 border-amber-200' };
+        }
+        return null;
+    })();
+    const electionMethodBadge = agenda.type === 'election' && agenda.election_method
+        ? ELECTION_METHOD_SETTING_OPTIONS.find((option) => option.value === agenda.election_method)?.label
+        : null;
 
     return (
         <div
@@ -986,6 +1027,24 @@ function AgendaItem({
                             <span className="text-[10px] text-slate-400 font-medium">페이지 이동 설정</span>
                         </div>
                     </div>
+
+                    {agenda.type === 'election' && (
+                        <div>
+                            <label className="block text-[10px] font-bold text-slate-500 mb-1">선거 방식</label>
+                            <select
+                                value={editElectionMethod}
+                                onChange={(e) => setEditElectionMethod(e.target.value)}
+                                className="w-full rounded border border-slate-300 bg-white p-1.5 text-sm font-semibold text-slate-900 outline-none focus:border-blue-500"
+                            >
+                                {ELECTION_METHOD_SETTING_OPTIONS.map((option) => (
+                                    <option key={option.value} value={option.value}>{option.label}</option>
+                                ))}
+                            </select>
+                            <p className="mt-1 text-[10px] leading-relaxed text-slate-400">
+                                자동 판별은 제목과 같은 총회 내 조합장 후보 수를 기준으로 보정합니다.
+                            </p>
+                        </div>
+                    )}
 
                     {!editPresentationSource && group.folder?.presentation_source && (
                         <div className="mt-1 px-3 py-2 bg-blue-50 border border-blue-100 rounded-lg text-[10px] text-blue-700 flex items-center gap-1.5 animate-in fade-in slide-in-from-top-1">
@@ -1081,14 +1140,24 @@ function AgendaItem({
                     >
                         <GripVertical size={12} />
                     </button>
-                    {agenda.declaration ? (
+                    {isAgendaFinalized ? (
                         <CheckCircle2 size={14} className={`${isAgendaDeleteTarget ? 'text-red-500' : 'text-emerald-500'} flex-shrink-0`} />
                     ) : (
                         <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${isAgendaDeleteTarget ? 'bg-red-400' : currentAgendaId === agenda.id ? 'bg-emerald-400' : 'bg-slate-300 group-hover:bg-slate-400'}`}></div>
                     )}
-                    <span className={`line-clamp-1 flex-1 text-xs leading-normal ${agenda.declaration ? 'text-slate-400 line-through decoration-slate-300' : ''} ${currentAgendaId === agenda.id ? '!text-white !no-underline' : ''} ${isAgendaDeleteTarget && currentAgendaId !== agenda.id ? '!text-red-700' : ''}`}>
+                    <span className={`line-clamp-1 flex-1 text-xs leading-normal ${isAgendaFinalized ? 'text-slate-400 line-through decoration-slate-300' : ''} ${currentAgendaId === agenda.id ? '!text-white !no-underline' : ''} ${isAgendaDeleteTarget && currentAgendaId !== agenda.id ? '!text-red-700' : ''}`}>
                         {agenda.title}
                     </span>
+                    {resultBadge && (
+                        <span className={`flex-shrink-0 rounded border px-1.5 py-0.5 text-[10px] font-bold ${resultBadge.className}`}>
+                            {resultBadge.label}
+                        </span>
+                    )}
+                    {electionMethodBadge && (
+                        <span className={`flex-shrink-0 rounded border px-1.5 py-0.5 text-[10px] font-bold ${currentAgendaId === agenda.id ? 'border-amber-200/30 bg-amber-300/20 text-amber-100' : 'border-amber-200 bg-amber-50 text-amber-700'}`}>
+                            {electionMethodBadge}
+                        </span>
+                    )}
                     <div className={`flex gap-0.5 transition-opacity ${currentAgendaId === agenda.id ? 'text-slate-400 opacity-100' : 'text-slate-300 opacity-0 group-hover:opacity-100'}`}>
                         <button className="p-1 hover:text-white hover:bg-slate-700/50 rounded" onClick={(e) => { e.stopPropagation(); startEdit(agenda); }}><Edit2 size={10} /></button>
                         <button className="p-1 hover:text-red-400 hover:bg-red-900/20 rounded" onClick={(e) => openDeleteConfirm(e, agenda)}><Trash2 size={10} /></button>

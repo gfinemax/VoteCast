@@ -1,5 +1,6 @@
 'use client';
 
+import { ShieldAlert } from 'lucide-react';
 import VoteActionBar from '@/components/admin/VoteActionBar';
 import VoteNumericInput from '@/components/admin/VoteNumericInput';
 import VoteValidationAlert from '@/components/admin/VoteValidationAlert';
@@ -35,8 +36,11 @@ export default function SplitVoteInputPanel({
     onsiteAttendanceCount,
     splitVoteDisplayCards,
     primaryOnsiteInputRef,
-    onLocalVoteChange
+    onLocalVoteChange,
+    isQuorumLocked = false
 }) {
+    const isInputDisabled = isConfirmed || isQuorumLocked;
+
     return (
         <div className="flex flex-col flex-1 mt-0">
             <div className="rounded-2xl border border-slate-800 bg-slate-900 px-3 py-2 shadow-[0_12px_40px_-15px_rgba(0,0,0,0.5)] flex-1">
@@ -48,22 +52,29 @@ export default function SplitVoteInputPanel({
                         </div>
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
-                        <VoteActionBar
-                            variant="dark"
-                            isLocalDirty={isLocalDirty}
-                            isApplyDisabled={isApplyDisabled}
-                            isConfirmed={isConfirmed}
-                            isAutoCalc={isAutoCalc}
-                            onApply={onApply}
-                            onToggleAutoCalc={onToggleAutoCalc}
-                            onReset={onReset}
-                        />
+                        {isQuorumLocked ? (
+                            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-950/50 border border-amber-800/50">
+                                <ShieldAlert size={13} className="text-amber-400" />
+                                <span className="text-[11px] font-bold text-amber-300">성원 미달 — 현장입력 잠금</span>
+                            </div>
+                        ) : (
+                            <VoteActionBar
+                                variant="dark"
+                                isLocalDirty={isLocalDirty}
+                                isApplyDisabled={isApplyDisabled}
+                                isConfirmed={isConfirmed}
+                                isAutoCalc={isAutoCalc}
+                                onApply={onApply}
+                                onToggleAutoCalc={onToggleAutoCalc}
+                                onReset={onReset}
+                            />
+                        )}
                     </div>
                 </div>
 
                 <div className="min-h-[48px] mb-1 flex items-center">
                     <VoteValidationAlert
-                        isVisible={!isVoteCountValid || isOnsiteOverflow || (isElection && hasElectionValidationIssue)}
+                        isVisible={!isQuorumLocked && (!isVoteCountValid || isOnsiteOverflow || (isElection && hasElectionValidationIssue))}
                         isElection={isElection}
                         hasElectionValidationIssue={hasElectionValidationIssue}
                         isElectionMailMissing={isElectionMailMissing}
@@ -83,9 +94,9 @@ export default function SplitVoteInputPanel({
                     <div className="text-center text-slate-400">구분</div>
                     <div className="min-w-0 text-center text-slate-500 whitespace-pre-wrap">{fixedVoteLabel}({fixedAttendanceCount}명)</div>
                     <div className="w-4 text-center text-slate-700 text-xl font-black leading-none">+</div>
-                    <div className={`min-w-0 ${ONSITE_INPUT_HEADER_WIDTH_CLASS} text-center text-blue-400 border border-blue-900/50 bg-blue-900/20 rounded px-2 py-0.5 leading-tight flex flex-col items-center justify-center`}>
-                        <span>현장 참석입력</span>
-                        <span className="text-[10px] font-bold text-blue-300">
+                    <div className={`min-w-0 ${ONSITE_INPUT_HEADER_WIDTH_CLASS} text-center border rounded px-2 py-0.5 leading-tight flex flex-col items-center justify-center ${isQuorumLocked ? 'text-slate-600 border-slate-700 bg-slate-800/40' : 'text-blue-400 border-blue-900/50 bg-blue-900/20'}`}>
+                        <span>{isElection ? '현장 선거 가능' : '현장 참석입력'}</span>
+                        <span className={`text-[10px] font-bold ${isQuorumLocked ? 'text-slate-600' : 'text-blue-300'}`}>
                             {isElection
                                 ? `(조합원=${effectiveOnsiteEligibleCount}명)`
                                 : `(조합원+대리인=${onsiteAttendanceCount}명)`
@@ -115,14 +126,14 @@ export default function SplitVoteInputPanel({
 
                             <div className="hidden lg:flex justify-center text-slate-700 text-xl font-black leading-none xl:text-2xl">+</div>
 
-                            <div className="relative lg:flex lg:justify-center">
+                            <div className={`relative lg:flex lg:justify-center ${isQuorumLocked ? 'opacity-35' : ''}`}>
                                 <div className={`mb-1 text-xs font-bold lg:hidden ${card.tone.inputLabel}`}>현장 참석입력</div>
                                 <VoteNumericInput
                                     innerRef={card.key === 'yes' ? primaryOnsiteInputRef : null}
                                     value={card.onsiteValue}
                                     placeholder="0"
                                     onChange={(value) => onLocalVoteChange(card.key, value)}
-                                    disabled={isConfirmed}
+                                    disabled={isInputDisabled}
                                     className={`${ONSITE_INPUT_FIELD_WIDTH_CLASS} rounded-xl border px-2 py-1 text-center text-xl md:text-2xl font-black shadow-[inset_0_2px_4px_rgba(0,0,0,0.06)] outline-none disabled:bg-slate-50 disabled:text-slate-400 transition-all ${card.tone.inputBox}`}
                                 />
                             </div>

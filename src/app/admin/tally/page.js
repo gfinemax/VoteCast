@@ -34,6 +34,10 @@ import {
     formatKoreanDate,
     getDefaultMeetingId
 } from '@/lib/tallyCalculations';
+import {
+    getElectionChoiceLabel,
+    getElectionRule
+} from '@/lib/electionRules';
 
 const EMPTY_INACTIVE_MEMBER_IDS = [];
 const DEFAULT_COMMITTEE_MEMBERS = [
@@ -61,11 +65,13 @@ const getStatusClass = (hasProblem) => (
         : 'border-emerald-200 bg-emerald-50 text-emerald-700'
 );
 
-const getResultClass = (result) => (
-    ['가결', '당선'].includes(result)
-        ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-        : 'bg-rose-50 text-rose-700 border-rose-200'
-);
+const getResultClass = (result) => {
+    if (result === '상정 철회') return 'bg-slate-100 text-slate-700 border-slate-300';
+    if (result === '조건부 가결') return 'bg-amber-50 text-amber-700 border-amber-200';
+    if (['가결', '당선', '1차 당선권', '다득표 확인'].includes(result)) return 'bg-emerald-50 text-emerald-700 border-emerald-200';
+    if (result === '결선 확인') return 'bg-amber-50 text-amber-700 border-amber-200';
+    return 'bg-rose-50 text-rose-700 border-rose-200';
+};
 
 const getChoiceLabel = (choice) => VOTE_CHOICE_LABELS[choice] || '-';
 
@@ -74,6 +80,13 @@ const getChoiceClass = (choice) => {
     if (choice === 'no') return 'bg-rose-50 text-rose-700 border-rose-200';
     if (choice === 'abstain') return 'bg-slate-100 text-slate-700 border-slate-200';
     return 'bg-amber-50 text-amber-700 border-amber-200';
+};
+
+const getElectionChoiceClass = (agenda, choice, electionAgendas = []) => {
+    if (choice === 'no' && getElectionRule(agenda, electionAgendas).isContest) {
+        return 'bg-slate-100 text-slate-600 border-slate-200';
+    }
+    return getChoiceClass(choice);
 };
 
 const getAttendanceClass = (type) => {
@@ -174,10 +187,10 @@ function SummaryTab({ audit, finalResults }) {
             <table className="min-w-full text-sm">
                 <thead className={`text-left text-xs font-bold uppercase tracking-[0.12em] ${isElection ? 'bg-indigo-50 text-indigo-700' : 'bg-slate-50 text-slate-500'}`}>
                     <tr>
-                        <th className="px-5 py-3">{isElection ? '후보자/안건' : '안건'}</th>
+                        <th className="px-5 py-3">{isElection ? '후보자/선거' : '안건'}</th>
                         <th className="px-5 py-3 text-center">출석</th>
-                        <th className="px-5 py-3 text-center">찬성</th>
-                        <th className="px-5 py-3 text-center">{isElection ? '반대(선택안함)' : '반대'}</th>
+                        <th className="px-5 py-3 text-center">{isElection ? '득표/찬성' : '찬성'}</th>
+                        <th className="px-5 py-3 text-center">{isElection ? '미선택/반대' : '반대'}</th>
                         <th className="px-5 py-3 text-center">기권/무효</th>
                         <th className="px-5 py-3 text-center">결과</th>
                         <th className="px-5 py-3 text-center">상태</th>
@@ -189,6 +202,9 @@ function SummaryTab({ audit, finalResults }) {
                             <td className="px-5 py-3">
                                 <div className="font-bold text-slate-900">{result.title}</div>
                                 <div className="mt-1 text-xs text-slate-500">{result.thresholdLabel}</div>
+                                {result.resultReason && (
+                                    <div className="mt-1 text-xs font-semibold text-slate-600">사유: {result.resultReason}</div>
+                                )}
                             </td>
                             <td className="px-5 py-3 text-center font-semibold">{formatNumber(result.attendanceCount)}</td>
                             <td className="px-5 py-3 text-center font-semibold text-emerald-700">{formatNumber(result.final.yes)}</td>
@@ -355,11 +371,11 @@ function MatrixTab({ audit }) {
     }, [audit.memberRows, normalizedSearchTerm]);
     const agendaShortLabelById = useMemo(() => {
         const labels = new Map();
-        [...audit.standardAgendas, ...audit.electionAgendas].forEach((agenda, index) => {
+        audit.standardAgendas.forEach((agenda, index) => {
             labels.set(agenda.id, `제${index + 1}호 안건`);
         });
         return labels;
-    }, [audit.electionAgendas, audit.standardAgendas]);
+    }, [audit.standardAgendas]);
 
     return (
         <Card className="overflow-hidden">
@@ -382,17 +398,33 @@ function MatrixTab({ audit }) {
                 <table className="min-w-max table-fixed text-sm">
                     <thead className="bg-slate-50 text-left text-xs font-bold uppercase tracking-[0.12em] text-slate-500">
                         <tr>
-                            <th className="sticky left-0 z-20 w-12 bg-slate-50 px-1 py-2 text-center whitespace-nowrap">ID</th>
-                            <th className="sticky left-12 z-20 w-[72px] bg-slate-50 px-1 py-2 whitespace-nowrap">조합원</th>
-                            <th className="sticky left-[120px] z-20 w-20 bg-slate-50 px-1 py-2 text-center whitespace-nowrap">참석방식</th>
-                            <th className="sticky left-[200px] z-20 w-16 bg-slate-50 px-1 py-2 text-center whitespace-nowrap">대리인</th>
+                            <th rowSpan={2} className="sticky left-0 z-20 w-12 bg-slate-50 px-1 py-2 text-center whitespace-nowrap">ID</th>
+                            <th rowSpan={2} className="sticky left-12 z-20 w-[72px] bg-slate-50 px-1 py-2 whitespace-nowrap">조합원</th>
+                            <th rowSpan={2} className="sticky left-[120px] z-20 w-20 bg-slate-50 px-1 py-2 text-center whitespace-nowrap">참석방식</th>
+                            <th rowSpan={2} className="sticky left-[200px] z-20 w-16 bg-slate-50 px-1 py-2 text-center whitespace-nowrap">대리인</th>
+                            {audit.standardAgendas.length > 0 && (
+                                <th colSpan={audit.standardAgendas.length} className="border-b border-slate-200 px-1 py-2 text-center text-slate-600">
+                                    의결안건 {audit.standardAgendas.length}건
+                                </th>
+                            )}
+                            {audit.electionAgendas.length > 0 && (
+                                <th colSpan={audit.electionAgendas.length} className="border-b border-indigo-100 bg-indigo-50 px-1 py-2 text-center text-indigo-700">
+                                    임원 선거 {audit.electionAgendas.length}건
+                                </th>
+                            )}
+                            <th rowSpan={2} className="w-24 bg-slate-50 px-1 py-2 text-center">상태</th>
+                        </tr>
+                        <tr>
                             {audit.standardAgendas.map((agenda) => (
                                 <th key={agenda.id} className="w-20 px-1 py-2 text-center">{agendaShortLabelById.get(agenda.id)}</th>
                             ))}
                             {audit.electionAgendas.map((agenda) => (
-                                <th key={agenda.id} className="w-20 px-1 py-2 text-center">{agendaShortLabelById.get(agenda.id)}</th>
+                                <th key={agenda.id} className="w-28 bg-indigo-50 px-1 py-2 text-center text-indigo-700">
+                                    <span className="block truncate" title={agenda.title || getElectionRule(agenda, audit.electionAgendas).label}>
+                                        {agenda.title || getElectionRule(agenda, audit.electionAgendas).label}
+                                    </span>
+                                </th>
                             ))}
-                            <th className="w-24 px-1 py-2 text-center">상태</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -422,9 +454,9 @@ function MatrixTab({ audit }) {
                                     </td>
                                 ))}
                                 {row.electionVotes.map((vote) => (
-                                    <td key={`${row.member.id}-${vote.agendaId}`} className="w-20 px-1 py-3 text-center">
-                                        <span className={`inline-flex rounded-full border px-2 py-0.5 text-[11px] font-bold ${getChoiceClass(vote.choice || 'missing')}`}>
-                                            {getChoiceLabel(vote.choice || 'missing')}
+                                    <td key={`${row.member.id}-${vote.agendaId}`} className="w-28 px-1 py-3 text-center">
+                                        <span className={`inline-flex rounded-full border px-2 py-0.5 text-[11px] font-bold ${getElectionChoiceClass(vote.agenda, vote.choice || 'missing', audit.electionAgendas)}`}>
+                                            {getElectionChoiceLabel(vote.agenda, vote.choice || 'missing', audit.electionAgendas)}
                                         </span>
                                     </td>
                                 ))}
@@ -489,10 +521,10 @@ function ManualTab({
             <table className="min-w-full text-sm">
                 <thead className={`text-left text-xs font-bold uppercase tracking-[0.12em] ${isElection ? 'bg-indigo-50 text-indigo-700' : 'bg-slate-50 text-slate-500'}`}>
                     <tr>
-                        <th className="px-5 py-3">{isElection ? '후보자/안건' : '안건'}</th>
+                        <th className="px-5 py-3">{isElection ? '후보자/선거' : '안건'}</th>
                         <th className="px-5 py-3 text-center">출석</th>
-                        <th className="px-5 py-3 text-center">찬성</th>
-                        <th className="px-5 py-3 text-center">{isElection ? '반대(선택안함)' : '반대'}</th>
+                        <th className="px-5 py-3 text-center">{isElection ? '득표/찬성' : '찬성'}</th>
+                        <th className="px-5 py-3 text-center">{isElection ? '미선택/반대' : '반대'}</th>
                         <th className="px-5 py-3 text-center">기권/무효</th>
                         <th className="px-5 py-3 text-center">결과</th>
                     </tr>
@@ -504,7 +536,12 @@ function ManualTab({
 
                         return (
                             <tr key={result.id} className="border-t border-slate-100">
-                                <td className="px-5 py-3 font-bold text-slate-900">{result.title}</td>
+                                <td className="px-5 py-3">
+                                    <div className="font-bold text-slate-900">{result.title}</div>
+                                    {result.resultReason && (
+                                        <div className="mt-1 text-xs font-semibold text-slate-600">사유: {result.resultReason}</div>
+                                    )}
+                                </td>
                                 {['attendanceCount', 'yes', 'no', 'abstain'].map((field) => (
                                     <td key={field} className="px-5 py-3 text-center">
                                         {editable ? (
@@ -731,6 +768,7 @@ function CertificatePreview({
                                 <th className="border border-slate-400 px-2 py-2">반대</th>
                                 <th className="border border-slate-400 px-2 py-2">기권·무효</th>
                                 <th className="border border-slate-400 px-2 py-2">결과</th>
+                                <th className="border border-slate-400 px-2 py-2">비고</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -745,11 +783,12 @@ function CertificatePreview({
                                     <td className="border border-slate-400 px-2 py-2">{formatNumber(result.final.no)}표</td>
                                     <td className="border border-slate-400 px-2 py-2">{formatNumber(result.final.abstain)}표</td>
                                     <td className="border border-slate-400 px-2 py-2 font-bold">{result.result}</td>
+                                    <td className="border border-slate-400 px-2 py-2 text-left text-xs leading-relaxed">{result.resultReason || '-'}</td>
                                 </tr>
                             ))}
                             {standardResults.length === 0 && (
                                 <tr>
-                                    <td colSpan={6} className="border border-slate-400 px-2 py-4 text-slate-400">
+                                    <td colSpan={7} className="border border-slate-400 px-2 py-4 text-slate-400">
                                         일반 의결 안건이 없습니다.
                                     </td>
                                 </tr>
@@ -764,12 +803,13 @@ function CertificatePreview({
                         <table className="mt-3 w-full border-collapse text-center text-sm">
                             <thead>
                                 <tr className="bg-slate-100">
-                                    <th className="border border-slate-400 px-2 py-2">후보자/안건</th>
+                                    <th className="border border-slate-400 px-2 py-2">후보자/선거</th>
                                     <th className="border border-slate-400 px-2 py-2">출석</th>
-                                    <th className="border border-slate-400 px-2 py-2">찬성</th>
-                                    <th className="border border-slate-400 px-2 py-2">반대(선택안함)</th>
+                                    <th className="border border-slate-400 px-2 py-2">득표/찬성</th>
+                                    <th className="border border-slate-400 px-2 py-2">미선택/반대</th>
                                     <th className="border border-slate-400 px-2 py-2">무효·기권</th>
                                     <th className="border border-slate-400 px-2 py-2">결과</th>
+                                    <th className="border border-slate-400 px-2 py-2">비고</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -784,6 +824,7 @@ function CertificatePreview({
                                         <td className="border border-slate-400 px-2 py-2">{formatNumber(result.final.no)}표</td>
                                         <td className="border border-slate-400 px-2 py-2">{formatNumber(result.final.abstain)}표</td>
                                         <td className="border border-slate-400 px-2 py-2 font-bold">{result.result}</td>
+                                        <td className="border border-slate-400 px-2 py-2 text-left text-xs leading-relaxed">{result.resultReason || '-'}</td>
                                     </tr>
                                 ))}
                             </tbody>
@@ -975,6 +1016,8 @@ export default function AdminTallyPage() {
                     attendanceCount: result.attendanceCount,
                     final: result.final,
                     result: result.result,
+                    resultReason: result.resultReason || '',
+                    isWithdrawn: !!result.isWithdrawn,
                     thresholdLabel: result.thresholdLabel
                 })),
                 meetingStats: audit.meetingStats,
