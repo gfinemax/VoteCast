@@ -2,7 +2,7 @@
 
 const getAgendaTypeBadgeText = ({ isSpecialVote, currentAgendaType }) => {
     if (isSpecialVote) return '특별결의(2/3)';
-    if (currentAgendaType === 'election') return '일반결의(과반/현장참석 20%)';
+    if (currentAgendaType === 'election') return '선거(과반/현장참석 20%)';
     return '일반결의(과반)';
 };
 

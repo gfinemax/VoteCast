@@ -57,14 +57,6 @@ export default function VoteActionBar({
                     자동계산 {isAutoCalc ? 'ON' : 'OFF'}
                 </button>
             )}
-            {variant === 'light' && <div className="w-px h-6 bg-slate-200 mx-1 hidden sm:block"></div>}
-            <button
-                onClick={onReset}
-                disabled={isConfirmed}
-                className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg transition-colors disabled:opacity-50 ${styles.reset}`}
-            >
-                <Trash2 size={14} /> 초기화
-            </button>
         </>
     );
 }
