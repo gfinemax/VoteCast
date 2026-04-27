@@ -881,6 +881,8 @@ function CertificatePreview({
     setMeetingDetails,
     committeeMembers,
     setCommitteeMembers,
+    sealImage,
+    setSealImage,
     confirmation,
     onPrint
 }) {
@@ -925,15 +927,51 @@ function CertificatePreview({
                         </div>
                     </div>
                 </Card>
-                <Card className="p-5">
-                    <div className="text-sm font-bold text-slate-900">출력</div>
-                    <div className="mt-2 text-xs leading-relaxed text-slate-500">
-                        브라우저 인쇄에서 PDF 저장을 선택하면 확인서 파일로 보관할 수 있습니다.
+                <Card className="p-5 flex flex-col justify-between">
+                    <div>
+                        <div className="text-sm font-bold text-slate-900">확인서 직인 설정</div>
+                        <div className="mt-2 text-xs leading-relaxed text-slate-500">
+                            위원회 명칭 옆에 표시될 직인 이미지를 업로드하세요. (권장: 투명 배경 PNG)
+                        </div>
+                        <div className="mt-3">
+                            {sealImage ? (
+                                <div className="relative group w-20 h-20 border rounded-lg overflow-hidden bg-slate-50">
+                                    <img src={sealImage} alt="직인" className="w-full h-full object-contain" />
+                                    <button 
+                                        onClick={() => setSealImage(null)}
+                                        className="absolute inset-0 flex items-center justify-center bg-black/50 text-white opacity-0 group-hover:opacity-100 transition-opacity text-xs"
+                                    >
+                                        삭제
+                                    </button>
+                                </div>
+                            ) : (
+                                <label className="flex h-20 w-20 cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-slate-200 bg-slate-50 hover:bg-slate-100">
+                                    <RotateCcw size={20} className="text-slate-400" />
+                                    <span className="mt-1 text-[10px] text-slate-500">이미지 선택</span>
+                                    <input 
+                                        type="file" 
+                                        className="hidden" 
+                                        accept="image/*"
+                                        onChange={(e) => {
+                                            const file = e.target.files[0];
+                                            if (file) {
+                                                const reader = new FileReader();
+                                                reader.onloadend = () => setSealImage(reader.result);
+                                                reader.readAsDataURL(file);
+                                            }
+                                        }}
+                                    />
+                                </label>
+                            )}
+                        </div>
                     </div>
-                    <Button variant="primary" className="mt-4 w-full bg-blue-600 hover:bg-blue-700" onClick={onPrint}>
-                        <Printer size={16} />
-                        인쇄 / PDF 저장
-                    </Button>
+                    <div className="mt-4 border-t pt-4">
+                        <div className="text-sm font-bold text-slate-900">출력</div>
+                        <Button variant="primary" className="mt-2 w-full bg-blue-600 hover:bg-blue-700" onClick={onPrint}>
+                            <Printer size={16} />
+                            인쇄 / PDF 저장
+                        </Button>
+                    </div>
                 </Card>
             </div>
 
@@ -1094,7 +1132,19 @@ function CertificatePreview({
                         </tbody>
                     </table>
 
-                    <div className="mt-28 text-center text-[30px] font-black leading-tight">대방동 지역주택조합 선거관리위원회</div>
+                    <div className="mt-28 relative flex items-center justify-center">
+                        <div className="text-center text-[30px] font-black leading-tight relative z-10">
+                            대방동 지역주택조합 선거관리위원회
+                        </div>
+                        {sealImage && (
+                            <img 
+                                src={sealImage} 
+                                alt="직인" 
+                                className="absolute right-[15%] top-1/2 -translate-y-1/2 w-24 h-24 object-contain z-20 pointer-events-none opacity-90"
+                                style={{ mixBlendMode: 'multiply' }}
+                            />
+                        )}
+                    </div>
                 </section>
             </div>
         </div>
@@ -1129,6 +1179,7 @@ export default function AdminTallyPage() {
     const [committeeMembers, setCommitteeMembers] = useState(
         voteData?.tallyConfirmation?.committeeMembers || DEFAULT_COMMITTEE_MEMBERS
     );
+    const [sealImage, setSealImage] = useState(voteData?.tallyConfirmation?.sealImage || null);
 
     useEffect(() => {
         if (!selectedMeetingId && initialMeetingId) {
@@ -1237,6 +1288,7 @@ export default function AdminTallyPage() {
                 overrideReason,
                 meetingDetails,
                 committeeMembers,
+                sealImage,
                 certificateDate: new Date().toISOString(),
                 confirmedAt: new Date().toISOString()
             };
@@ -1399,6 +1451,8 @@ export default function AdminTallyPage() {
                         setMeetingDetails={setMeetingDetails}
                         committeeMembers={committeeMembers}
                         setCommitteeMembers={setCommitteeMembers}
+                        sealImage={sealImage}
+                        setSealImage={setSealImage}
                         confirmation={confirmation}
                         onPrint={handlePrint}
                     />
