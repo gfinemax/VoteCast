@@ -16,7 +16,9 @@ import {
     Save,
     Search,
     ShieldCheck,
-    Table2
+    Table2,
+    Ticket,
+    Users
 } from 'lucide-react';
 import DashboardLayout from '@/components/admin/DashboardLayout';
 import AuthStatus from '@/components/ui/AuthStatus';
@@ -81,16 +83,30 @@ const getChoiceClass = (choice) => {
     if (choice === 'yes') return 'bg-emerald-50 text-emerald-700 border-emerald-200';
     if (choice === 'no') return 'bg-rose-50 text-rose-700 border-rose-200';
     if (choice === 'abstain') return 'bg-slate-100 text-slate-700 border-slate-200';
+    if (choice === 'onsite') return 'bg-cyan-50 text-cyan-700 border-cyan-200';
     return 'bg-amber-50 text-amber-700 border-amber-200';
 };
 
+const getAttendanceClass = (type, isIssued) => {
+    if (isIssued) return 'bg-blue-600 text-white border-blue-700 shadow-md ring-1 ring-blue-400 ring-offset-0';
+    if (type === 'direct') return 'bg-cyan-50 text-cyan-700 border-cyan-200';
+    if (type === 'proxy') return 'bg-blue-50 text-blue-700 border-blue-200';
+    if (type === 'written') return 'bg-indigo-50 text-indigo-700 border-indigo-200';
+    return 'bg-slate-50 text-slate-500 border-slate-200';
+};
 
+const getElectionStatusClass = (status) => {
+    if (status === 'mail') return 'bg-indigo-600 text-white border-indigo-700 shadow-sm';
+    if (status === 'onsite') return 'border-cyan-200 bg-cyan-50 text-cyan-700';
+    if (status === 'none') return 'bg-slate-100/50 text-slate-400 border-slate-100';
+    return 'bg-amber-50 text-amber-600 border-amber-200';
+};
 
-const getAttendanceClass = (type) => {
-    if (type === 'direct') return 'border-cyan-200 bg-cyan-50 text-cyan-700';
-    if (type === 'proxy') return 'border-sky-200 bg-sky-50 text-sky-700';
-    if (type === 'written') return 'border-indigo-200 bg-indigo-50 text-indigo-700';
-    return 'border-slate-200 bg-slate-100 text-slate-600';
+const ELECTION_STATUS_LABELS = {
+    none: '투표권없음',
+    mail: '우편투표',
+    onsite: '현장투표',
+    missing: '미투표'
 };
 
 function NumberInput({ value, onChange }) {
@@ -161,7 +177,7 @@ function SidebarContent({ groups, selectedMeetingId, setSelectedMeetingId, audit
     );
 }
 
-function SummaryTab({ audit, finalResults }) {
+function TallyStats({ audit }) {
     const stats = audit.meetingStats;
     const hasElection = audit.electionAgendas?.length > 0;
     let mailVoteCount = 0;
@@ -176,6 +192,74 @@ function SummaryTab({ audit, finalResults }) {
         mailVoteCount = uniqueMailVoteMembers.size;
     }
 
+    return (
+        <div className="flex flex-col xl:flex-row gap-4">
+            {/* 기초 데이터 영역 - 형광 파랑 */}
+            <Card className="flex flex-col items-center justify-center p-6 border-cyan-400 bg-cyan-50 shadow-md xl:w-48 shrink-0 relative overflow-hidden">
+                <div className="absolute top-0 right-0 w-16 h-16 bg-cyan-200 rounded-bl-full -mr-8 -mt-8 opacity-50 pointer-events-none"></div>
+                <div className="text-sm font-extrabold text-cyan-700 relative z-10">전체 조합원</div>
+                <div className="mt-2 text-4xl font-black text-cyan-900 relative z-10">{formatNumber(audit.activeMembers.length)}</div>
+            </Card>
+
+            <div className="flex-1 flex flex-col md:flex-row gap-4">
+                {/* 의결 안건 성원 영역 */}
+                <Card className="flex-1 p-4 border-slate-200 bg-white flex flex-col">
+                    <div className="flex items-center gap-2 mb-3 px-1">
+                        <div className="w-1.5 h-4 bg-slate-400 rounded-full"></div>
+                        <h3 className="text-sm font-bold text-slate-700">일반 안건 성원 집계</h3>
+                    </div>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 flex-1">
+                        <Card className="p-4 text-center border-lime-400 bg-[#f4ffcc] shadow-sm col-span-2 md:col-span-1 flex flex-col justify-center relative overflow-hidden">
+                            <div className="absolute bottom-0 right-0 w-16 h-16 bg-lime-200 rounded-tl-full -mr-6 -mb-6 opacity-40 pointer-events-none"></div>
+                            <div className="text-[11px] font-extrabold text-lime-700 relative z-10">성원(의결)</div>
+                            <div className="mt-1 text-3xl font-black text-lime-900 relative z-10">{formatNumber(stats.total)}</div>
+                        </Card>
+                        <Card className="p-4 text-center border-slate-100 bg-slate-50 flex flex-col justify-center">
+                            <div className="text-[11px] font-bold text-slate-400">직접 출석</div>
+                            <div className="mt-1 text-xl font-black text-slate-700">{formatNumber(stats.direct)}</div>
+                        </Card>
+                        <Card className="p-4 text-center border-slate-100 bg-slate-50 flex flex-col justify-center">
+                            <div className="text-[11px] font-bold text-slate-400">대리 참석</div>
+                            <div className="mt-1 text-xl font-black text-slate-700">{formatNumber(stats.proxy)}</div>
+                        </Card>
+                        <Card className="p-4 text-center border-slate-100 bg-slate-50 flex flex-col justify-center">
+                            <div className="text-[11px] font-bold text-slate-400">서면결의서</div>
+                            <div className="mt-1 text-xl font-black text-slate-700">{formatNumber(stats.written)}</div>
+                        </Card>
+                    </div>
+                </Card>
+
+                {/* 선거 안건 성원 영역 */}
+                {hasElection && (
+                    <Card className="flex-[0.75] p-4 border-slate-200 bg-white flex flex-col">
+                        <div className="flex items-center gap-2 mb-3 px-1">
+                            <div className="w-1.5 h-4 bg-slate-400 rounded-full"></div>
+                            <h3 className="text-sm font-bold text-slate-700">선거 안건 성원 집계</h3>
+                        </div>
+                        <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 flex-1">
+                            <Card className="p-4 text-center border-fuchsia-400 bg-fuchsia-50 shadow-sm col-span-2 lg:col-span-1 flex flex-col justify-center relative overflow-hidden">
+                                <div className="absolute top-0 left-0 w-16 h-16 bg-fuchsia-200 rounded-br-full -ml-8 -mt-8 opacity-40 pointer-events-none"></div>
+                                <div className="text-[11px] font-extrabold text-fuchsia-700 relative z-10">성원(선거)</div>
+                                <div className="mt-1 text-3xl font-black text-fuchsia-900 relative z-10">{formatNumber(stats.election)}</div>
+                            </Card>
+                            <Card className="p-4 text-center border-slate-100 bg-slate-50 flex flex-col justify-center">
+                                <div className="text-[11px] font-bold text-slate-400">우편투표</div>
+                                <div className="mt-1 text-xl font-black text-slate-700">{formatNumber(mailVoteCount)}</div>
+                            </Card>
+                            <Card className="p-4 text-center border-slate-100 bg-slate-50 flex flex-col justify-center">
+                                <div className="text-[11px] font-bold text-slate-400">현장 투표</div>
+                                <div className="mt-1 text-xl font-black text-slate-700">{formatNumber(stats.election - mailVoteCount)}</div>
+                            </Card>
+                        </div>
+                    </Card>
+                )}
+            </div>
+        </div>
+    );
+}
+
+function SummaryTab({ audit, finalResults }) {
+    const hasElection = audit.electionAgendas?.length > 0;
     const standardResults = finalResults.filter((r) => !r.isElection);
     const electionResults = finalResults.filter((r) => r.isElection);
 
@@ -233,69 +317,7 @@ function SummaryTab({ audit, finalResults }) {
 
     return (
         <div className="space-y-4">
-            {/* 상단 통계 영역 */}
-            <div className="flex flex-col xl:flex-row gap-4">
-                {/* 기초 데이터 영역 - 형광 파랑 */}
-                <Card className="flex flex-col items-center justify-center p-6 border-cyan-400 bg-cyan-50 shadow-md xl:w-48 shrink-0 relative overflow-hidden">
-                    <div className="absolute top-0 right-0 w-16 h-16 bg-cyan-200 rounded-bl-full -mr-8 -mt-8 opacity-50 pointer-events-none"></div>
-                    <div className="text-sm font-extrabold text-cyan-700 relative z-10">전체 조합원</div>
-                    <div className="mt-2 text-4xl font-black text-cyan-900 relative z-10">{formatNumber(audit.activeMembers.length)}</div>
-                </Card>
-
-                <div className="flex-1 flex flex-col md:flex-row gap-4">
-                    {/* 의결 안건 성원 영역 */}
-                    <Card className="flex-1 p-4 border-slate-200 bg-white flex flex-col">
-                        <div className="flex items-center gap-2 mb-3 px-1">
-                            <div className="w-1.5 h-4 bg-slate-400 rounded-full"></div>
-                            <h3 className="text-sm font-bold text-slate-700">일반 안건 성원 집계</h3>
-                        </div>
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 flex-1">
-                            <Card className="p-4 text-center border-lime-400 bg-[#f4ffcc] shadow-sm col-span-2 md:col-span-1 flex flex-col justify-center relative overflow-hidden">
-                                <div className="absolute bottom-0 right-0 w-16 h-16 bg-lime-200 rounded-tl-full -mr-6 -mb-6 opacity-40 pointer-events-none"></div>
-                                <div className="text-[11px] font-extrabold text-lime-700 relative z-10">성원(의결)</div>
-                                <div className="mt-1 text-3xl font-black text-lime-900 relative z-10">{formatNumber(stats.total)}</div>
-                            </Card>
-                            <Card className="p-4 text-center border-slate-100 bg-slate-50 flex flex-col justify-center">
-                                <div className="text-[11px] font-bold text-slate-400">직접 출석</div>
-                                <div className="mt-1 text-xl font-black text-slate-700">{formatNumber(stats.direct)}</div>
-                            </Card>
-                            <Card className="p-4 text-center border-slate-100 bg-slate-50 flex flex-col justify-center">
-                                <div className="text-[11px] font-bold text-slate-400">대리 참석</div>
-                                <div className="mt-1 text-xl font-black text-slate-700">{formatNumber(stats.proxy)}</div>
-                            </Card>
-                            <Card className="p-4 text-center border-slate-100 bg-slate-50 flex flex-col justify-center">
-                                <div className="text-[11px] font-bold text-slate-400">서면결의서</div>
-                                <div className="mt-1 text-xl font-black text-slate-700">{formatNumber(stats.written)}</div>
-                            </Card>
-                        </div>
-                    </Card>
-
-                    {/* 선거 안건 성원 영역 */}
-                    {hasElection && (
-                        <Card className="flex-[0.75] p-4 border-slate-200 bg-white flex flex-col">
-                            <div className="flex items-center gap-2 mb-3 px-1">
-                                <div className="w-1.5 h-4 bg-slate-400 rounded-full"></div>
-                                <h3 className="text-sm font-bold text-slate-700">선거 안건 성원 집계</h3>
-                            </div>
-                            <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 flex-1">
-                                <Card className="p-4 text-center border-fuchsia-400 bg-fuchsia-50 shadow-sm col-span-2 lg:col-span-1 flex flex-col justify-center relative overflow-hidden">
-                                    <div className="absolute top-0 left-0 w-16 h-16 bg-fuchsia-200 rounded-br-full -ml-8 -mt-8 opacity-40 pointer-events-none"></div>
-                                    <div className="text-[11px] font-extrabold text-fuchsia-700 relative z-10">성원(선거)</div>
-                                    <div className="mt-1 text-3xl font-black text-fuchsia-900 relative z-10">{formatNumber(stats.election)}</div>
-                                </Card>
-                                <Card className="p-4 text-center border-slate-100 bg-slate-50 flex flex-col justify-center">
-                                    <div className="text-[11px] font-bold text-slate-400">우편투표</div>
-                                    <div className="mt-1 text-xl font-black text-slate-700">{formatNumber(mailVoteCount)}</div>
-                                </Card>
-                                <Card className="p-4 text-center border-slate-100 bg-slate-50 flex flex-col justify-center">
-                                    <div className="text-[11px] font-bold text-slate-400">현장 투표</div>
-                                    <div className="mt-1 text-xl font-black text-slate-700">{formatNumber(stats.election - mailVoteCount)}</div>
-                                </Card>
-                            </div>
-                        </Card>
-                    )}
-                </div>
-            </div>
+            <TallyStats audit={audit} />
 
             <Card className="overflow-hidden">
                 <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
@@ -385,23 +407,50 @@ function MatrixTab({ audit }) {
             'none': 4
         };
 
+        const ELECTION_SORT_ORDER = {
+            'mail': 1,
+            'onsite': 2,
+            'missing': 3,
+            'none': 4
+        };
+
+        const getElectionStatus = (row) => {
+            if (!row.hasElection) return 'none';
+            if (row.electionVotes.some((v) => !!v.choice)) return 'mail';
+            if (row.record?.ballot_issued) return 'onsite';
+            return 'missing';
+        };
+
         return [...filtered].sort((left, right) => {
             if (sortConfig.key === 'attendanceType') {
                 const leftOrder = ATTENDANCE_SORT_ORDER[left.attendanceType] || 99;
                 const rightOrder = ATTENDANCE_SORT_ORDER[right.attendanceType] || 99;
 
-                if (sortConfig.direction === 'asc') {
-                    return leftOrder - rightOrder;
-                }
-                return rightOrder - leftOrder;
+                return sortConfig.direction === 'asc' ? leftOrder - rightOrder : rightOrder - leftOrder;
             }
+
+            if (sortConfig.key === 'electionStatus') {
+                const leftOrder = ELECTION_SORT_ORDER[getElectionStatus(left)] || 99;
+                const rightOrder = ELECTION_SORT_ORDER[getElectionStatus(right)] || 99;
+
+                return sortConfig.direction === 'asc' ? leftOrder - rightOrder : rightOrder - leftOrder;
+            }
+
+            if (sortConfig.key === 'unit') {
+                const leftUnit = String(left.member.unit || '');
+                const rightUnit = String(right.member.unit || '');
+                return sortConfig.direction === 'asc' 
+                    ? leftUnit.localeCompare(rightUnit, undefined, { numeric: true }) 
+                    : rightUnit.localeCompare(leftUnit, undefined, { numeric: true });
+            }
+
             return 0;
         });
     }, [audit.memberRows, normalizedSearchTerm, sortConfig]);
     const agendaShortLabelById = useMemo(() => {
         const labels = new Map();
         audit.standardAgendas.forEach((agenda, index) => {
-            labels.set(agenda.id, `제${index + 1}호 안건`);
+            labels.set(agenda.id, `제${index + 1}호`);
         });
         return labels;
     }, [audit.standardAgendas]);
@@ -423,50 +472,57 @@ function MatrixTab({ audit }) {
                     />
                 </div>
             </div>
-            <div className="overflow-x-auto">
-                <table className="min-w-max table-fixed text-sm">
-                    <thead className="bg-slate-50 text-left text-xs font-bold uppercase tracking-[0.12em] text-slate-500">
+            <div className="max-h-[calc(100vh-240px)] overflow-auto">
+                <table className="w-full table-fixed text-sm">
+                    <thead className="sticky top-0 z-30 bg-slate-100 text-left text-[11px] font-black uppercase text-slate-600 shadow-lg">
                         <tr>
-                            <th rowSpan={2} className="sticky left-0 z-20 w-12 bg-slate-50 px-1 py-2 text-center whitespace-nowrap">ID</th>
-                            <th rowSpan={2} className="sticky left-12 z-20 w-[72px] bg-slate-50 px-1 py-2 whitespace-nowrap">조합원</th>
-                            <th
-                                rowSpan={2}
-                                onClick={() => toggleSort('attendanceType')}
-                                className="sticky left-[120px] z-20 w-24 cursor-pointer bg-slate-50 px-1 py-2 text-center whitespace-nowrap hover:bg-slate-100"
+                            <th 
+                                onClick={() => toggleSort('unit')}
+                                className="sticky left-0 top-0 z-40 w-10 cursor-pointer bg-slate-100 px-0.5 py-2 text-center whitespace-nowrap hover:bg-slate-200"
                             >
-                                <div className="flex items-center justify-center gap-1">
-                                    참석방식
+                                <div className="flex items-center justify-center gap-0.5">
+                                    ID
                                     <div className="flex flex-col text-[10px] leading-[0.6]">
-                                        <ChevronUp size={10} className={sortConfig.key === 'attendanceType' && sortConfig.direction === 'asc' ? 'text-blue-600' : 'text-slate-300'} />
-                                        <ChevronDown size={10} className={sortConfig.key === 'attendanceType' && sortConfig.direction === 'desc' ? 'text-blue-600' : 'text-slate-300'} />
+                                        <ChevronUp size={10} className={sortConfig.key === 'unit' && sortConfig.direction === 'asc' ? 'text-blue-600' : 'text-slate-400'} />
+                                        <ChevronDown size={10} className={sortConfig.key === 'unit' && sortConfig.direction === 'desc' ? 'text-blue-600' : 'text-slate-400'} />
                                     </div>
                                 </div>
                             </th>
-                            <th rowSpan={2} className="sticky left-[200px] z-20 w-16 bg-slate-50 px-1 py-2 text-center whitespace-nowrap">대리인</th>
-                            {audit.standardAgendas.length > 0 && (
-                                <th colSpan={audit.standardAgendas.length} className="border-b border-slate-200 px-1 py-2 text-center text-slate-600">
-                                    의결안건 {audit.standardAgendas.length}건
-                                </th>
-                            )}
-                            {audit.electionAgendas.length > 0 && (
-                                <th colSpan={audit.electionAgendas.length} className="border-b border-indigo-100 bg-indigo-50 px-1 py-2 text-center text-indigo-700">
-                                    임원 선거 {audit.electionAgendas.length}건
-                                </th>
-                            )}
-                            <th rowSpan={2} className="w-24 bg-slate-50 px-1 py-2 text-center">상태</th>
-                        </tr>
-                        <tr>
+                            <th className="sticky left-10 top-0 z-40 w-16 bg-slate-100 px-0.5 py-2 text-center whitespace-nowrap border-r border-slate-200/50">상태</th>
+                            <th className="sticky left-[104px] top-0 z-40 w-[92px] bg-slate-100 px-0.5 py-2 text-center whitespace-nowrap">조합원(대리인)</th>
+                            <th
+                                onClick={() => toggleSort('attendanceType')}
+                                className="sticky left-[196px] top-0 z-40 w-[72px] cursor-pointer bg-slate-100 px-0.5 py-2 text-center whitespace-nowrap hover:bg-slate-200"
+                            >
+                                <div className="flex items-center justify-center gap-0.5 text-[11px] font-black">
+                                    안건의결
+                                    <div className="flex flex-col text-[10px] leading-[0.6]">
+                                        <ChevronUp size={10} className={sortConfig.key === 'attendanceType' && sortConfig.direction === 'asc' ? 'text-blue-600' : 'text-slate-400'} />
+                                        <ChevronDown size={10} className={sortConfig.key === 'attendanceType' && sortConfig.direction === 'desc' ? 'text-blue-600' : 'text-slate-400'} />
+                                    </div>
+                                </div>
+                            </th>
+                            <th 
+                                onClick={() => toggleSort('electionStatus')}
+                                className="sticky left-[268px] top-0 z-40 w-[72px] cursor-pointer bg-slate-100 px-0.5 py-2 text-center whitespace-nowrap hover:bg-slate-200"
+                            >
+                                <div className="flex items-center justify-center gap-0.5 text-[11px] font-black">
+                                    선거
+                                    <div className="flex flex-col text-[10px] leading-[0.6]">
+                                        <ChevronUp size={10} className={sortConfig.key === 'electionStatus' && sortConfig.direction === 'asc' ? 'text-blue-600' : 'text-slate-400'} />
+                                        <ChevronDown size={10} className={sortConfig.key === 'electionStatus' && sortConfig.direction === 'desc' ? 'text-blue-600' : 'text-slate-400'} />
+                                    </div>
+                                </div>
+                            </th>
                             {audit.standardAgendas.map((agenda) => (
-                                <th key={agenda.id} className="w-20 px-1 py-2 text-center">{agendaShortLabelById.get(agenda.id)}</th>
+                                <th key={agenda.id} className="w-[54px] px-0.5 py-1 text-center text-[11px] font-black border-r border-slate-100 leading-tight">{agendaShortLabelById.get(agenda.id)}</th>
                             ))}
                             {audit.electionAgendas.map((agenda) => {
                                 const fullLabel = agenda.title || getElectionRule(agenda, audit.electionAgendas).label;
-                                // "조합장후보 안동연 찬반투표" -> "조합장후보"
-                                // "이사후보1 송동환 찬반투표" -> "이사후보1"
                                 const shortLabel = fullLabel.replace(/^(조합장후보|이사후보\d+)\s+.*\s+찬반투표$/, '$1');
                                 
                                 return (
-                                    <th key={agenda.id} className="w-28 bg-indigo-50 px-1 py-2 text-center text-indigo-700">
+                                    <th key={agenda.id} className="w-[54px] bg-slate-100 px-0.5 py-1 text-center text-[11px] font-black text-indigo-700 border-r border-slate-200 leading-tight">
                                         <span className="block truncate font-black" title={fullLabel}>
                                             {shortLabel}
                                         </span>
@@ -476,78 +532,188 @@ function MatrixTab({ audit }) {
                         </tr>
                     </thead>
                     <tbody>
-                        {rows.map((row) => (
-                            <tr key={row.member.id} className="border-t border-slate-100">
-                                <td className="sticky left-0 z-20 w-12 bg-white px-1 py-3 text-center font-mono text-xs font-bold text-slate-500">
+                        {rows.map((row, idx) => (
+                            <tr key={row.member.id} className={`group border-t border-slate-100 hover:bg-blue-100/30 transition-colors ${idx % 2 === 1 ? 'bg-slate-50/20' : ''}`}>
+                                <td className="sticky left-0 z-20 w-10 bg-slate-50 group-hover:bg-blue-100/40 px-0.5 py-2.5 text-center font-mono text-[11px] font-bold text-slate-600">
                                     {row.member.unit || '-'}
                                 </td>
-                                <td className="sticky left-12 z-20 w-[72px] bg-white px-1 py-3">
-                                    <div className="max-w-[64px] truncate whitespace-nowrap font-bold text-slate-900" title={row.member.name}>{row.member.name}</div>
+                                <td className="sticky left-10 z-20 w-16 bg-slate-50 group-hover:bg-blue-100/40 px-0.5 py-2.5 text-center border-r border-slate-200/30">
+                                    {row.issues.length > 0 ? (
+                                        <div className="space-y-0.5">
+                                            {row.issues.map((issue) => (
+                                                <div key={issue} className="mx-auto w-fit rounded-full border border-amber-200 bg-amber-50 px-1 py-0 text-[9px] font-bold text-amber-700 leading-none">
+                                                    {issue}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    ) : (
+                                        <span className="inline-flex rounded-full border border-lime-200 bg-lime-50 px-1.5 py-0 text-[9px] font-bold text-lime-700">
+                                            정상
+                                        </span>
+                                    )}
                                 </td>
-                                <td className="sticky left-[120px] z-20 w-20 bg-white px-1 py-3 text-center">
-                                    <span className={`inline-flex rounded-full border px-2 py-0.5 text-[11px] font-bold ${getAttendanceClass(row.attendanceType)}`}>
+                                <td className="sticky left-[104px] z-20 w-[92px] bg-slate-50 group-hover:bg-blue-100/40 px-0.5 py-2.5 text-center">
+                                    <div className="mx-auto max-w-[84px] truncate whitespace-nowrap text-[12px] font-bold text-slate-800" title={row.proxyName ? `${row.member.name} (${row.proxyName})` : row.member.name}>
+                                        {row.member.name}
+                                        {row.proxyName && <span className="ml-0.5 text-[12px] font-normal text-slate-500">({row.proxyName})</span>}
+                                    </div>
+                                </td>
+                                <td className="sticky left-[196px] z-20 w-[72px] bg-slate-50 group-hover:bg-blue-100/40 px-0.5 py-2.5 text-center">
+                                    <span className={`inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10px] font-black transition-all ${getAttendanceClass(row.attendanceType, false)}`}>
                                         {ATTENDANCE_TYPE_LABELS[row.attendanceType] || '-'}
                                     </span>
                                 </td>
-                                <td className="sticky left-[200px] z-20 w-16 bg-white px-1 py-3 text-center text-slate-600">
-                                    <span className="inline-block max-w-14 truncate align-middle" title={row.proxyName || '-'}>
-                                        {row.proxyName || '-'}
-                                    </span>
+                                <td className="sticky left-[268px] z-20 w-[72px] bg-slate-50 group-hover:bg-blue-100/40 px-0.5 py-2.5 text-center">
+                                    {(() => {
+                                        const hasMail = row.electionVotes.some((v) => !!v.choice);
+                                        const isIssued = !!row.record?.ballot_issued;
+                                        const status = !row.hasElection ? 'none' : (hasMail ? 'mail' : (isIssued ? 'onsite' : 'missing'));
+                                        
+                                        return (
+                                            <span className={`inline-flex items-center gap-1 rounded-full border px-1.5 py-0 text-[9px] font-bold transition-all ${getElectionStatusClass(status)}`}>
+                                                {ELECTION_STATUS_LABELS[status]}
+                                            </span>
+                                        );
+                                    })()}
                                 </td>
-                                {row.standardVotes.map((vote) => (
-                                    <td key={`${row.member.id}-${vote.agendaId}`} className="w-20 px-1 py-3 text-center">
-                                        <span className={`inline-flex rounded-full border px-2 py-0.5 text-[11px] font-bold ${getChoiceClass(vote.choice || 'missing')}`}>
-                                            {getChoiceLabel(vote.choice || 'missing')}
-                                        </span>
-                                    </td>
-                                ))}
+                                {row.standardVotes.map((vote) => {
+                                    const isOnsite = row.attendanceType === 'direct' || row.attendanceType === 'proxy';
+                                    const displayChoice = vote.choice || (isOnsite ? 'onsite' : 'missing');
+                                    const isOnlyOnsite = displayChoice === 'onsite';
+                                    
+                                    return (
+                                        <td key={`${row.member.id}-${vote.agendaId}`} className="w-[54px] px-0.5 py-1.5 text-center bg-lime-50/20 group-hover:bg-lime-200/40 border-r border-lime-100/20 transition-colors">
+                                            <span className={`inline-flex items-center gap-0.5 rounded-full border px-1.5 py-0 text-[10px] font-bold ${getChoiceClass(displayChoice)}`}>
+                                                {getChoiceLabel(displayChoice)}
+                                            </span>
+                                        </td>
+                                    );
+                                })}
                                 {row.electionVotes.map((vote) => {
                                     const hasMailVote = !!vote.choice;
                                     const hasOnsiteBallot = !!row.record?.ballot_issued;
                                     
                                     return (
-                                        <td key={`${row.member.id}-${vote.agendaId}`} className="w-28 px-1 py-3 text-center">
+                                        <td key={`${row.member.id}-${vote.agendaId}`} className="w-[54px] px-0.5 py-1.5 text-center bg-sky-50/30 group-hover:bg-sky-200/50 border-r border-sky-100/20 transition-colors">
                                             {hasMailVote ? (
-                                                <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-bold text-emerald-700">
-                                                    우편투표 ✓
+                                                <span className="inline-flex items-center gap-0.5 rounded-full border border-emerald-200 bg-emerald-50 px-1 py-0 text-[10px] font-bold text-emerald-700">
+                                                    우편✓
                                                 </span>
                                             ) : hasOnsiteBallot ? (
-                                                <span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-bold text-amber-700">
-                                                    현장투표 ✓
+                                                <span className="inline-flex items-center gap-0.5 rounded-full border border-cyan-200 bg-cyan-50 px-1 py-0 text-[10px] font-bold text-cyan-700">
+                                                    현장✓
                                                 </span>
                                             ) : (
-                                                <span className="inline-flex rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-bold text-slate-400">
+                                                <span className="inline-flex rounded-full border border-slate-200 bg-slate-50 px-1 py-0 text-[10px] font-bold text-slate-400">
                                                     –
                                                 </span>
                                             )}
                                         </td>
                                     );
                                 })}
-                                <td className="w-24 px-1 py-3 text-center">
-                                    {row.issues.length > 0 ? (
-                                        <div className="space-y-1">
-                                            {row.issues.map((issue) => (
-                                                <div key={issue} className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-bold text-amber-700">
-                                                    {issue}
-                                                </div>
-                                            ))}
-                                        </div>
-                                    ) : (
-                                        <span className="inline-flex rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-bold text-emerald-700">
-                                            정상
-                                        </span>
-                                    )}
-                                </td>
                             </tr>
                         ))}
                         {rows.length === 0 && (
                             <tr>
-                                <td colSpan={4 + audit.standardAgendas.length + audit.electionAgendas.length} className="px-5 py-12 text-center text-sm text-slate-400">
+                                <td colSpan={5 + audit.standardAgendas.length + audit.electionAgendas.length} className="px-5 py-12 text-center text-sm text-slate-400">
                                     검색 결과가 없습니다.
                                 </td>
                             </tr>
                         )}
                     </tbody>
+                    <tfoot className="sticky bottom-0 z-30 bg-slate-100 font-bold text-slate-700 shadow-[0_-6px_15px_-3px_rgba(0,0,0,0.25)]">
+                        <tr className="border-t-2 border-slate-200">
+                            <td className="sticky left-0 z-40 bg-slate-100 px-0.5 py-2 align-top"></td>
+                            <td colSpan={2} className="sticky left-10 z-40 bg-slate-100 px-1 py-2 text-center border-r border-slate-200/60 align-top">
+                                <div className="flex flex-col items-center leading-tight">
+                                    <span className="text-[12px] font-black text-slate-900">검산 합계</span>
+                                    <span className="text-[9px] font-medium text-slate-400 uppercase tracking-tighter">Audit Total</span>
+                                </div>
+                            </td>
+                            {(() => {
+                                const stats = rows.reduce((acc, row) => {
+                                    acc.agenda[row.attendanceType] = (acc.agenda[row.attendanceType] || 0) + 1;
+                                    if (row.hasElection) {
+                                        const hasMail = row.electionVotes.some(v => !!v.choice);
+                                        const isAttending = row.attendanceType === 'direct' || row.attendanceType === 'proxy';
+                                        
+                                        if (hasMail) {
+                                            acc.election.mail += 1;
+                                        } else if (isAttending) {
+                                            acc.election.onsite += 1;
+                                        }
+                                    }
+                                    return acc;
+                                }, { agenda: {}, election: { mail: 0, onsite: 0 } });
+
+                                return (
+                                    <>
+                                        <td className="sticky left-[196px] z-40 bg-slate-100 px-0.5 py-2 text-center border-x border-slate-200/60 align-top">
+                                            <div className="flex flex-col gap-0.5 text-center text-[10px] leading-tight">
+                                                <div className="mb-0.5 border-b border-slate-300 pb-0.5 font-black text-slate-900 leading-none">
+                                                    총 {(stats.agenda.written || 0) + (stats.agenda.direct || 0) + (stats.agenda.proxy || 0)}
+                                                </div>
+                                                <span className="text-indigo-600 font-bold">서면 {stats.agenda.written || 0}</span>
+                                                <span className="text-cyan-600 font-bold">직접 {stats.agenda.direct || 0}</span>
+                                                <span className="text-blue-600 font-bold">대리 {stats.agenda.proxy || 0}</span>
+                                            </div>
+                                        </td>
+                                        <td className="sticky left-[268px] z-40 bg-slate-100 px-0.5 py-2 text-center align-top">
+                                            <div className="flex flex-col gap-0.5 text-center text-[10px] leading-tight text-indigo-700 font-bold">
+                                                <div className="mb-0.5 border-b border-slate-300 pb-0.5 font-black text-indigo-900 leading-none">
+                                                    총 {stats.election.mail + stats.election.onsite}
+                                                </div>
+                                                <span>우편 {stats.election.mail}</span>
+                                                <span>현장 {stats.election.onsite}</span>
+                                            </div>
+                                        </td>
+                                        {audit.standardAgendas.map((agenda) => {
+                                            const result = audit.agendaResults.find((r) => r.id === agenda.id);
+                                            const totalVoted = (result?.final.yes || 0) + (result?.final.no || 0) + (result?.final.abstain || 0);
+                                            const notVoted = Math.max(0, (result?.attendanceCount || 0) - totalVoted);
+                                            
+                                            return (
+                                                <td key={agenda.id} className="w-[54px] px-0.5 py-2 text-center border-r border-slate-200 bg-slate-100 align-top">
+                                                    <div className="flex flex-col gap-0.5 text-center text-[10px] leading-tight">
+                                                        <div className="mb-0.5 border-b border-slate-300 pb-0.5 font-black text-slate-900 leading-none">
+                                                            총 {result?.attendanceCount || 0}
+                                                        </div>
+                                                        <span className="text-lime-700 font-bold">찬 {result?.final.yes || 0}</span>
+                                                        <span className="text-rose-700 font-bold">반 {result?.final.no || 0}</span>
+                                                        <span className="text-slate-600 font-medium">기 {result?.final.abstain || 0}</span>
+                                                        <span className="mt-0.5 border-t border-slate-200 pt-0.5 text-[9px] font-bold text-amber-600">
+                                                            미 {notVoted}
+                                                        </span>
+                                                    </div>
+                                                </td>
+                                            );
+                                        })}
+                                        {audit.electionAgendas.map((agenda) => {
+                                            const result = audit.agendaResults.find((r) => r.id === agenda.id);
+                                            const totalVoted = (result?.final.yes || 0) + (result?.final.no || 0) + (result?.final.abstain || 0);
+                                            const notVoted = Math.max(0, (result?.attendanceCount || 0) - totalVoted);
+                                            
+                                            return (
+                                                <td key={agenda.id} className="w-[54px] px-0.5 py-2 text-center border-r border-slate-200 bg-slate-100 align-top">
+                                                    <div className="flex flex-col gap-0.5 text-center text-[10px] leading-tight">
+                                                        <div className="mb-0.5 border-b border-slate-300 pb-0.5 font-black text-indigo-900 leading-none">
+                                                            총 {result?.attendanceCount || 0}
+                                                        </div>
+                                                        <span className="text-indigo-700 font-bold">찬 {result?.final.yes || 0}</span>
+                                                        <span className="text-rose-700 font-bold">반 {result?.final.no || 0}</span>
+                                                        <span className="text-slate-600 font-medium">기 {result?.final.abstain || 0}</span>
+                                                        <span className="mt-0.5 border-t border-slate-200 pt-0.5 text-[9px] font-bold text-amber-600">
+                                                            미 {notVoted}
+                                                        </span>
+                                                    </div>
+                                                </td>
+                                            );
+                                        })}
+                                    </>
+                                );
+                            })()}
+                        </tr>
+                    </tfoot>
                 </table>
             </div>
         </Card>

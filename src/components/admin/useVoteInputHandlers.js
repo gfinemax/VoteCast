@@ -38,8 +38,8 @@ export default function useVoteInputHandlers({
                 const currentAbstain = toVoteNumber(localVotes.abstain);
                 newLocal.yes = Math.max(0, editableVoteTargetTotal - value - currentAbstain);
             } else if (fieldKey === 'abstain') {
-                const currentYes = toVoteNumber(localVotes.yes);
-                newLocal.no = Math.max(0, editableVoteTargetTotal - currentYes - value);
+                const currentNo = toVoteNumber(localVotes.no);
+                newLocal.yes = Math.max(0, editableVoteTargetTotal - currentNo - value);
             }
         }
 

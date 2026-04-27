@@ -16,12 +16,13 @@ export const VOTE_CHOICE_LABELS = {
     yes: '찬성',
     no: '반대',
     abstain: '기권',
-    missing: '미기재'
+    missing: '미기재',
+    onsite: '현장'
 };
 
 export const ATTENDANCE_TYPE_LABELS = {
-    direct: '직접참석',
-    proxy: '대리참석',
+    direct: '직접투표',
+    proxy: '대리투표',
     written: '서면결의서',
     none: '미참석'
 };
