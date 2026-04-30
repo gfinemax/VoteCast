@@ -369,7 +369,7 @@ function SummaryTab({ audit, finalResults }) {
     );
 }
 
-function MatrixTab({ audit }) {
+function MatrixTab({ audit, finalResults = audit.agendaResults }) {
     const [searchTerm, setSearchTerm] = useState('');
     const normalizedSearchTerm = searchTerm.trim().toLowerCase();
     const [sortConfig, setSortConfig] = useState({ key: 'attendanceType', direction: null }); // null, 'asc', 'desc'
@@ -454,6 +454,20 @@ function MatrixTab({ audit }) {
         });
         return labels;
     }, [audit.standardAgendas]);
+    const visibleIssueCount = useMemo(() => rows.reduce((total, row) => total + row.issues.length, 0), [rows]);
+    const resultByAgendaId = useMemo(() => {
+        const resultMap = new Map();
+        finalResults.forEach((result) => resultMap.set(result.id, result));
+        return resultMap;
+    }, [finalResults]);
+    const renderVoteSourceRow = (label, counts = {}, className = 'text-slate-600') => (
+        <div className={`flex items-center justify-between gap-1 ${className}`}>
+            <span className="shrink-0 font-black">{label}</span>
+            <span className="font-mono font-black tracking-tight">
+                {formatNumber(counts.yes || 0)}/{formatNumber(counts.no || 0)}/{formatNumber(counts.abstain || 0)}
+            </span>
+        </div>
+    );
 
     return (
         <Card className="overflow-hidden">
@@ -515,14 +529,14 @@ function MatrixTab({ audit }) {
                                 </div>
                             </th>
                             {audit.standardAgendas.map((agenda) => (
-                                <th key={agenda.id} className="w-[54px] px-0.5 py-1 text-center text-[11px] font-black border-r border-slate-100 leading-tight">{agendaShortLabelById.get(agenda.id)}</th>
+                                <th key={agenda.id} className="w-[72px] px-0.5 py-1 text-center text-[11px] font-black border-r border-slate-100 leading-tight">{agendaShortLabelById.get(agenda.id)}</th>
                             ))}
                             {audit.electionAgendas.map((agenda) => {
                                 const fullLabel = agenda.title || getElectionRule(agenda, audit.electionAgendas).label;
                                 const shortLabel = fullLabel.replace(/^(조합장후보|이사후보\d+)\s+.*\s+찬반투표$/, '$1');
                                 
                                 return (
-                                    <th key={agenda.id} className="w-[54px] bg-slate-100 px-0.5 py-1 text-center text-[11px] font-black text-indigo-700 border-r border-slate-200 leading-tight">
+                                    <th key={agenda.id} className="w-[72px] bg-slate-100 px-0.5 py-1 text-center text-[11px] font-black text-indigo-700 border-r border-slate-200 leading-tight">
                                         <span className="block truncate font-black" title={fullLabel}>
                                             {shortLabel}
                                         </span>
@@ -582,7 +596,7 @@ function MatrixTab({ audit }) {
                                     const isOnlyOnsite = displayChoice === 'onsite';
                                     
                                     return (
-                                        <td key={`${row.member.id}-${vote.agendaId}`} className="w-[54px] px-0.5 py-1.5 text-center bg-lime-50/20 group-hover:bg-lime-200/40 border-r border-lime-100/20 transition-colors">
+                                        <td key={`${row.member.id}-${vote.agendaId}`} className="w-[72px] px-0.5 py-1.5 text-center bg-lime-50/20 group-hover:bg-lime-200/40 border-r border-lime-100/20 transition-colors">
                                             <span className={`inline-flex items-center gap-0.5 rounded-full border px-1.5 py-0 text-[10px] font-bold ${getChoiceClass(displayChoice)}`}>
                                                 {getChoiceLabel(displayChoice)}
                                             </span>
@@ -594,7 +608,7 @@ function MatrixTab({ audit }) {
                                     const hasOnsiteBallot = !!row.record?.ballot_issued;
                                     
                                     return (
-                                        <td key={`${row.member.id}-${vote.agendaId}`} className="w-[54px] px-0.5 py-1.5 text-center bg-sky-50/30 group-hover:bg-sky-200/50 border-r border-sky-100/20 transition-colors">
+                                        <td key={`${row.member.id}-${vote.agendaId}`} className="w-[72px] px-0.5 py-1.5 text-center bg-sky-50/30 group-hover:bg-sky-200/50 border-r border-sky-100/20 transition-colors">
                                             {hasMailVote ? (
                                                 <span className="inline-flex items-center gap-0.5 rounded-full border border-emerald-200 bg-emerald-50 px-1 py-0 text-[10px] font-bold text-emerald-700">
                                                     우편✓
@@ -621,13 +635,28 @@ function MatrixTab({ audit }) {
                             </tr>
                         )}
                     </tbody>
-                    <tfoot className="sticky bottom-0 z-30 bg-slate-100 font-bold text-slate-700 shadow-[0_-6px_15px_-3px_rgba(0,0,0,0.25)]">
-                        <tr className="border-t-2 border-slate-200">
-                            <td className="sticky left-0 z-40 bg-slate-100 px-0.5 py-2 align-top"></td>
-                            <td colSpan={2} className="sticky left-10 z-40 bg-slate-100 px-1 py-2 text-center border-r border-slate-200/60 align-top">
-                                <div className="flex flex-col items-center leading-tight">
-                                    <span className="text-[12px] font-black text-slate-900">검산 합계</span>
-                                    <span className="text-[9px] font-medium text-slate-400 uppercase tracking-tighter">Audit Total</span>
+                    <tfoot className="sticky bottom-0 z-30 bg-slate-50 font-bold text-slate-700 shadow-[0_-10px_18px_-10px_rgba(15,23,42,0.35)]">
+                        <tr className="border-t-[3px] border-slate-300">
+                            <td className="sticky left-0 z-40 bg-slate-50 px-0.5 py-2.5 align-top">
+                                <div className="mx-auto h-full min-h-[78px] w-1 rounded-full bg-slate-300" />
+                            </td>
+                            <td colSpan={2} className="sticky left-10 z-40 bg-slate-50 px-2 py-2.5 text-left border-r border-slate-200 align-top">
+                                <div className="space-y-1.5 leading-tight">
+                                    <div className="flex items-center justify-between gap-2">
+                                        <span className="text-[12px] font-black text-slate-950">검산 합계</span>
+                                        <span className={`rounded-full border px-1.5 py-0.5 text-[9px] font-black ${visibleIssueCount > 0 ? 'border-amber-200 bg-amber-50 text-amber-700' : 'border-emerald-200 bg-emerald-50 text-emerald-700'}`}>
+                                            {visibleIssueCount > 0 ? `확인 ${visibleIssueCount}` : '정상'}
+                                        </span>
+                                    </div>
+                                    <div className="text-[10px] font-semibold text-slate-500">
+                                        표시 {formatNumber(rows.length)}명
+                                        {rows.length !== audit.memberRows.length && (
+                                            <span className="text-slate-400"> / 전체 {formatNumber(audit.memberRows.length)}명</span>
+                                        )}
+                                    </div>
+                                    <div className="text-[9px] font-bold text-slate-400">
+                                        숫자 순서: 찬성/반대/기권
+                                    </div>
                                 </div>
                             </td>
                             {(() => {
@@ -648,63 +677,89 @@ function MatrixTab({ audit }) {
 
                                 return (
                                     <>
-                                        <td className="sticky left-[196px] z-40 bg-slate-100 px-0.5 py-2 text-center border-x border-slate-200/60 align-top">
-                                            <div className="flex flex-col gap-0.5 text-center text-[10px] leading-tight">
-                                                <div className="mb-0.5 border-b border-slate-300 pb-0.5 font-black text-slate-900 leading-none">
-                                                    총 {(stats.agenda.written || 0) + (stats.agenda.direct || 0) + (stats.agenda.proxy || 0)}
+                                        <td className="sticky left-[196px] z-40 bg-slate-50 px-1 py-2.5 text-center border-x border-slate-200 align-top">
+                                            <div className="rounded-md border border-slate-200 bg-white px-1.5 py-1.5 text-[10px] leading-tight shadow-sm">
+                                                <div className="mb-1 text-[9px] font-black text-slate-400">안건의결</div>
+                                                <div className="mb-1 rounded border border-slate-200 bg-slate-100 px-1 py-0.5 text-[11px] font-black text-slate-800">
+                                                    총 {formatNumber((stats.agenda.written || 0) + (stats.agenda.direct || 0) + (stats.agenda.proxy || 0))}
                                                 </div>
-                                                <span className="text-indigo-600 font-bold">서면 {stats.agenda.written || 0}</span>
-                                                <span className="text-cyan-600 font-bold">직접 {stats.agenda.direct || 0}</span>
-                                                <span className="text-blue-600 font-bold">대리 {stats.agenda.proxy || 0}</span>
+                                                <div className="grid grid-cols-1 gap-0.5">
+                                                    <span className="font-bold text-indigo-600">서면 {formatNumber(stats.agenda.written || 0)}</span>
+                                                    <span className="font-bold text-cyan-600">직접 {formatNumber(stats.agenda.direct || 0)}</span>
+                                                    <span className="font-bold text-blue-600">대리 {formatNumber(stats.agenda.proxy || 0)}</span>
+                                                </div>
                                             </div>
                                         </td>
-                                        <td className="sticky left-[268px] z-40 bg-slate-100 px-0.5 py-2 text-center align-top">
-                                            <div className="flex flex-col gap-0.5 text-center text-[10px] leading-tight text-indigo-700 font-bold">
-                                                <div className="mb-0.5 border-b border-slate-300 pb-0.5 font-black text-indigo-900 leading-none">
-                                                    총 {stats.election.mail + stats.election.onsite}
+                                        <td className="sticky left-[268px] z-40 bg-slate-50 px-1 py-2.5 text-center align-top">
+                                            <div className="rounded-md border border-indigo-100 bg-white px-1.5 py-1.5 text-[10px] leading-tight shadow-sm">
+                                                <div className="mb-1 text-[9px] font-black text-indigo-400">선거투표</div>
+                                                <div className="mb-1 rounded border border-indigo-200 bg-indigo-50 px-1 py-0.5 text-[11px] font-black text-indigo-700">
+                                                    총 {formatNumber(stats.election.mail + stats.election.onsite)}
                                                 </div>
-                                                <span>우편 {stats.election.mail}</span>
-                                                <span>현장 {stats.election.onsite}</span>
+                                                <div className="grid grid-cols-1 gap-0.5 font-bold text-indigo-700">
+                                                    <span>우편 {formatNumber(stats.election.mail)}</span>
+                                                    <span>현장 {formatNumber(stats.election.onsite)}</span>
+                                                </div>
                                             </div>
                                         </td>
                                         {audit.standardAgendas.map((agenda) => {
-                                            const result = audit.agendaResults.find((r) => r.id === agenda.id);
+                                            const result = resultByAgendaId.get(agenda.id) || audit.agendaResults.find((r) => r.id === agenda.id);
                                             const totalVoted = (result?.final.yes || 0) + (result?.final.no || 0) + (result?.final.abstain || 0);
-                                            const notVoted = Math.max(0, (result?.attendanceCount || 0) - totalVoted);
+                                            const auditGap = Math.max(0, (result?.attendanceCount || 0) - totalVoted);
+                                            const fixedLabel = result?.fixedLabel || '서면';
                                             
                                             return (
-                                                <td key={agenda.id} className="w-[54px] px-0.5 py-2 text-center border-r border-slate-200 bg-slate-100 align-top">
-                                                    <div className="flex flex-col gap-0.5 text-center text-[10px] leading-tight">
-                                                        <div className="mb-0.5 border-b border-slate-300 pb-0.5 font-black text-slate-900 leading-none">
-                                                            총 {result?.attendanceCount || 0}
+                                                <td key={agenda.id} className="w-[72px] border-r border-slate-200 bg-slate-50 px-0.5 py-2.5 text-center align-top">
+                                                    <div className={`mx-auto rounded-md border bg-white px-1 py-1 text-[9px] leading-tight shadow-sm ${auditGap > 0 ? 'border-amber-200' : 'border-slate-200'}`}>
+                                                        <div className="mb-1 rounded border border-slate-200 bg-slate-100 px-0.5 py-0.5 text-[10px] font-black text-slate-800">
+                                                            총 {formatNumber(result?.attendanceCount || 0)}
                                                         </div>
-                                                        <span className="text-lime-700 font-bold">찬 {result?.final.yes || 0}</span>
-                                                        <span className="text-rose-700 font-bold">반 {result?.final.no || 0}</span>
-                                                        <span className="text-slate-600 font-medium">기 {result?.final.abstain || 0}</span>
-                                                        <span className="mt-0.5 border-t border-slate-200 pt-0.5 text-[9px] font-bold text-amber-600">
-                                                            미 {notVoted}
-                                                        </span>
+                                                        <div className="mb-0.5 grid grid-cols-4 border-b border-slate-100 pb-0.5 text-[8px] font-black text-slate-400">
+                                                            <span></span>
+                                                            <span>찬</span>
+                                                            <span>반</span>
+                                                            <span>기</span>
+                                                        </div>
+                                                        <div className="space-y-0.5 text-left">
+                                                            {renderVoteSourceRow('최종', result?.final, 'text-slate-900')}
+                                                            {renderVoteSourceRow(fixedLabel, result?.fixed, 'text-indigo-600')}
+                                                            {renderVoteSourceRow('현장', result?.onsite, 'text-cyan-700')}
+                                                            <div className={`mt-0.5 flex items-center justify-between gap-1 rounded px-0.5 ${auditGap > 0 ? 'bg-amber-50 font-black text-amber-700' : 'font-semibold text-slate-400'}`}>
+                                                                <span>차이</span>
+                                                                <span>{formatNumber(auditGap)}</span>
+                                                            </div>
+                                                        </div>
                                                     </div>
                                                 </td>
                                             );
                                         })}
                                         {audit.electionAgendas.map((agenda) => {
-                                            const result = audit.agendaResults.find((r) => r.id === agenda.id);
+                                            const result = resultByAgendaId.get(agenda.id) || audit.agendaResults.find((r) => r.id === agenda.id);
                                             const totalVoted = (result?.final.yes || 0) + (result?.final.no || 0) + (result?.final.abstain || 0);
-                                            const notVoted = Math.max(0, (result?.attendanceCount || 0) - totalVoted);
+                                            const auditGap = Math.max(0, (result?.attendanceCount || 0) - totalVoted);
+                                            const fixedLabel = result?.fixedLabel || '우편';
                                             
                                             return (
-                                                <td key={agenda.id} className="w-[54px] px-0.5 py-2 text-center border-r border-slate-200 bg-slate-100 align-top">
-                                                    <div className="flex flex-col gap-0.5 text-center text-[10px] leading-tight">
-                                                        <div className="mb-0.5 border-b border-slate-300 pb-0.5 font-black text-indigo-900 leading-none">
-                                                            총 {result?.attendanceCount || 0}
+                                                <td key={agenda.id} className="w-[72px] border-r border-slate-200 bg-indigo-50/50 px-0.5 py-2.5 text-center align-top">
+                                                    <div className={`mx-auto rounded-md border bg-white px-1 py-1 text-[9px] leading-tight shadow-sm ${auditGap > 0 ? 'border-amber-200' : 'border-indigo-100'}`}>
+                                                        <div className="mb-1 rounded border border-indigo-200 bg-indigo-50 px-0.5 py-0.5 text-[10px] font-black text-indigo-700">
+                                                            총 {formatNumber(result?.attendanceCount || 0)}
                                                         </div>
-                                                        <span className="text-indigo-700 font-bold">찬 {result?.final.yes || 0}</span>
-                                                        <span className="text-rose-700 font-bold">반 {result?.final.no || 0}</span>
-                                                        <span className="text-slate-600 font-medium">기 {result?.final.abstain || 0}</span>
-                                                        <span className="mt-0.5 border-t border-slate-200 pt-0.5 text-[9px] font-bold text-amber-600">
-                                                            미 {notVoted}
-                                                        </span>
+                                                        <div className="mb-0.5 grid grid-cols-4 border-b border-indigo-100 pb-0.5 text-[8px] font-black text-indigo-300">
+                                                            <span></span>
+                                                            <span>찬</span>
+                                                            <span>반</span>
+                                                            <span>기</span>
+                                                        </div>
+                                                        <div className="space-y-0.5 text-left">
+                                                            {renderVoteSourceRow('최종', result?.final, 'text-indigo-800')}
+                                                            {renderVoteSourceRow(fixedLabel, result?.fixed, 'text-indigo-600')}
+                                                            {renderVoteSourceRow('현장', result?.onsite, 'text-cyan-700')}
+                                                            <div className={`mt-0.5 flex items-center justify-between gap-1 rounded px-0.5 ${auditGap > 0 ? 'bg-amber-50 font-black text-amber-700' : 'font-semibold text-slate-400'}`}>
+                                                                <span>차이</span>
+                                                                <span>{formatNumber(auditGap)}</span>
+                                                            </div>
+                                                        </div>
                                                     </div>
                                                 </td>
                                             );
@@ -1461,7 +1516,7 @@ export default function AdminTallyPage() {
                 )}
 
                 {activeTab === 'matrix' && (
-                    <MatrixTab audit={audit} />
+                    <MatrixTab audit={audit} finalResults={finalResults} />
                 )}
 
                 {activeTab === 'manual' && (
