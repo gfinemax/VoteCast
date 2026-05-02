@@ -2,8 +2,9 @@
 
 import React, { useMemo, useState } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, Edit2, Plus, Save, UserPlus, Users, X } from 'lucide-react';
-import { useStore } from '@/lib/store';
+import { ArrowLeft, Edit2, FolderOpen, Plus, Save, UserPlus, Users, X } from 'lucide-react';
+import { useStore, getInactiveMemberIds } from '@/lib/store';
+import { getMemberJoinedMeetingId } from '@/lib/storeHelpers';
 import DashboardLayout from '@/components/admin/DashboardLayout';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
@@ -15,11 +16,10 @@ const EMPTY_MEMBER_FORM = {
     name: '',
     proxy: ''
 };
-const EMPTY_INACTIVE_MEMBER_IDS = [];
 
 export default function AdminMembersPage() {
     const { state, actions } = useStore();
-    const { members } = state;
+    const { members, agendas, voteData } = state;
 
     const [searchTerm, setSearchTerm] = useState('');
     const [newMember, setNewMember] = useState(EMPTY_MEMBER_FORM);
@@ -28,19 +28,72 @@ export default function AdminMembersPage() {
     const [editForm, setEditForm] = useState(EMPTY_MEMBER_FORM);
     const [pendingId, setPendingId] = useState(null);
 
+    // Meeting (folder) selection for per-meeting member management
+    const meetingFolders = useMemo(
+        () => agendas.filter((agenda) => agenda.type === 'folder'),
+        [agendas]
+    );
+    const [selectedMeetingId, setSelectedMeetingId] = useState(
+        () => meetingFolders[0]?.id || null
+    );
+
+    // Build ordered list of meeting IDs for determining "added after this meeting"
+    const meetingIdOrder = useMemo(() => {
+        return meetingFolders.map((folder) => folder.id);
+    }, [meetingFolders]);
+
+    const selectedMeetingIndex = useMemo(
+        () => meetingIdOrder.indexOf(selectedMeetingId),
+        [meetingIdOrder, selectedMeetingId]
+    );
+
+    // Get inactive member IDs for the selected meeting
     const inactiveMemberIds = useMemo(
-        () => Array.isArray(state.voteData?.inactiveMemberIds) ? state.voteData.inactiveMemberIds : EMPTY_INACTIVE_MEMBER_IDS,
-        [state.voteData?.inactiveMemberIds]
+        () => selectedMeetingId
+            ? getInactiveMemberIds(voteData, selectedMeetingId)
+            : (Array.isArray(voteData?.inactiveMemberIds) ? voteData.inactiveMemberIds : []),
+        [voteData, selectedMeetingId]
     );
     const inactiveMemberIdSet = useMemo(
         () => new Set(inactiveMemberIds),
         [inactiveMemberIds]
     );
+
+    // Determine which members were added AFTER the selected meeting
+    const memberJoinedAfterSet = useMemo(() => {
+        if (!selectedMeetingId || selectedMeetingIndex === -1) return new Set();
+
+        const afterSet = new Set();
+        members.forEach((member) => {
+            const joinedMeetingId = getMemberJoinedMeetingId(voteData, member.id);
+            if (!joinedMeetingId) return; // Original member — existed before tracking
+
+            const joinedIndex = meetingIdOrder.indexOf(joinedMeetingId);
+            if (joinedIndex === -1) return;
+            if (joinedIndex > selectedMeetingIndex) {
+                afterSet.add(member.id);
+            }
+        });
+        return afterSet;
+    }, [members, voteData, selectedMeetingId, selectedMeetingIndex, meetingIdOrder]);
+
     const activeMembers = useMemo(
-        () => members.filter((member) => member.is_active !== false && !inactiveMemberIdSet.has(member.id)),
-        [inactiveMemberIdSet, members]
+        () => members.filter((member) =>
+            member.is_active !== false
+            && !inactiveMemberIdSet.has(member.id)
+            && !memberJoinedAfterSet.has(member.id)
+        ),
+        [inactiveMemberIdSet, memberJoinedAfterSet, members]
     );
-    const excludedCount = members.length - activeMembers.length;
+    const excludedCount = useMemo(
+        () => members.filter((member) =>
+            member.is_active !== false
+            && !memberJoinedAfterSet.has(member.id)
+            && inactiveMemberIdSet.has(member.id)
+        ).length,
+        [inactiveMemberIdSet, memberJoinedAfterSet, members]
+    );
+    const addedAfterCount = memberJoinedAfterSet.size;
 
     const filteredMembers = useMemo(() => {
         const keyword = searchTerm.trim();
@@ -82,7 +135,10 @@ export default function AdminMembersPage() {
 
         setIsCreating(true);
         try {
-            await actions.addMember(newMember);
+            await actions.addMember({
+                ...newMember,
+                contextMeetingId: selectedMeetingId || null
+            });
             setNewMember(EMPTY_MEMBER_FORM);
         } catch (error) {
             console.error('Failed to add member:', error);
@@ -112,9 +168,10 @@ export default function AdminMembersPage() {
 
     const handleToggleMemberActive = async (member) => {
         const isExcluded = inactiveMemberIdSet.has(member.id) || member.is_active === false;
+        const selectedMeetingName = meetingFolders.find((f) => f.id === selectedMeetingId)?.title || '현재 총회';
         const message = isExcluded
-            ? `"${member.unit} ${member.name}" 조합원을 명부에 다시 포함하시겠습니까?\n복원하면 전체 조합원 수에 즉시 반영됩니다.`
-            : `"${member.unit} ${member.name}" 조합원을 명부에서 제외하시겠습니까?\n제외하면 전체 조합원 수 계산과 입구안내 목록에서 바로 빠집니다.`;
+            ? `"${member.unit} ${member.name}" 조합원을 [${selectedMeetingName}] 명부에 다시 포함하시겠습니까?\n복원하면 해당 총회의 전체 조합원 수에 즉시 반영됩니다.`
+            : `"${member.unit} ${member.name}" 조합원을 [${selectedMeetingName}] 명부에서 제외하시겠습니까?\n제외하면 해당 총회의 전체 조합원 수 계산과 입구안내 목록에서 바로 빠집니다.\n다른 총회의 명부에는 영향을 주지 않습니다.`;
 
         if (!confirm(message)) {
             return;
@@ -122,7 +179,7 @@ export default function AdminMembersPage() {
 
         setPendingId(member.id);
         try {
-            await actions.setMemberActive(member.id, isExcluded);
+            await actions.setMemberActive(member.id, isExcluded, selectedMeetingId || null);
             if (editingId === member.id) {
                 resetEdit();
             }
@@ -134,6 +191,8 @@ export default function AdminMembersPage() {
         }
     };
 
+    const selectedMeetingName = meetingFolders.find((f) => f.id === selectedMeetingId)?.title || '-';
+
     const sidebarContent = (
         <div className="p-4 space-y-4">
             <Card className="p-4">
@@ -143,8 +202,33 @@ export default function AdminMembersPage() {
                     </div>
                     <div>
                         <div className="text-sm font-bold text-slate-900">조합원 명부 관리</div>
-                        <div className="text-xs text-slate-500">명단 수정 시 입구안내와 성원 계산에 바로 반영됩니다.</div>
+                        <div className="text-xs text-slate-500">총회별로 명단을 분리 관리할 수 있습니다.</div>
                     </div>
+                </div>
+            </Card>
+
+            {/* Meeting selector */}
+            <Card className="p-4 space-y-3">
+                <div className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">총회 선택</div>
+                <div className="space-y-1">
+                    {meetingFolders.map((folder) => (
+                        <button
+                            key={folder.id}
+                            type="button"
+                            onClick={() => setSelectedMeetingId(folder.id)}
+                            className={`w-full flex items-center gap-2 rounded-xl px-3 py-2.5 text-left text-sm font-semibold transition-all ${
+                                selectedMeetingId === folder.id
+                                    ? 'bg-blue-600 text-white shadow-sm'
+                                    : 'bg-slate-50 text-slate-700 hover:bg-slate-100'
+                            }`}
+                        >
+                            <FolderOpen size={14} />
+                            <span className="truncate">{folder.title}</span>
+                        </button>
+                    ))}
+                    {meetingFolders.length === 0 && (
+                        <div className="text-xs text-slate-400 py-2">등록된 총회가 없습니다.</div>
+                    )}
                 </div>
             </Card>
 
@@ -152,14 +236,15 @@ export default function AdminMembersPage() {
                 <div>
                     <div className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">Roster Status</div>
                     <div className="mt-2 text-2xl font-black text-slate-900">{activeMembers.length}</div>
-                    <div className="text-xs text-slate-500">현재 전체 조합원 수</div>
+                    <div className="text-xs text-slate-500">{selectedMeetingName} 기준 조합원 수</div>
                 </div>
                 <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
                     <div className="text-[11px] font-semibold text-slate-500">검색 결과</div>
                     <div className="mt-1 text-lg font-bold text-slate-900">{filteredMembers.length}명</div>
                 </div>
                 <div className="rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-3 text-xs leading-relaxed text-emerald-700">
-                    현재 {excludedCount}명이 명부에서 제외되어 있으며, 제외된 조합원은 입구안내 목록과 전체 조합원 수 계산에서 빠집니다.
+                    현재 {excludedCount}명이 이 총회 명부에서 제외되어 있으며{addedAfterCount > 0 ? `, ${addedAfterCount}명은 이후 총회에서 추가된 조합원` : ''}입니다.
+                    제외된 조합원은 해당 총회의 입구안내 목록과 전체 조합원 수 계산에서 빠집니다.
                 </div>
             </Card>
         </div>
@@ -196,6 +281,15 @@ export default function AdminMembersPage() {
             }
         >
             <div className="space-y-6">
+                {/* Current meeting context banner */}
+                {selectedMeetingId && (
+                    <div className="flex items-center gap-2 rounded-2xl border border-blue-200 bg-blue-50 px-5 py-3 text-sm font-semibold text-blue-800">
+                        <FolderOpen size={16} className="text-blue-500" />
+                        현재 <span className="font-black">[{selectedMeetingName}]</span>의 명부를 편집 중입니다.
+                        <span className="text-xs font-normal text-blue-600">여기서 제외/복원 처리를 하더라도 다른 총회의 명부에는 영향을 주지 않습니다.</span>
+                    </div>
+                )}
+
                 <Card className="p-5">
                     <div className="flex flex-wrap items-end gap-3">
                         <div className="min-w-[120px] flex-1">
@@ -241,7 +335,9 @@ export default function AdminMembersPage() {
                     <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-5 py-4">
                         <div>
                             <div className="text-sm font-bold text-slate-900">조합원 명부</div>
-                            <div className="text-xs text-slate-500">현재 총 {activeMembers.length}명이 전체 조합원 수로 계산됩니다.</div>
+                            <div className="text-xs text-slate-500">
+                                [{selectedMeetingName}] 기준 총 {activeMembers.length}명이 전체 조합원 수로 계산됩니다.
+                            </div>
                         </div>
                         <input
                             value={searchTerm}
@@ -267,9 +363,10 @@ export default function AdminMembersPage() {
                                     const isEditing = editingId === member.id;
                                     const isPending = pendingId === member.id;
                                     const isExcluded = inactiveMemberIdSet.has(member.id) || member.is_active === false;
+                                    const isAddedAfter = memberJoinedAfterSet.has(member.id);
 
                                     return (
-                                        <tr key={member.id} className={`border-t border-slate-100 ${isExcluded ? 'bg-amber-50/60' : ''}`}>
+                                        <tr key={member.id} className={`border-t border-slate-100 ${isAddedAfter ? 'bg-slate-50/80' : isExcluded ? 'bg-amber-50/60' : ''}`}>
                                             <td className="px-5 py-3 font-mono text-slate-500">{member.id}</td>
                                             <td className="px-5 py-3">
                                                 {isEditing ? (
@@ -292,7 +389,12 @@ export default function AdminMembersPage() {
                                                 ) : (
                                                     <div className="flex items-center gap-2">
                                                         <span className="font-semibold text-slate-900">{member.name}</span>
-                                                        {isExcluded && (
+                                                        {isAddedAfter && (
+                                                            <span className="rounded-full border border-slate-200 bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-500">
+                                                                미가입(이후 추가됨)
+                                                            </span>
+                                                        )}
+                                                        {!isAddedAfter && isExcluded && (
                                                             <span className="rounded-full border border-amber-200 bg-amber-100 px-2 py-0.5 text-[11px] font-bold text-amber-700">
                                                                 제외됨
                                                             </span>
@@ -313,7 +415,9 @@ export default function AdminMembersPage() {
                                             </td>
                                             <td className="px-5 py-3">
                                                 <div className="flex items-center justify-end gap-2">
-                                                    {isEditing ? (
+                                                    {isAddedAfter ? (
+                                                        <span className="text-xs text-slate-400">이 총회 이후 가입</span>
+                                                    ) : isEditing ? (
                                                         <>
                                                             <Button
                                                                 variant="primary"
@@ -372,8 +476,9 @@ export default function AdminMembersPage() {
                 </Card>
 
                 <div className="rounded-2xl border border-slate-200 bg-slate-50 px-5 py-4 text-xs leading-relaxed text-slate-500">
-                    조합원 명부를 추가하거나 제외/복원하면 입구안내요원 화면의 전체 조합원 수와 성원 계산 기준이 즉시 바뀝니다.
+                    조합원 명부를 추가하거나 제외/복원하면 해당 총회의 입구안내요원 화면 전체 조합원 수와 성원 계산 기준이 즉시 바뀝니다.
                     제외는 DB 레코드를 지우지 않고 운영 기준에서만 빼므로, 과거 출석 기록이 있는 조합원도 안전하게 인원 수에서 제외할 수 있습니다.
+                    각 총회마다 독립적으로 제외/복원 관리가 가능하며, 다른 총회의 명부에는 영향을 주지 않습니다.
                 </div>
             </div>
         </DashboardLayout>

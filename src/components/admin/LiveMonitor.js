@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useStore } from '@/lib/store';
-import { calculateAgendaPass, getAgendaAttendanceDisplayStats, getAgendaVoteBuckets, getAttendanceQuorumTarget, getKeyboardNavigableAgendaIds, getMeetingAttendanceStats, normalizeAgendaType } from '@/lib/store';
+import { calculateAgendaPass, getAgendaAttendanceDisplayStats, getAgendaVoteBuckets, getAttendanceQuorumTarget, getInactiveMemberIds, getKeyboardNavigableAgendaIds, getMeetingAttendanceStats, normalizeAgendaType } from '@/lib/store';
 import { Monitor, CheckCircle2, Play, Settings } from 'lucide-react';
 import AlertModal from '@/components/ui/AlertModal';
 import { useProjector } from '@/components/admin/ProjectorContext';
@@ -37,7 +37,24 @@ const getAgendaPresentation = (agenda, agendas, pageOverride) => {
 export default function LiveMonitor({ mode = 'admin' }) {
     const { state, actions } = useStore();
     const { projectorMode, agendas, currentAgendaId, voteData, attendance, members, projectorConnectedCount, mailElectionVotes } = state;
-    const inactiveMemberIds = Array.isArray(voteData?.inactiveMemberIds) ? voteData.inactiveMemberIds : EMPTY_INACTIVE_MEMBER_IDS;
+    
+    const currentAgenda = useMemo(() => agendas.find(a => a.id === currentAgendaId), [agendas, currentAgendaId]);
+
+    // 1. Identify Context (Meeting/Folder) for Stats
+    const meetingId = useMemo(() => {
+        if (!currentAgenda) return null;
+        if (currentAgenda.type === 'folder') return currentAgenda.id;
+        const currentIndex = agendas.findIndex(a => a.id === currentAgendaId);
+        for (let i = currentIndex - 1; i >= 0; i--) {
+            if (agendas[i].type === 'folder') return agendas[i].id;
+        }
+        return null;
+    }, [agendas, currentAgendaId, currentAgenda]);
+
+    const inactiveMemberIds = useMemo(
+        () => getInactiveMemberIds(voteData, meetingId),
+        [voteData, meetingId]
+    );
     const activeMemberIdSet = useMemo(() => {
         const inactiveMemberIdSet = new Set(inactiveMemberIds);
         return new Set(
@@ -84,19 +101,6 @@ export default function LiveMonitor({ mode = 'admin' }) {
     useEffect(() => {
         console.log('[LiveMonitor] Current Mode:', mode, 'ProjectorMode:', projectorMode);
     }, [mode, projectorMode]);
-
-    const currentAgenda = useMemo(() => agendas.find(a => a.id === currentAgendaId), [agendas, currentAgendaId]);
-
-    // 1. Identify Context (Meeting/Folder) for Stats
-    const meetingId = useMemo(() => {
-        if (!currentAgenda) return null;
-        if (currentAgenda.type === 'folder') return currentAgenda.id;
-        const currentIndex = agendas.findIndex(a => a.id === currentAgendaId);
-        for (let i = currentIndex - 1; i >= 0; i--) {
-            if (agendas[i].type === 'folder') return agendas[i].id;
-        }
-        return null;
-    }, [agendas, currentAgendaId, currentAgenda]);
 
     // 2. Derive Attendance Data (Scoped to Meeting) - LIVE from table
     const meetingStats = useMemo(() => {

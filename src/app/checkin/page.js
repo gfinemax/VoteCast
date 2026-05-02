@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useStore } from '@/lib/store';
 import {
     getElectionAgendaValidationStats,
+    getInactiveMemberIds,
     getMajorityThreshold,
     getMeetingAttendanceStats,
     getUniqueAttendanceRecords,
@@ -190,7 +191,10 @@ const getAttendanceBadges = (record, options = {}) => {
 export default function CheckInPage() {
     const { state, actions } = useStore();
     const { members, attendance, activeMeetingId, agendas, voteData, mailElectionVotes } = state; // activeMeetingId is Global
-    const inactiveMemberIds = Array.isArray(voteData?.inactiveMemberIds) ? voteData.inactiveMemberIds : EMPTY_INACTIVE_MEMBER_IDS;
+    const inactiveMemberIds = useMemo(
+        () => getInactiveMemberIds(voteData, activeMeetingId),
+        [voteData, activeMeetingId]
+    );
     const activeMemberIdSet = useMemo(() => {
         const inactiveMemberIdSet = new Set(inactiveMemberIds);
         return new Set(

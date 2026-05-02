@@ -50,18 +50,22 @@ export default function DashboardLayout({ title, subtitle, titleBadge, sidebarCo
                 */}
                 <div className="w-80 flex flex-col h-full">
                     <div className="p-6 border-b border-slate-100 shrink-0">
-                        <h1 className="text-xl font-bold text-slate-900 flex items-center gap-2">
-                            <div className="w-8 h-8 bg-slate-900 rounded-lg flex items-center justify-center text-white">
-                                <FileText size={18} />
+                        <div className="flex items-start justify-between">
+                            <div>
+                                <h1 className="text-xl font-bold text-slate-900 flex items-center gap-2">
+                                    <div className="w-8 h-8 bg-slate-900 rounded-lg flex items-center justify-center text-white">
+                                        <FileText size={18} />
+                                    </div>
+                                    {title}
+                                </h1>
+                                <p className="text-xs text-slate-500 mt-1">{subtitle}</p>
                             </div>
-                            {title}
-                        </h1>
-                        {titleBadge && (
-                            <div className="mt-3">
-                                {titleBadge}
-                            </div>
-                        )}
-                        <p className="text-xs text-slate-500 mt-1">{subtitle}</p>
+                            {titleBadge && (
+                                <div className="mt-1">
+                                    {titleBadge}
+                                </div>
+                            )}
+                        </div>
                     </div>
 
                     {/* Scrollable Sidebar Content */}

@@ -7,6 +7,7 @@ import {
     getAgendaVoteBuckets,
     getAttendanceQuorumTarget,
     getElectionAgendaValidationStats,
+    getInactiveMemberIds,
     getMeetingAttendanceStats,
     normalizeAgendaType
 } from '@/lib/store';
@@ -24,20 +25,6 @@ export default function useVoteControlDerivedContext({
     localVoteDraft,
     confirmReadyAgendaId
 }) {
-    const inactiveMemberIds = Array.isArray(voteData?.inactiveMemberIds)
-        ? voteData.inactiveMemberIds
-        : EMPTY_INACTIVE_MEMBER_IDS;
-    const activeMemberIdSet = useMemo(() => {
-        const inactiveMemberIdSet = new Set(inactiveMemberIds);
-        return new Set(
-            members
-                .filter(member => member.is_active !== false && !inactiveMemberIdSet.has(member.id))
-                .map(member => member.id)
-        );
-    }, [inactiveMemberIds, members]);
-    const activeMembers = useMemo(() => {
-        return members.filter(member => activeMemberIdSet.has(member.id));
-    }, [activeMemberIdSet, members]);
     const currentAgenda = agendas.find(agenda => agenda.id === currentAgendaId);
     const meetingId = useMemo(() => {
         if (!currentAgenda) return null;
@@ -49,6 +36,21 @@ export default function useVoteControlDerivedContext({
         }
         return null;
     }, [agendas, currentAgenda, currentAgendaId]);
+    const inactiveMemberIds = useMemo(
+        () => getInactiveMemberIds(voteData, meetingId),
+        [voteData, meetingId]
+    );
+    const activeMemberIdSet = useMemo(() => {
+        const inactiveMemberIdSet = new Set(inactiveMemberIds);
+        return new Set(
+            members
+                .filter(member => member.is_active !== false && !inactiveMemberIdSet.has(member.id))
+                .map(member => member.id)
+        );
+    }, [inactiveMemberIds, members]);
+    const activeMembers = useMemo(() => {
+        return members.filter(member => activeMemberIdSet.has(member.id));
+    }, [activeMemberIdSet, members]);
     const baseMeetingStats = useMemo(() => {
         return getMeetingAttendanceStats(attendance, meetingId, activeMemberIdSet);
     }, [activeMemberIdSet, attendance, meetingId]);

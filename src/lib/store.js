@@ -9,6 +9,9 @@ export {
     calculateAgendaPass
 } from './voteCalculations';
 
+// Re-export getInactiveMemberIds for consumer pages
+export { getInactiveMemberIds } from './storeHelpers';
+
 // Initial Empty Data (will be populated from DB)
 const INITIAL_DATA = {
     agendas: [],
@@ -310,11 +313,31 @@ const upsertMemberInList = (members = [], nextMember) => {
     return sortMembersById(nextMembers);
 };
 
-const getInactiveMemberIds = (voteData = {}) => {
+const getInactiveMemberIds = (voteData = {}, meetingId = null) => {
+    // If meetingId provided, try meeting-specific list first
+    if (meetingId && voteData?.inactiveMemberIdsByMeeting) {
+        const meetingSpecific = voteData.inactiveMemberIdsByMeeting[meetingId];
+        if (Array.isArray(meetingSpecific)) {
+            return meetingSpecific
+                .map((value) => parseInt(value, 10))
+                .filter((value) => !Number.isNaN(value));
+        }
+    }
+    // Fallback to global list (legacy / default)
     if (!Array.isArray(voteData?.inactiveMemberIds)) return [];
     return voteData.inactiveMemberIds
         .map((value) => parseInt(value, 10))
         .filter((value) => !Number.isNaN(value));
+};
+
+const getMemberJoinedMeetingId = (voteData = {}, memberId) => {
+    if (!memberId || !voteData?.memberJoinedMeetingId) return null;
+    return voteData.memberJoinedMeetingId[memberId] || null;
+};
+
+const getMeetingAdmissionStatus = (voteData = {}, meetingId) => {
+    if (!meetingId || !voteData?.meetingAdmissionStatus) return 'idle';
+    return voteData.meetingAdmissionStatus[meetingId] || 'idle';
 };
 
 const getAgendaTypeLocks = (voteData = {}) => {
@@ -1784,6 +1807,54 @@ export function StoreProvider({ children }) {
             }
         },
 
+        setMeetingAdmissionStatus: async (meetingId, status) => {
+            // status: 'idle' | 'open' | 'closed'
+            if (!meetingId) return;
+
+            const currentVoteData = stateRef.current.voteData || {};
+            const meetingAdmissionStatus = currentVoteData.meetingAdmissionStatus || {};
+            const newVoteData = createStampedVoteData({
+                ...currentVoteData,
+                meetingAdmissionStatus: {
+                    ...meetingAdmissionStatus,
+                    [meetingId]: status
+                }
+            });
+
+            if (status === 'open') {
+                // Opening admission: also set as active meeting
+                setState(prev => ({ ...prev, activeMeetingId: meetingId, voteData: newVoteData }));
+                const { error } = await supabase.from('system_settings')
+                    .update({ active_meeting_id: meetingId, vote_data: newVoteData })
+                    .eq('id', 1);
+                if (error) console.error('Failed to set meeting admission status:', error);
+                else broadcastSystemSettingsSync({ active_meeting_id: meetingId, vote_data: newVoteData });
+            } else if (status === 'closed') {
+                // Closing admission: clear activeMeetingId if it was this meeting
+                const shouldClear = stateRef.current.activeMeetingId === meetingId;
+                setState(prev => ({
+                    ...prev,
+                    activeMeetingId: shouldClear ? null : prev.activeMeetingId,
+                    voteData: newVoteData
+                }));
+                const updates = { vote_data: newVoteData };
+                if (shouldClear) updates.active_meeting_id = null;
+                const { error } = await supabase.from('system_settings')
+                    .update(updates)
+                    .eq('id', 1);
+                if (error) console.error('Failed to set meeting admission status:', error);
+                else broadcastSystemSettingsSync(updates);
+            } else {
+                // idle
+                setState(prev => ({ ...prev, voteData: newVoteData }));
+                const { error } = await supabase.from('system_settings')
+                    .update({ vote_data: newVoteData })
+                    .eq('id', 1);
+                if (error) console.error('Failed to set meeting admission status:', error);
+                else broadcastSystemSettingsSync({ vote_data: newVoteData });
+            }
+        },
+
         checkInMember: async (memberId, typeOrPayload = 'direct', proxyName = null, votes = null) => {
             // USE ACTIVE MEETING ID (Global)
             const meetingId = stateRef.current.activeMeetingId;
@@ -2705,37 +2776,83 @@ export function StoreProvider({ children }) {
                     ...prev,
                     members: upsertMemberInList(prev.members, data)
                 }));
+
+                // Record which meeting this member was added during (for join tracking)
+                const contextMeetingId = member?.contextMeetingId || null;
+                if (contextMeetingId) {
+                    const currentVoteData = stateRef.current.voteData || {};
+                    const memberJoinedMeetingId = currentVoteData.memberJoinedMeetingId || {};
+                    const newVoteData = createStampedVoteData({
+                        ...currentVoteData,
+                        memberJoinedMeetingId: {
+                            ...memberJoinedMeetingId,
+                            [data.id]: contextMeetingId
+                        }
+                    });
+                    setState(prev => ({ ...prev, voteData: newVoteData }));
+                    const { error: vdError } = await supabase.from('system_settings')
+                        .update({ vote_data: newVoteData })
+                        .eq('id', 1);
+                    if (!vdError) broadcastSystemSettingsSync({ vote_data: newVoteData });
+                }
             }
             return data;
         },
 
-        setMemberActive: async (memberId, isActive) => {
+        setMemberActive: async (memberId, isActive, meetingId = null) => {
             if (!memberId) {
                 throw new Error('대상 조합원이 올바르지 않습니다.');
             }
 
             const currentVoteData = stateRef.current.voteData || {};
-            const inactiveMemberIds = new Set(getInactiveMemberIds(currentVoteData));
 
-            if (isActive) {
-                inactiveMemberIds.delete(memberId);
+            if (meetingId) {
+                // Meeting-specific inactive member management
+                const currentByMeeting = currentVoteData.inactiveMemberIdsByMeeting || {};
+                const meetingInactiveIds = new Set(getInactiveMemberIds(currentVoteData, meetingId));
+
+                if (isActive) {
+                    meetingInactiveIds.delete(memberId);
+                } else {
+                    meetingInactiveIds.add(memberId);
+                }
+
+                const newVoteData = createStampedVoteData({
+                    ...currentVoteData,
+                    inactiveMemberIdsByMeeting: {
+                        ...currentByMeeting,
+                        [meetingId]: Array.from(meetingInactiveIds).sort((a, b) => a - b)
+                    }
+                });
+
+                setState(prev => ({ ...prev, voteData: newVoteData }));
+                const { error } = await supabase.from('system_settings')
+                    .update({ vote_data: newVoteData })
+                    .eq('id', 1);
+                if (error) throw error;
+                broadcastSystemSettingsSync({ vote_data: newVoteData });
             } else {
-                inactiveMemberIds.add(memberId);
+                // Legacy global inactive member management
+                const inactiveMemberIds = new Set(getInactiveMemberIds(currentVoteData));
+
+                if (isActive) {
+                    inactiveMemberIds.delete(memberId);
+                } else {
+                    inactiveMemberIds.add(memberId);
+                }
+
+                const newVoteData = createStampedVoteData({
+                    ...currentVoteData,
+                    inactiveMemberIds: Array.from(inactiveMemberIds).sort((a, b) => a - b)
+                });
+
+                setState(prev => ({ ...prev, voteData: newVoteData }));
+                const { error } = await supabase.from('system_settings')
+                    .update({ vote_data: newVoteData })
+                    .eq('id', 1);
+                if (error) throw error;
+                broadcastSystemSettingsSync({ vote_data: newVoteData });
             }
-
-            const newVoteData = createStampedVoteData({
-                ...currentVoteData,
-                inactiveMemberIds: Array.from(inactiveMemberIds).sort((a, b) => a - b)
-            });
-
-            setState(prev => ({ ...prev, voteData: newVoteData }));
-
-            const { error } = await supabase.from('system_settings')
-                .update({ vote_data: newVoteData })
-                .eq('id', 1);
-
-            if (error) throw error;
-            broadcastSystemSettingsSync({ vote_data: newVoteData });
         },
 
         setAgendaTypeLock: async (agendaId, isLocked) => {

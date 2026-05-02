@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { useStore } from '@/lib/store';
-import { getAgendaAttendanceDisplayStats, getAttendanceQuorumTarget, getMeetingAttendanceStats, normalizeAgendaType } from '@/lib/store';
+import { getAgendaAttendanceDisplayStats, getAttendanceQuorumTarget, getInactiveMemberIds, getMeetingAttendanceStats, normalizeAgendaType } from '@/lib/store';
 import { CheckCircle2 } from 'lucide-react';
 
 const EMPTY_INACTIVE_MEMBER_IDS = [];
@@ -10,7 +10,24 @@ const EMPTY_INACTIVE_MEMBER_IDS = [];
 export default function QuorumProjectorPage() {
     const { state } = useStore();
     const { agendas, currentAgendaId, attendance, members, voteData, mailElectionVotes } = state;
-    const inactiveMemberIds = Array.isArray(voteData?.inactiveMemberIds) ? voteData.inactiveMemberIds : EMPTY_INACTIVE_MEMBER_IDS;
+    
+    const currentAgenda = useMemo(() => agendas.find(a => a.id === currentAgendaId), [agendas, currentAgendaId]);
+
+    const meetingId = useMemo(() => {
+        if (!currentAgenda) return null;
+        if (currentAgenda.type === 'folder') return currentAgenda.id;
+        const currentIndex = agendas.findIndex(a => a.id === currentAgendaId);
+        for (let i = currentIndex - 1; i >= 0; i--) {
+            if (agendas[i].type === 'folder') return agendas[i].id;
+        }
+        return null;
+    }, [agendas, currentAgendaId, currentAgenda]);
+
+    const inactiveMemberIds = useMemo(
+        () => getInactiveMemberIds(voteData, meetingId),
+        [voteData, meetingId]
+    );
+
     const activeMemberIdSet = useMemo(() => {
         const inactiveMemberIdSet = new Set(inactiveMemberIds);
         return new Set(
@@ -23,18 +40,6 @@ export default function QuorumProjectorPage() {
         return members.filter(member => activeMemberIdSet.has(member.id));
     }, [activeMemberIdSet, members]);
     const [scale, setScale] = useState(1);
-
-    const currentAgenda = useMemo(() => agendas.find(a => a.id === currentAgendaId), [agendas, currentAgendaId]);
-
-    const meetingId = useMemo(() => {
-        if (!currentAgenda) return null;
-        if (currentAgenda.type === 'folder') return currentAgenda.id;
-        const currentIndex = agendas.findIndex(a => a.id === currentAgendaId);
-        for (let i = currentIndex - 1; i >= 0; i--) {
-            if (agendas[i].type === 'folder') return agendas[i].id;
-        }
-        return null;
-    }, [agendas, currentAgendaId, currentAgenda]);
 
     const meetingStats = useMemo(() => {
         return getMeetingAttendanceStats(attendance, meetingId, activeMemberIdSet);

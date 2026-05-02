@@ -3,7 +3,8 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useStore } from '@/lib/store';
-import { Plus, Trash2, Edit2, FolderOpen, ChevronDown, ChevronRight, FolderPlus, CheckCircle2, Play, Link2, FileText, Upload, Loader2, AlertTriangle, GripVertical, Lock, Unlock } from 'lucide-react';
+import { Plus, Trash2, Edit2, FolderOpen, ChevronDown, ChevronRight, FolderPlus, CheckCircle2, Play, Link2, FileText, Upload, Loader2, AlertTriangle, GripVertical, Lock, Unlock, Square, RotateCcw } from 'lucide-react';
+import { getMeetingAdmissionStatus } from '@/lib/storeHelpers';
 import Button from '@/components/ui/Button';
 import { ELECTION_METHOD_SETTING_OPTIONS } from '@/lib/electionRules';
 
@@ -799,27 +800,66 @@ function AgendaGroup({
                         <>
                             <div className="flex-1 flex flex-row items-center justify-between">
                                 <span className={`text-sm font-bold ${isFolderDeleteTarget ? 'text-red-700' : 'text-slate-700'}`}>{group.folder.title}</span>
-                                {state.activeMeetingId === group.folder.id ? (
-                                    <span className="text-[10px] font-semibold text-orange-600 flex items-center gap-1">
-                                        <span className="relative flex h-2 w-2">
-                                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-orange-400 opacity-75"></span>
-                                            <span className="relative inline-flex rounded-full h-2 w-2 bg-orange-500"></span>
-                                        </span>
-                                        입장 접수 중
-                                    </span>
-                                ) : (
-                                    <button
-                                        onClick={(e) => {
-                                            e.stopPropagation();
-                                            if (confirm(`'${group.folder.title}'의 입장을 시작하시겠습니까?\n기존에 진행 중인 입장은 중단됩니다.`)) {
-                                                actions.setActiveMeeting(group.folder.id);
-                                            }
-                                        }}
-                                        className="w-fit text-[10px] text-slate-400 hover:text-blue-600 hover:underline flex items-center gap-0.5"
-                                    >
-                                        <Play size={8} /> 입장 시작
-                                    </button>
-                                )}
+                                {(() => {
+                                    const admissionStatus = getMeetingAdmissionStatus(state.voteData, group.folder.id);
+                                    const isActive = state.activeMeetingId === group.folder.id;
+
+                                    if (admissionStatus === 'open' || isActive) {
+                                        return (
+                                            <button
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    if (confirm(`'${group.folder.title}'의 입장 접수를 완료하시겠습니까?\n접수 완료 후에도 다시 재개할 수 있습니다.`)) {
+                                                        actions.setMeetingAdmissionStatus(group.folder.id, 'closed');
+                                                    }
+                                                }}
+                                                className="w-fit text-[10px] font-semibold text-orange-600 flex items-center gap-1 hover:text-red-600 transition-colors"
+                                            >
+                                                <span className="relative flex h-2 w-2">
+                                                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-orange-400 opacity-75"></span>
+                                                    <span className="relative inline-flex rounded-full h-2 w-2 bg-orange-500"></span>
+                                                </span>
+                                                입장 접수 중
+                                                <Square size={8} className="ml-0.5 opacity-0 group-hover:opacity-100 transition-opacity" />
+                                            </button>
+                                        );
+                                    }
+
+                                    if (admissionStatus === 'closed') {
+                                        return (
+                                            <button
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    if (confirm(`'${group.folder.title}'의 입장 접수를 다시 재개하시겠습니까?`)) {
+                                                        actions.setMeetingAdmissionStatus(group.folder.id, 'open');
+                                                    }
+                                                }}
+                                                className="w-fit text-[10px] text-slate-500 flex items-center gap-1 hover:text-blue-600 transition-colors"
+                                            >
+                                                <span className="relative flex h-2 w-2">
+                                                    <span className="relative inline-flex rounded-full h-2 w-2 bg-slate-400"></span>
+                                                </span>
+                                                접수 완료
+                                                <RotateCcw size={8} className="ml-0.5 opacity-0 group-hover:opacity-100 transition-opacity" />
+                                            </button>
+                                        );
+                                    }
+
+                                    // idle
+                                    return (
+                                        <button
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                if (confirm(`'${group.folder.title}'의 입장을 시작하시겠습니까?`)) {
+                                                    actions.setMeetingAdmissionStatus(group.folder.id, 'open');
+                                                }
+                                            }}
+                                            className="w-fit text-[10px] text-slate-400 hover:text-blue-600 hover:underline flex items-center gap-0.5"
+                                        >
+                                            <Play size={8} /> 입장 시작
+                                        </button>
+                                    );
+                                })()}
                             </div>
 
                             <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">

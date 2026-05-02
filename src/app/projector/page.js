@@ -2,7 +2,7 @@
 
 import React, { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { useStore } from '@/lib/store';
-import { calculateAgendaPass, getAgendaAttendanceDisplayStats, getAgendaVoteBuckets, getAttendanceQuorumTarget, getMeetingAttendanceStats, normalizeAgendaType } from '@/lib/store';
+import { calculateAgendaPass, getAgendaAttendanceDisplayStats, getAgendaVoteBuckets, getAttendanceQuorumTarget, getInactiveMemberIds, getMeetingAttendanceStats, normalizeAgendaType } from '@/lib/store';
 import { supabase } from '@/lib/supabase';
 import { CheckCircle2, Settings, Crown, Award } from 'lucide-react';
 import dynamic from 'next/dynamic';
@@ -144,7 +144,25 @@ export default function ProjectorPage() {
         resultIsPassed: heldRenderState.resultIsPassed,
         __syncVersion: heldRenderState.syncVersion
     }), [heldRenderState, voteData]);
-    const inactiveMemberIds = Array.isArray(voteData?.inactiveMemberIds) ? voteData.inactiveMemberIds : EMPTY_INACTIVE_MEMBER_IDS;
+
+    // 1. Identify Context (Meeting/Folder) for Stats
+    const currentAgenda = useMemo(() => agendas.find(a => a.id === currentAgendaId), [agendas, currentAgendaId]);
+
+    const meetingId = useMemo(() => {
+        if (!currentAgenda) return null;
+        if (currentAgenda.type === 'folder') return currentAgenda.id;
+        const currentIndex = agendas.findIndex(a => a.id === currentAgendaId);
+        for (let i = currentIndex - 1; i >= 0; i--) {
+            if (agendas[i].type === 'folder') return agendas[i].id;
+        }
+        return null;
+    }, [agendas, currentAgendaId, currentAgenda]);
+
+    const inactiveMemberIds = useMemo(
+        () => getInactiveMemberIds(voteData, meetingId),
+        [voteData, meetingId]
+    );
+
     const activeMemberIdSet = useMemo(() => {
         const inactiveMemberIdSet = new Set(inactiveMemberIds);
         return new Set(
@@ -212,20 +230,6 @@ export default function ProjectorPage() {
             supabase.removeChannel(channel);
         };
     }, []);
-
-    // Find info about current agenda
-    const currentAgenda = useMemo(() => agendas.find(a => a.id === currentAgendaId), [agendas, currentAgendaId]);
-
-    // 1. Identify Context (Meeting/Folder) for Stats
-    const meetingId = useMemo(() => {
-        if (!currentAgenda) return null;
-        if (currentAgenda.type === 'folder') return currentAgenda.id;
-        const currentIndex = agendas.findIndex(a => a.id === currentAgendaId);
-        for (let i = currentIndex - 1; i >= 0; i--) {
-            if (agendas[i].type === 'folder') return agendas[i].id;
-        }
-        return null;
-    }, [agendas, currentAgendaId, currentAgenda]);
 
     // 2. Derive Attendance Data
     const meetingStats = useMemo(() => {

@@ -3,7 +3,7 @@
 import React from 'react';
 import Link from 'next/link';
 import { useStore } from '@/lib/store';
-import { getAgendaAttendanceDisplayStats, getAgendaVoteBuckets, getMeetingAttendanceStats } from '@/lib/store';
+import { getAgendaAttendanceDisplayStats, getAgendaVoteBuckets, getInactiveMemberIds, getMeetingAttendanceStats } from '@/lib/store';
 import { ClipboardCheck, Settings, UserCheck, Users } from 'lucide-react';
 import FullscreenToggle from '@/components/ui/FullscreenToggle';
 import DashboardLayout from '@/components/admin/DashboardLayout';
@@ -16,18 +16,6 @@ import AuthStatus from '@/components/ui/AuthStatus';
 export default function AdminPage() {
     const { state, actions } = useStore();
     const { voteData, currentAgendaId, agendas, projectorMode, attendance, members, mailElectionVotes } = state;
-    const inactiveMemberIds = React.useMemo(
-        () => Array.isArray(voteData?.inactiveMemberIds) ? voteData.inactiveMemberIds : [],
-        [voteData?.inactiveMemberIds]
-    );
-    const activeMemberIdSet = React.useMemo(() => {
-        const inactiveMemberIdLookup = new Set(inactiveMemberIds);
-        return new Set(
-            members
-                .filter((member) => member.is_active !== false && !inactiveMemberIdLookup.has(member.id))
-                .map((member) => member.id)
-        );
-    }, [inactiveMemberIds, members]);
     const currentAgenda = agendas.find(a => a.id === currentAgendaId);
 
     // 1. Identify Context (Meeting/Folder) for stats
@@ -40,6 +28,20 @@ export default function AdminPage() {
         }
         return null;
     }, [agendas, currentAgendaId, currentAgenda]);
+
+    const inactiveMemberIds = React.useMemo(
+        () => getInactiveMemberIds(voteData, meetingId),
+        [voteData, meetingId]
+    );
+
+    const activeMemberIdSet = React.useMemo(() => {
+        const inactiveMemberIdLookup = new Set(inactiveMemberIds);
+        return new Set(
+            members
+                .filter((member) => member.is_active !== false && !inactiveMemberIdLookup.has(member.id))
+                .map((member) => member.id)
+        );
+    }, [inactiveMemberIds, members]);
 
     // 2. Derive LIVE stats (Instead of relying on voteData)
     const meetingStats = React.useMemo(() => {

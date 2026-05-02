@@ -26,7 +26,7 @@ import Button from '@/components/ui/Button';
 import Card from '@/components/ui/Card';
 import FullscreenToggle from '@/components/ui/FullscreenToggle';
 import { supabase } from '@/lib/supabase';
-import { useStore } from '@/lib/store';
+import { useStore, getInactiveMemberIds } from '@/lib/store';
 import {
     ATTENDANCE_TYPE_LABELS,
     CONFIRMATION_SOURCE_LABELS,
@@ -1233,7 +1233,6 @@ function CertificatePreview({
 export default function AdminTallyPage() {
     const { state, actions } = useStore();
     const { agendas, members, attendance, mailElectionVotes, activeMeetingId, currentMeetingId, currentAgendaId, voteData } = state;
-    const inactiveMemberIds = Array.isArray(voteData?.inactiveMemberIds) ? voteData.inactiveMemberIds : EMPTY_INACTIVE_MEMBER_IDS;
     const groups = useMemo(() => buildAgendaGroups(agendas), [agendas]);
     const initialMeetingId = useMemo(() => getDefaultMeetingId({
         agendas,
@@ -1246,42 +1245,59 @@ export default function AdminTallyPage() {
     const [activeTab, setActiveTab] = useState('summary');
     const [writtenVotes, setWrittenVotes] = useState([]);
     const [writtenVoteError, setWrittenVoteError] = useState('');
-    const [sourceType, setSourceType] = useState(voteData?.tallyConfirmation?.sourceType || 'auto');
-    const [manualResults, setManualResults] = useState(voteData?.tallyConfirmation?.manualResults || {});
-    const [overrideReason, setOverrideReason] = useState(voteData?.tallyConfirmation?.overrideReason || '');
+    const selectedMeeting = useMemo(
+        () => agendas.find((agenda) => agenda.id === selectedMeetingId && agenda.type === 'folder') || null,
+        [agendas, selectedMeetingId]
+    );
+    const inactiveMemberIds = useMemo(
+        () => getInactiveMemberIds(voteData, selectedMeetingId),
+        [voteData, selectedMeetingId]
+    );
+
+    const initialConf = voteData?.tallyConfirmations?.[selectedMeetingId] || voteData?.tallyConfirmation;
+    const [sourceType, setSourceType] = useState(initialConf?.sourceType || 'auto');
+    const [manualResults, setManualResults] = useState(initialConf?.manualResults || {});
+    const [overrideReason, setOverrideReason] = useState(initialConf?.overrideReason || '');
     const [isSaving, setIsSaving] = useState(false);
-    const [meetingDetails, setMeetingDetails] = useState({
-        title: '',
+    const [meetingDetails, setMeetingDetails] = useState(initialConf?.meetingDetails || {
+        title: selectedMeeting?.title || '',
         heldAt: formatKoreanDate(new Date()),
         location: '',
         certificateDate: formatKoreanDate(new Date())
     });
-    const [committeeMembers, setCommitteeMembers] = useState(DEFAULT_COMMITTEE_MEMBERS);
-    const [sealImage, setSealImage] = useState(null);
+    const [committeeMembers, setCommitteeMembers] = useState(initialConf?.committeeMembers || DEFAULT_COMMITTEE_MEMBERS);
+    const [sealImage, setSealImage] = useState(initialConf?.sealImage || null);
 
-    // Sync local state with global voteData when it's loaded or changed
+    // Sync local state when selectedMeetingId or voteData changes
     useEffect(() => {
-        if (voteData?.tallyConfirmation) {
-            const conf = voteData.tallyConfirmation;
+        const conf = voteData?.tallyConfirmations?.[selectedMeetingId] || voteData?.tallyConfirmation;
+        if (conf) {
             if (conf.meetingDetails) setMeetingDetails(conf.meetingDetails);
             if (conf.committeeMembers) setCommitteeMembers(conf.committeeMembers);
-            if (conf.sealImage) setSealImage(conf.sealImage);
+            if (conf.sealImage !== undefined) setSealImage(conf.sealImage);
             if (conf.sourceType) setSourceType(conf.sourceType);
             if (conf.manualResults) setManualResults(conf.manualResults);
-            if (conf.overrideReason) setOverrideReason(conf.overrideReason);
+            if (conf.overrideReason !== undefined) setOverrideReason(conf.overrideReason);
+        } else {
+            setMeetingDetails({
+                title: selectedMeeting?.title || '',
+                heldAt: formatKoreanDate(new Date()),
+                location: '',
+                certificateDate: formatKoreanDate(new Date())
+            });
+            setCommitteeMembers(DEFAULT_COMMITTEE_MEMBERS);
+            setSealImage(null);
+            setSourceType('auto');
+            setManualResults({});
+            setOverrideReason('');
         }
-    }, [voteData?.tallyConfirmation]);
+    }, [selectedMeetingId, voteData?.tallyConfirmations, voteData?.tallyConfirmation, selectedMeeting?.title]);
 
     useEffect(() => {
         if (!selectedMeetingId && initialMeetingId) {
             setSelectedMeetingId(initialMeetingId);
         }
     }, [initialMeetingId, selectedMeetingId]);
-
-    const selectedMeeting = useMemo(
-        () => agendas.find((agenda) => agenda.id === selectedMeetingId && agenda.type === 'folder') || null,
-        [agendas, selectedMeetingId]
-    );
 
     useEffect(() => {
         if (!meetingDetails.title && selectedMeeting?.title) {
@@ -1350,7 +1366,7 @@ export default function AdminTallyPage() {
         [audit.agendaResults, manualResults, sourceType]
     );
 
-    const confirmation = voteData?.tallyConfirmation || null;
+    const confirmation = voteData?.tallyConfirmations?.[selectedMeetingId] || voteData?.tallyConfirmation || null;
 
     const handleResetManualValues = () => {
         setManualResults(buildManualResultsFromAgendaResults(audit.agendaResults));
@@ -1384,7 +1400,11 @@ export default function AdminTallyPage() {
                 confirmedAt: new Date().toISOString()
             };
 
-            await actions.updateVoteData('tallyConfirmation', payload);
+            const updatedConfirmations = {
+                ...(voteData.tallyConfirmations || {}),
+                [selectedMeetingId]: payload
+            };
+            await actions.updateVoteData('tallyConfirmations', updatedConfirmations);
             alert('검산 결과와 확인서 정보가 최종 확정 저장되었습니다.');
         } catch (error) {
             console.error('Failed to save tally confirmation:', error);
