@@ -62,6 +62,14 @@ export default function AgendaList() {
     const [draggedAgendaId, setDraggedAgendaId] = useState(null);
     const [dropTarget, setDropTarget] = useState(null);
     const [isReordering, setIsReordering] = useState(false);
+    const [confirmModal, setConfirmModal] = useState({
+        isOpen: false,
+        title: "",
+        message: "",
+        onConfirm: null,
+        confirmText: "확인",
+        confirmVariant: "primary"
+    });
 
     const rowRefs = useRef(new Map());
     const deletePopoverRef = useRef(null);
@@ -589,6 +597,7 @@ export default function AgendaList() {
                         handleAgendaDrop={handleAgendaDrop}
                         handleGroupDragOver={handleGroupDragOver}
                         handleGroupDrop={handleGroupDrop}
+                        setConfirmModal={setConfirmModal}
                     />
                 ))}
             </div>
@@ -601,7 +610,56 @@ export default function AgendaList() {
                 confirmDelete={confirmDelete}
                 isDeleting={isDeleting}
             />
+
+            <ConfirmModal
+                isOpen={confirmModal.isOpen}
+                onClose={() => setConfirmModal(prev => ({ ...prev, isOpen: false }))}
+                title={confirmModal.title}
+                message={confirmModal.message}
+                onConfirm={confirmModal.onConfirm}
+                confirmText={confirmModal.confirmText}
+                variant={confirmModal.confirmVariant}
+            />
         </>
+    );
+}
+
+function ConfirmModal({ isOpen, onClose, title, message, onConfirm, confirmText = "확인", variant = "primary" }) {
+    if (!isOpen) return null;
+
+    return (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-in fade-in duration-200">
+            <div 
+                className="w-full max-w-sm bg-white rounded-2xl shadow-2xl border border-slate-100 overflow-hidden animate-in zoom-in-95 duration-200"
+                onClick={(e) => e.stopPropagation()}
+            >
+                <div className="p-6">
+                    <h3 className="text-lg font-bold text-slate-900 mb-2">{title}</h3>
+                    <p className="text-sm text-slate-600 leading-relaxed whitespace-pre-wrap">{message}</p>
+                </div>
+                <div className="flex gap-2 p-4 bg-slate-50 border-t border-slate-100">
+                    <button
+                        onClick={onClose}
+                        className="flex-1 px-4 py-2 text-sm font-bold text-slate-500 hover:bg-slate-200 rounded-xl transition-colors"
+                    >
+                        취소
+                    </button>
+                    <button
+                        onClick={() => {
+                            onConfirm?.();
+                            onClose();
+                        }}
+                        className={`flex-1 px-4 py-2 text-sm font-bold text-white rounded-xl shadow-lg shadow-blue-900/10 transition-all active:scale-95 ${
+                            variant === 'danger' ? 'bg-red-600 hover:bg-red-700' :
+                            variant === 'success' ? 'bg-emerald-600 hover:bg-emerald-700' :
+                            'bg-slate-900 hover:bg-slate-800'
+                        }`}
+                    >
+                        {confirmText}
+                    </button>
+                </div>
+            </div>
+        </div>
     );
 }
 
@@ -718,7 +776,8 @@ function AgendaGroup({
     handleAgendaDragOver,
     handleAgendaDrop,
     handleGroupDragOver,
-    handleGroupDrop
+    handleGroupDrop,
+    setConfirmModal
 }) {
     const isGhost = !group.folder;
     const folderId = group.folder ? group.folder.id : GHOST_GROUP_ID;
@@ -798,50 +857,93 @@ function AgendaGroup({
                         </div>
                     ) : (
                         <>
-                            <div className="flex-1 flex flex-row items-center justify-between">
-                                <span className={`text-sm font-bold ${isFolderDeleteTarget ? 'text-red-700' : 'text-slate-700'}`}>{group.folder.title}</span>
+                            <div className="flex-1 flex flex-col items-start gap-0.5 py-0.5">
+                                <span className={`text-sm font-bold leading-tight ${isFolderDeleteTarget ? 'text-red-700' : 'text-slate-700'}`}>{group.folder.title}</span>
                                 {(() => {
                                     const admissionStatus = getMeetingAdmissionStatus(state.voteData, group.folder.id);
                                     const isActive = state.activeMeetingId === group.folder.id;
 
                                     if (admissionStatus === 'open' || isActive) {
                                         return (
-                                            <button
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    if (confirm(`'${group.folder.title}'의 입장 접수를 완료하시겠습니까?\n접수 완료 후에도 다시 재개할 수 있습니다.`)) {
-                                                        actions.setMeetingAdmissionStatus(group.folder.id, 'closed');
-                                                    }
-                                                }}
-                                                className="w-fit text-[10px] font-semibold text-orange-600 flex items-center gap-1 hover:text-red-600 transition-colors"
-                                            >
-                                                <span className="relative flex h-2 w-2">
-                                                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-orange-400 opacity-75"></span>
-                                                    <span className="relative inline-flex rounded-full h-2 w-2 bg-orange-500"></span>
-                                                </span>
-                                                입장 접수 중
-                                                <Square size={8} className="ml-0.5 opacity-0 group-hover:opacity-100 transition-opacity" />
-                                            </button>
+                                            <div className="flex items-center gap-2">
+                                                <button
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        setConfirmModal({
+                                                            isOpen: true,
+                                                            title: "입장 접수 완료",
+                                                            message: `'${group.folder.title}'의 입장 접수를 완료하시겠습니까?\n접수 완료 후에도 다시 재개할 수 있습니다.`,
+                                                            confirmText: "접수 완료",
+                                                            onConfirm: () => actions.setMeetingAdmissionStatus(group.folder.id, 'closed')
+                                                        });
+                                                    }}
+                                                    className="w-fit text-[10px] font-semibold text-orange-600 flex items-center gap-1 hover:text-red-600 transition-colors"
+                                                >
+                                                    <span className="relative flex h-2 w-2">
+                                                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-orange-400 opacity-75"></span>
+                                                        <span className="relative inline-flex rounded-full h-2 w-2 bg-orange-500"></span>
+                                                    </span>
+                                                    입장 접수 중
+                                                    <Square size={8} className="ml-0.5 opacity-0 group-hover:opacity-100 transition-opacity" />
+                                                </button>
+                                                <button
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        setConfirmModal({
+                                                            isOpen: true,
+                                                            title: "상태 초기화",
+                                                            message: `'${group.folder.title}'의 상태를 '대기중'으로 초기화하시겠습니까?`,
+                                                            confirmText: "초기화",
+                                                            onConfirm: () => actions.setMeetingAdmissionStatus(group.folder.id, 'idle')
+                                                        });
+                                                    }}
+                                                    className="p-1 text-slate-300 hover:text-slate-500 opacity-0 group-hover:opacity-100 transition-opacity"
+                                                    title="대기중으로 초기화"
+                                                >
+                                                    <RotateCcw size={10} />
+                                                </button>
+                                            </div>
                                         );
                                     }
 
                                     if (admissionStatus === 'closed') {
                                         return (
-                                            <button
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    if (confirm(`'${group.folder.title}'의 입장 접수를 다시 재개하시겠습니까?`)) {
-                                                        actions.setMeetingAdmissionStatus(group.folder.id, 'open');
-                                                    }
-                                                }}
-                                                className="w-fit text-[10px] text-slate-500 flex items-center gap-1 hover:text-blue-600 transition-colors"
-                                            >
-                                                <span className="relative flex h-2 w-2">
-                                                    <span className="relative inline-flex rounded-full h-2 w-2 bg-slate-400"></span>
-                                                </span>
-                                                접수 완료
-                                                <RotateCcw size={8} className="ml-0.5 opacity-0 group-hover:opacity-100 transition-opacity" />
-                                            </button>
+                                            <div className="flex items-center gap-2">
+                                                <button
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        setConfirmModal({
+                                                            isOpen: true,
+                                                            title: "입장 접수 재개",
+                                                            message: `'${group.folder.title}'의 입장 접수를 다시 재개하시겠습니까?`,
+                                                            confirmText: "재개하기",
+                                                            onConfirm: () => actions.setMeetingAdmissionStatus(group.folder.id, 'open')
+                                                        });
+                                                    }}
+                                                    className="w-fit text-[10px] text-slate-500 flex items-center gap-1 hover:text-blue-600 transition-colors"
+                                                >
+                                                    <span className="relative flex h-2 w-2">
+                                                        <span className="relative inline-flex rounded-full h-2 w-2 bg-slate-400"></span>
+                                                    </span>
+                                                    접수 완료
+                                                </button>
+                                                <button
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        setConfirmModal({
+                                                            isOpen: true,
+                                                            title: "상태 초기화",
+                                                            message: `'${group.folder.title}'의 상태를 '대기중'으로 초기화하시겠습니까?`,
+                                                            confirmText: "초기화",
+                                                            onConfirm: () => actions.setMeetingAdmissionStatus(group.folder.id, 'idle')
+                                                        });
+                                                    }}
+                                                    className="p-1 text-slate-300 hover:text-slate-500 opacity-0 group-hover:opacity-100 transition-opacity"
+                                                    title="대기중으로 초기화"
+                                                >
+                                                    <RotateCcw size={10} />
+                                                </button>
+                                            </div>
                                         );
                                     }
 
@@ -850,9 +952,14 @@ function AgendaGroup({
                                         <button
                                             onClick={(e) => {
                                                 e.stopPropagation();
-                                                if (confirm(`'${group.folder.title}'의 입장을 시작하시겠습니까?`)) {
-                                                    actions.setMeetingAdmissionStatus(group.folder.id, 'open');
-                                                }
+                                                setConfirmModal({
+                                                    isOpen: true,
+                                                    title: "입장 시작",
+                                                    message: `'${group.folder.title}'의 입장을 시작하시겠습니까?`,
+                                                    confirmText: "입장 시작",
+                                                    confirmVariant: "success",
+                                                    onConfirm: () => actions.setMeetingAdmissionStatus(group.folder.id, 'open')
+                                                });
                                             }}
                                             className="w-fit text-[10px] text-slate-400 hover:text-blue-600 hover:underline flex items-center gap-0.5"
                                         >
