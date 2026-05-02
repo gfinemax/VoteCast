@@ -78,8 +78,17 @@
     - **부드러운 전환:** 모드 변경 시 CSS Cross-fade 효과를 적용(500ms)하여 시각적 안정감을 제공합니다.
     - **로딩 지연 제거:** 자료(PDF)가 백그라운드에서 미리 로드되어 있어 전환 즉시 발표가 가능합니다.
 
+### 2.5 UI/UX 및 네비게이션 강화 [NEW]
+- **통합 네비게이션 시스템:**
+    - **상호 연결 배지:** 관리자 대시보드와 안내데스크(Check-in) 간의 빠른 전환을 위해 헤더 영역에 직관적인 연결 배지(Badge)를 추가하였습니다.
+    - **접근성 향상:** 어떤 화면에서도 클릭 한 번으로 주요 관리 포인트 간 이동이 가능합니다.
+- **사이드바 상태 동기화 (Sidebar Sync) [NEW]:**
+    - **브라우저 탭 간 동기화:** `useSyncExternalStore`를 활용하여 여러 탭이나 창이 열려 있는 경우에도 사이드바의 접힘/펼침 상태가 실시간으로 동기화됩니다.
+    - **지속성:** 새로고침 후에도 마지막 상태가 유지됩니다.
+
 ## 3. 기술 사양 (Technical Specifications)
 - **Frontend Framework:** Next.js 14 (App Router)
+- **State Management:** `useSyncExternalStore` (Cross-tab/Cross-component state synchronization) **[NEW]**
 - **Styling:** Tailwind CSS (Modern, Clean UI)
 - **Icons:** Lucide-react
 - **Platform:** Web-based application (Responsive, optimize for Desktop Admin & Large Screen Display)

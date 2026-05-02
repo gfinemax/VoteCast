@@ -148,16 +148,6 @@ export default function AdminMembersPage() {
                 </div>
             </Card>
 
-            <div className="space-y-2">
-                <Link
-                    href="/admin"
-                    className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition-colors hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700"
-                >
-                    <ArrowLeft size={16} />
-                    메인 제어로 돌아가기
-                </Link>
-            </div>
-
             <Card className="p-4 space-y-3">
                 <div>
                     <div className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">Roster Status</div>
@@ -192,6 +182,13 @@ export default function AdminMembersPage() {
                         </div>
                     </div>
                     <div className="ml-auto flex items-center gap-2">
+                        <Link
+                            href="/admin"
+                            className="flex h-9 items-center gap-2 rounded-md border border-lime-500 bg-[#eaff00] px-3 text-xs font-bold text-slate-900 shadow-[0_0_15px_rgba(234,255,0,0.3)] transition-all hover:bg-[#f2ff4d] hover:shadow-[0_0_20px_rgba(234,255,0,0.5)]"
+                        >
+                            <ArrowLeft size={14} />
+                            메인 제어로 돌아가기
+                        </Link>
                         <FullscreenToggle />
                         <AuthStatus />
                     </div>

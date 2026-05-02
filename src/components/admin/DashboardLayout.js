@@ -1,25 +1,39 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useSyncExternalStore } from 'react';
 import { FileText, ChevronLeft, ChevronRight } from 'lucide-react';
 
-export default function DashboardLayout({ title, subtitle, sidebarContent, sidebarFooter, headerContent, fixedTopContent, children }) {
-    const [isCollapsed, setIsCollapsed] = useState(false);
-    const [isMounted, setIsMounted] = useState(false);
+const SIDEBAR_COLLAPSED_KEY = 'votecast_sidebar_collapsed';
+const SIDEBAR_COLLAPSED_EVENT = 'votecast_sidebar_collapsed_change';
 
-    // 컴포넌트 마운트 시, 저장된 사이드바 상태를 불러옵니다.
-    useEffect(() => {
-        setIsMounted(true);
-        const storedValue = localStorage.getItem('votecast_sidebar_collapsed');
-        if (storedValue === 'true') {
-            setIsCollapsed(true);
-        }
-    }, []);
+const getSidebarCollapsedSnapshot = () => {
+    if (typeof window === 'undefined') return false;
+    return localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === 'true';
+};
+
+const subscribeSidebarCollapsed = (callback) => {
+    if (typeof window === 'undefined') return () => {};
+
+    window.addEventListener('storage', callback);
+    window.addEventListener(SIDEBAR_COLLAPSED_EVENT, callback);
+
+    return () => {
+        window.removeEventListener('storage', callback);
+        window.removeEventListener(SIDEBAR_COLLAPSED_EVENT, callback);
+    };
+};
+
+export default function DashboardLayout({ title, subtitle, titleBadge, sidebarContent, sidebarFooter, headerContent, fixedTopContent, children }) {
+    const isCollapsed = useSyncExternalStore(
+        subscribeSidebarCollapsed,
+        getSidebarCollapsedSnapshot,
+        () => false
+    );
 
     const toggleSidebar = () => {
         const newValue = !isCollapsed;
-        setIsCollapsed(newValue);
-        localStorage.setItem('votecast_sidebar_collapsed', newValue.toString());
+        localStorage.setItem(SIDEBAR_COLLAPSED_KEY, newValue.toString());
+        window.dispatchEvent(new Event(SIDEBAR_COLLAPSED_EVENT));
     };
 
     return (
@@ -42,6 +56,11 @@ export default function DashboardLayout({ title, subtitle, sidebarContent, sideb
                             </div>
                             {title}
                         </h1>
+                        {titleBadge && (
+                            <div className="mt-3">
+                                {titleBadge}
+                            </div>
+                        )}
                         <p className="text-xs text-slate-500 mt-1">{subtitle}</p>
                     </div>
 
@@ -60,30 +79,28 @@ export default function DashboardLayout({ title, subtitle, sidebarContent, sideb
             </aside>
 
             {/* Floating Toggle Button */}
-            {isMounted && (
-                <button
-                    onClick={toggleSidebar}
-                    className="absolute z-30 flex flex-col items-center justify-center gap-1.5 w-7 h-28 py-2 bg-lime-400 hover:bg-lime-500 shadow-lg drop-shadow-md rounded-r-lg transition-all duration-300 ease-in-out text-slate-900 font-extrabold tracking-widest text-[9px] focus:outline-none border-y border-r border-lime-500 border-b-[3px] border-b-lime-600"
-                    style={{
-                        top: '50vh',
-                        transform: 'translateY(-50%)',
-                        left: isCollapsed ? '0px' : '320px', // 320px = w-80
-                    }}
-                    title={isCollapsed ? "사이드바 펼치기" : "사이드바 접기"}
-                >
-                    {isCollapsed ? (
-                        <>
-                            <ChevronRight size={14} strokeWidth={3} />
-                            <span className="leading-none" style={{ writingMode: 'vertical-rl' }}>SIDEBAR</span>
-                        </>
-                    ) : (
-                        <>
-                            <span className="leading-none" style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}>WIDE</span>
-                            <ChevronLeft size={14} strokeWidth={3} />
-                        </>
-                    )}
-                </button>
-            )}
+            <button
+                onClick={toggleSidebar}
+                className="absolute z-30 flex flex-col items-center justify-center gap-1.5 w-7 h-28 py-2 bg-lime-400 hover:bg-lime-500 shadow-lg drop-shadow-md rounded-r-lg transition-all duration-300 ease-in-out text-slate-900 font-extrabold tracking-widest text-[9px] focus:outline-none border-y border-r border-lime-500 border-b-[3px] border-b-lime-600"
+                style={{
+                    top: '50vh',
+                    transform: 'translateY(-50%)',
+                    left: isCollapsed ? '0px' : '320px', // 320px = w-80
+                }}
+                title={isCollapsed ? "사이드바 펼치기" : "사이드바 접기"}
+            >
+                {isCollapsed ? (
+                    <>
+                        <ChevronRight size={14} strokeWidth={3} />
+                        <span className="leading-none" style={{ writingMode: 'vertical-rl' }}>SIDEBAR</span>
+                    </>
+                ) : (
+                    <>
+                        <span className="leading-none" style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}>WIDE</span>
+                        <ChevronLeft size={14} strokeWidth={3} />
+                    </>
+                )}
+            </button>
 
             {/* Main Content */}
             <main className="flex-1 flex flex-col h-full overflow-hidden relative">

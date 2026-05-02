@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useMemo, useEffect } from 'react';
+import Link from 'next/link';
 import { useStore } from '@/lib/store';
 import {
     getElectionAgendaValidationStats,
@@ -17,7 +18,7 @@ import {
     getElectionRule,
     isChairContestAgenda
 } from '@/lib/electionRules';
-import { Search, UserCheck, AlertCircle, Clock, Check, RotateCcw, ChevronDown, ChevronUp, User, FileText, Pencil, Loader2 } from 'lucide-react';
+import { Search, UserCheck, AlertCircle, Clock, Check, RotateCcw, ChevronDown, ChevronUp, User, FileText, Pencil, Loader2, Settings } from 'lucide-react';
 import FlipNumber from '@/components/ui/FlipNumber';
 import FullscreenToggle from '@/components/ui/FullscreenToggle';
 import AuthStatus from '@/components/ui/AuthStatus';
@@ -652,12 +653,19 @@ export default function CheckInPage() {
                     {/* Top Bar: Title + Status */}
                     <div className="flex justify-start items-center gap-3 px-3 py-1 bg-slate-50 border-b border-slate-100">
                         {currentMeeting ? (
-                            <div className="flex items-center gap-1.5">
+                            <div className="flex items-center gap-2 min-w-0">
                                 <span className="relative flex h-2.5 w-2.5">
                                     <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
                                     <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
                                 </span>
-                                <span className="text-lg font-bold text-emerald-700 truncate max-w-[200px]">{currentMeeting.title}</span>
+                                <span className="text-lg font-bold text-emerald-700 truncate max-w-[200px] md:max-w-[320px]">{currentMeeting.title}</span>
+                                <Link
+                                    href="/admin"
+                                    className="hidden md:inline-flex shrink-0 items-center gap-1.5 rounded-full border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-bold text-blue-700 transition-colors hover:border-blue-300 hover:bg-blue-100 hover:text-blue-800"
+                                >
+                                    <Settings size={14} />
+                                    총회관리자
+                                </Link>
                             </div>
                         ) : (
                             <span className="text-xs font-bold text-red-500 flex items-center gap-1"><AlertCircle size={12} /> 입장 중단됨</span>

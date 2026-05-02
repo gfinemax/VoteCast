@@ -4,7 +4,7 @@ import React from 'react';
 import Link from 'next/link';
 import { useStore } from '@/lib/store';
 import { getAgendaAttendanceDisplayStats, getAgendaVoteBuckets, getMeetingAttendanceStats } from '@/lib/store';
-import { ClipboardCheck, Settings, Users } from 'lucide-react';
+import { ClipboardCheck, Settings, UserCheck, Users } from 'lucide-react';
 import FullscreenToggle from '@/components/ui/FullscreenToggle';
 import DashboardLayout from '@/components/admin/DashboardLayout';
 import AgendaList from '@/components/admin/AgendaList';
@@ -112,6 +112,15 @@ export default function AdminPage() {
         <DashboardLayout
             title="총회관리자"
             subtitle="Total Control & Monitor System"
+            titleBadge={(
+                <Link
+                    href="/checkin"
+                    className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-bold text-emerald-700 transition-colors hover:border-emerald-300 hover:bg-emerald-100 hover:text-emerald-800"
+                >
+                    <UserCheck size={14} />
+                    안내데스크
+                </Link>
+            )}
             sidebarContent={<AgendaList />}
             sidebarFooter={<AudioPlayer />}
             headerContent={
