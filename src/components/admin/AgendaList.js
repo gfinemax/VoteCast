@@ -570,6 +570,8 @@ export default function AgendaList() {
                         setEditStartPage={setEditStartPage}
                         editElectionMethod={editElectionMethod}
                         setEditElectionMethod={setEditElectionMethod}
+                        editMeetingDate={editMeetingDate}
+                        setEditMeetingDate={setEditMeetingDate}
                         isUploading={isUploading}
                         showAdvanced={showAdvanced}
                         setShowAdvanced={setShowAdvanced}
@@ -750,6 +752,8 @@ function AgendaGroup({
     setEditStartPage,
     editElectionMethod,
     setEditElectionMethod,
+    editMeetingDate,
+    setEditMeetingDate,
     isUploading,
     showAdvanced,
     setShowAdvanced,
