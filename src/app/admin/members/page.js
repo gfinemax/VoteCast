@@ -331,7 +331,9 @@ export default function AdminMembersPage() {
                                     현재 <span className="font-black">[{selectedMeetingName}]</span>
                                     {isHardLocked ? (
                                         <>
-                                            {selectedMeetingFolder?.updated_at ? (
+                                            {selectedMeetingFolder?.meeting_date ? (
+                                                ` ${selectedMeetingFolder.meeting_date.replace(/-/g, '.')} `
+                                            ) : selectedMeetingFolder?.updated_at ? (
                                                 ` ${new Date(selectedMeetingFolder.updated_at).toLocaleDateString('ko-KR', { year: 'numeric', month: 'numeric', day: 'numeric' }).replace(/\s/g, '').replace(/\.$/, '')} `
                                             ) : ''}
                                             종료되었습니다.

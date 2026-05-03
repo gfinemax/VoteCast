@@ -52,6 +52,7 @@ export default function AgendaList() {
     const [editPresentationSource, setEditPresentationSource] = useState("");
     const [editStartPage, setEditStartPage] = useState("");
     const [editElectionMethod, setEditElectionMethod] = useState('auto');
+    const [editMeetingDate, setEditMeetingDate] = useState("");
     const [isUploading, setIsUploading] = useState(false);
     const [showAdvanced, setShowAdvanced] = useState(false);
     const [expandedFolders, setExpandedFolders] = useState({});
@@ -176,6 +177,7 @@ export default function AgendaList() {
         setEditPresentationSource(agenda.presentation_source || "");
         setEditStartPage(agenda.start_page || "");
         setEditElectionMethod(agenda.election_method || 'auto');
+        setEditMeetingDate(agenda.meeting_date || "");
     };
 
     const getDisplayFileName = (url) => {
@@ -239,7 +241,8 @@ export default function AgendaList() {
             title: editTitle,
             presentation_type: editPresentationType,
             presentation_source: editPresentationSource,
-            start_page: parseInt(editStartPage) || null
+            start_page: parseInt(editStartPage) || null,
+            meeting_date: editMeetingDate || null
         };
 
         if (currentAgenda?.type === 'election') {
@@ -808,6 +811,16 @@ function AgendaGroup({
                                     value={editTitle}
                                     onChange={(e) => setEditTitle(e.target.value)}
                                     autoFocus
+                                />
+                            </div>
+
+                            <div className="mb-2">
+                                <label className="block text-[10px] font-bold text-slate-500 mb-1">총회 개최일</label>
+                                <input
+                                    type="date"
+                                    className="w-full rounded border border-slate-300 bg-white p-1.5 text-sm font-medium text-slate-900 outline-none focus:border-blue-500"
+                                    value={editMeetingDate}
+                                    onChange={(e) => setEditMeetingDate(e.target.value)}
                                 />
                             </div>
 
