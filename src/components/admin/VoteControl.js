@@ -265,8 +265,8 @@ export default function VoteControl() {
                 quorumTarget={quorumTarget}
             />
 
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-stretch mb-4">
-                <div className="lg:col-span-4 flex flex-col items-stretch">
+            <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-stretch mb-4">
+                <div className="md:col-span-4 flex flex-col items-stretch">
                     <AttendanceSummaryPanel
                         isConfirmed={isConfirmed}
                         quorumTarget={quorumTarget}
@@ -289,7 +289,7 @@ export default function VoteControl() {
                     />
                 </div>
 
-                <div className="lg:col-span-8 flex flex-col items-stretch">
+                <div className="md:col-span-8 flex flex-col items-stretch">
                     <VoteInputSection
                         isConfirmed={isConfirmed}
                         hasSplitVoteColumns={hasSplitVoteColumns}
@@ -325,8 +325,8 @@ export default function VoteControl() {
                 </div>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-stretch">
-                <div className="lg:col-span-4 flex flex-col gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-stretch">
+                <div className="md:col-span-4 flex flex-col gap-4">
                     <DeclarationEditor
                         isEditing={isEditingDeclaration}
                         isConfirmed={isConfirmed}
@@ -337,7 +337,7 @@ export default function VoteControl() {
                         onFinishEdit={handleFinishDeclarationEdit}
                     />
                 </div>
-                <div className="lg:col-span-8 flex flex-col gap-4">
+                <div className="md:col-span-8 flex flex-col gap-4">
                     <FinalConfirmationPanel
                         isConfirmed={isConfirmed}
                         isReadyToConfirm={isReadyToConfirm}

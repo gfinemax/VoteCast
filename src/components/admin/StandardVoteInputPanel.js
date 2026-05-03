@@ -64,7 +64,7 @@ export default function StandardVoteInputPanel({
             </div>
 
             <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm relative overflow-hidden">
-                <div className="mb-3 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between border-b border-slate-100 pb-3">
+                <div className="mb-3 flex flex-col gap-4 md:flex-row md:items-center md:justify-between border-b border-slate-100 pb-3">
                     <div className="flex flex-col">
                         <div className="text-lg font-black text-slate-800">투표 결과 직접 입력</div>
                         {isQuorumLocked && (
