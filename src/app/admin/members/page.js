@@ -329,7 +329,14 @@ export default function AdminMembersPage() {
                                 } />
                                 <span>
                                     현재 <span className="font-black">[{selectedMeetingName}]</span>
-                                    {isHardLocked ? '이(가) 종료되었습니다.' : 
+                                    {isHardLocked ? (
+                                        <>
+                                            {selectedMeetingFolder?.updated_at ? (
+                                                ` ${new Date(selectedMeetingFolder.updated_at).toLocaleDateString('ko-KR', { year: 'numeric', month: 'numeric', day: 'numeric' }).replace(/\s/g, '').replace(/\.$/, '')} `
+                                            ) : ''}
+                                            종료되었습니다.
+                                        </>
+                                    ) : 
                                      isRosterConfirmed ? '의 명부가 확정되었습니다.' : 
                                      '의 명부를 편집 중입니다.'}
                                 </span>
