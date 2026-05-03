@@ -1,60 +1,61 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import { Document, Page, pdfjs } from 'react-pdf';
+import 'react-pdf/dist/Page/AnnotationLayer.css';
+import 'react-pdf/dist/Page/TextLayer.css';
 
-const VIEWER_SWITCH_DEBOUNCE_MS = 180;
-
-const buildPdfViewerUrl = (url, pageNumber) => {
-    const source = String(url || '').trim();
-    if (!source) return '';
-
-    const [baseWithoutHash] = source.split('#');
-    const targetPage = Math.max(1, parseInt(pageNumber, 10) || 1);
-
-    return `${baseWithoutHash}#page=${targetPage}&toolbar=0&navpanes=0&scrollbar=0&view=Fit`;
-};
-
-const PDFViewerFrame = ({ viewerUrl }) => {
-    const [isLoaded, setIsLoaded] = useState(false);
-
-    return (
-        <>
-            {!isLoaded && (
-                <div className="absolute inset-0 z-10 flex items-center justify-center bg-white/85 text-sm font-semibold text-slate-400 transition-opacity">
-                    PDF 불러오는 중...
-                </div>
-            )}
-            <iframe
-                src={viewerUrl}
-                title="PDF Viewer"
-                scrolling="no"
-                onLoad={() => setIsLoaded(true)}
-                className={`h-full w-full border-0 transition-opacity duration-200 ${isLoaded ? 'opacity-100' : 'opacity-0'}`}
-            />
-        </>
-    );
-};
+// Worker 설정 (CDN 사용)
+pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.js`;
 
 export default function PDFViewer({ url, pageNumber, className }) {
-    const viewerUrl = useMemo(() => buildPdfViewerUrl(url, pageNumber), [pageNumber, url]);
-    const [stableViewerUrl, setStableViewerUrl] = useState(viewerUrl);
+    const [containerWidth, setContainerWidth] = useState(null);
+    const [containerHeight, setContainerHeight] = useState(null);
+    const containerRef = useRef(null);
 
     useEffect(() => {
-        if (viewerUrl === stableViewerUrl) return undefined;
-
-        const timeoutId = window.setTimeout(() => {
-            setStableViewerUrl(viewerUrl);
-        }, VIEWER_SWITCH_DEBOUNCE_MS);
-
-        return () => {
-            window.clearTimeout(timeoutId);
+        const updateSize = () => {
+            if (containerRef.current) {
+                setContainerWidth(containerRef.current.clientWidth);
+                setContainerHeight(containerRef.current.clientHeight);
+            }
         };
-    }, [stableViewerUrl, viewerUrl]);
+
+        updateSize();
+        window.addEventListener('resize', updateSize);
+        return () => window.removeEventListener('resize', updateSize);
+    }, []);
+
+    const targetPage = Math.max(1, parseInt(pageNumber, 10) || 1);
 
     return (
-        <div className={`relative w-full h-full overflow-hidden bg-white ${className || ''}`}>
-            {stableViewerUrl ? (
-                <PDFViewerFrame key={stableViewerUrl} viewerUrl={stableViewerUrl} />
+        <div 
+            ref={containerRef}
+            className={`relative w-full h-full overflow-hidden bg-white flex items-center justify-center ${className || ''}`}
+        >
+            {url ? (
+                <Document
+                    file={url}
+                    loading={
+                        <div className="text-sm font-semibold text-slate-400">
+                            PDF 불러오는 중...
+                        </div>
+                    }
+                    error={
+                        <div className="text-sm font-semibold text-rose-400">
+                            PDF를 불러올 수 없습니다.
+                        </div>
+                    }
+                >
+                    <Page
+                        pageNumber={targetPage}
+                        width={containerWidth}
+                        height={containerHeight}
+                        renderAnnotationLayer={false}
+                        renderTextLayer={false}
+                        className="shadow-2xl"
+                    />
+                </Document>
             ) : (
                 <div className="flex h-full w-full items-center justify-center text-slate-400">
                     No PDF
