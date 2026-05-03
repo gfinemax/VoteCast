@@ -2,7 +2,7 @@
 
 import React, { useMemo, useState } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, Edit2, FolderOpen, Plus, Save, UserPlus, Users, X } from 'lucide-react';
+import { ArrowLeft, Edit2, FolderOpen, Plus, Save, UserPlus, Users, X, Lock } from 'lucide-react';
 import { useStore, getInactiveMemberIds } from '@/lib/store';
 import { getMemberJoinedMeetingId } from '@/lib/storeHelpers';
 import DashboardLayout from '@/components/admin/DashboardLayout';
@@ -191,7 +191,27 @@ export default function AdminMembersPage() {
         }
     };
 
-    const selectedMeetingName = meetingFolders.find((f) => f.id === selectedMeetingId)?.title || '-';
+    const selectedMeetingFolder = useMemo(() => meetingFolders.find((f) => f.id === selectedMeetingId), [meetingFolders, selectedMeetingId]);
+    const selectedMeetingName = selectedMeetingFolder?.title || '-';
+
+    // Roster lock logic
+    const admissionStatus = voteData?.meetingAdmissionStatus?.[selectedMeetingId] || 'idle';
+    const isHardLocked = admissionStatus === 'closed';
+    const isRosterConfirmed = voteData?.rosterConfirmedStatus?.[selectedMeetingId] || false;
+    const isLocked = isHardLocked || isRosterConfirmed;
+
+    const handleToggleRosterLock = async () => {
+        if (isHardLocked) {
+            alert('입장이 마감된 총회는 명부를 수정할 수 없습니다. 대시보드에서 입장 마감을 해제해야 합니다.');
+            return;
+        }
+        try {
+            await actions.setRosterConfirmedStatus(selectedMeetingId, !isRosterConfirmed);
+        } catch (error) {
+            console.error('Failed to update roster lock status:', error);
+            alert('명부 확정 상태 업데이트에 실패했습니다.');
+        }
+    };
 
     const sidebarContent = (
         <div className="p-4 space-y-4">
@@ -211,21 +231,34 @@ export default function AdminMembersPage() {
             <Card className="p-4 space-y-3">
                 <div className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">총회 선택</div>
                 <div className="space-y-1">
-                    {meetingFolders.map((folder) => (
-                        <button
-                            key={folder.id}
-                            type="button"
-                            onClick={() => setSelectedMeetingId(folder.id)}
-                            className={`w-full flex items-center gap-2 rounded-xl px-3 py-2.5 text-left text-sm font-semibold transition-all ${
-                                selectedMeetingId === folder.id
-                                    ? 'bg-blue-600 text-white shadow-sm'
-                                    : 'bg-slate-50 text-slate-700 hover:bg-slate-100'
-                            }`}
-                        >
-                            <FolderOpen size={14} />
-                            <span className="truncate">{folder.title}</span>
-                        </button>
-                    ))}
+                    {meetingFolders.map((folder) => {
+                        const fAdmissionStatus = voteData?.meetingAdmissionStatus?.[folder.id] || 'idle';
+                        const fIsHardLocked = fAdmissionStatus === 'closed';
+                        const fIsRosterConfirmed = voteData?.rosterConfirmedStatus?.[folder.id] || false;
+                        
+                        return (
+                            <button
+                                key={folder.id}
+                                type="button"
+                                onClick={() => setSelectedMeetingId(folder.id)}
+                                className={`group flex w-full items-center justify-between gap-2 rounded-xl px-3 py-2.5 text-left text-sm font-semibold transition-all ${
+                                    selectedMeetingId === folder.id
+                                        ? 'bg-blue-600 text-white shadow-sm'
+                                        : 'bg-slate-50 text-slate-700 hover:bg-slate-100'
+                                }`}
+                            >
+                                <div className="flex items-center gap-2 overflow-hidden">
+                                    <FolderOpen size={14} className="shrink-0" />
+                                    <span className="truncate">{folder.title}</span>
+                                </div>
+                                {fIsHardLocked ? (
+                                    <X size={14} className={`shrink-0 ${selectedMeetingId === folder.id ? 'text-white/80' : 'text-rose-500'}`} title="입장 및 명부 마감" />
+                                ) : fIsRosterConfirmed ? (
+                                    <Lock size={14} className={`shrink-0 ${selectedMeetingId === folder.id ? 'text-white/80' : 'text-slate-400'}`} title="명부 확정됨" />
+                                ) : null}
+                            </button>
+                        );
+                    })}
                     {meetingFolders.length === 0 && (
                         <div className="text-xs text-slate-400 py-2">등록된 총회가 없습니다.</div>
                     )}
@@ -282,11 +315,63 @@ export default function AdminMembersPage() {
         >
             <div className="space-y-6">
                 {/* Current meeting context banner */}
-                {selectedMeetingId && (
-                    <div className="flex items-center gap-2 rounded-2xl border border-blue-200 bg-blue-50 px-5 py-3 text-sm font-semibold text-blue-800">
-                        <FolderOpen size={16} className="text-blue-500" />
-                        현재 <span className="font-black">[{selectedMeetingName}]</span>의 명부를 편집 중입니다.
-                        <span className="text-xs font-normal text-blue-600">여기서 제외/복원 처리를 하더라도 다른 총회의 명부에는 영향을 주지 않습니다.</span>
+                {selectedMeetingId && selectedMeetingFolder && (
+                    <div className={`flex flex-col items-start gap-1 rounded-2xl border px-5 py-3 text-sm font-semibold transition-colors ${
+                        isHardLocked ? 'border-rose-200 bg-rose-50 text-rose-800' :
+                        isRosterConfirmed ? 'border-slate-300 bg-slate-50 text-slate-800' :
+                        'border-blue-200 bg-blue-50 text-blue-800'
+                    }`}>
+                        <div className="flex w-full items-center justify-between">
+                            <div className="flex items-center gap-2">
+                                <FolderOpen size={16} className={
+                                    isHardLocked ? 'text-rose-500' :
+                                    isRosterConfirmed ? 'text-slate-500' : 'text-blue-500'
+                                } />
+                                <span>
+                                    현재 <span className="font-black">[{selectedMeetingName}]</span>
+                                    {isHardLocked ? '이(가) 종료되었습니다.' : 
+                                     isRosterConfirmed ? '의 명부가 확정되었습니다.' : 
+                                     '의 명부를 편집 중입니다.'}
+                                </span>
+                                
+                                {isHardLocked && (
+                                    <span className="ml-2 flex items-center gap-1 rounded-full bg-rose-600 px-2.5 py-0.5 text-xs font-bold text-white shadow-sm" title="입장이 마감된 총회는 명부를 수정할 수 없습니다. 대시보드에서 입장 마감을 해제해야 합니다.">
+                                        <X size={12} />
+                                        입장 및 명부 마감
+                                    </span>
+                                )}
+                                {!isHardLocked && isRosterConfirmed && (
+                                    <span className="ml-2 flex items-center gap-1 rounded-full bg-slate-800 px-2.5 py-0.5 text-xs font-bold text-white shadow-sm">
+                                        <Lock size={12} />
+                                        명부 확정됨
+                                    </span>
+                                )}
+                            </div>
+                            
+                            <button 
+                                className={`text-xs font-bold underline underline-offset-2 transition-colors ${
+                                    isHardLocked ? 'text-rose-400 cursor-not-allowed opacity-50' : 
+                                    isRosterConfirmed ? 'text-slate-500 hover:text-slate-800' : 
+                                    'text-blue-600 hover:text-blue-800'
+                                }`}
+                                onClick={handleToggleRosterLock}
+                                title={isHardLocked ? "입장 마감 상태에서는 확정을 해제할 수 없습니다." : ""}
+                                disabled={isHardLocked}
+                            >
+                                {isRosterConfirmed ? '확정 해제하기' : '명부 확정하기'}
+                            </button>
+                        </div>
+                        
+                        <span className={`ml-6 text-xs font-normal ${
+                            isHardLocked ? 'text-rose-600' :
+                            isRosterConfirmed ? 'text-slate-500' : 'text-blue-600'
+                        }`}>
+                            {isHardLocked 
+                                ? '입장이 마감된 총회는 명부를 수정할 수 없습니다. 대시보드에서 입장 마감을 해제해야 합니다.'
+                                : isRosterConfirmed 
+                                    ? '이 총회의 명부가 최종 확정되어 조합원 추가/제외/수정 작업이 잠금 처리되었습니다.' 
+                                    : '여기서 제외/복원 처리를 하더라도 다른 총회의 명부에는 영향을 주지 않습니다.'}
+                        </span>
                     </div>
                 )}
 
@@ -298,7 +383,8 @@ export default function AdminMembersPage() {
                                 value={newMember.unit}
                                 onChange={(e) => setNewMember((prev) => ({ ...prev, unit: e.target.value }))}
                                 placeholder="예: 116"
-                                className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition-colors focus:border-blue-500"
+                                className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition-colors focus:border-blue-500 disabled:bg-slate-50 disabled:text-slate-400"
+                                disabled={isLocked}
                             />
                         </div>
                         <div className="min-w-[160px] flex-1">
@@ -307,7 +393,8 @@ export default function AdminMembersPage() {
                                 value={newMember.name}
                                 onChange={(e) => setNewMember((prev) => ({ ...prev, name: e.target.value }))}
                                 placeholder="홍길동"
-                                className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition-colors focus:border-blue-500"
+                                className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition-colors focus:border-blue-500 disabled:bg-slate-50 disabled:text-slate-400"
+                                disabled={isLocked}
                             />
                         </div>
                         <div className="min-w-[160px] flex-1">
@@ -316,14 +403,16 @@ export default function AdminMembersPage() {
                                 value={newMember.proxy}
                                 onChange={(e) => setNewMember((prev) => ({ ...prev, proxy: e.target.value }))}
                                 placeholder="없으면 비워두기"
-                                className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition-colors focus:border-blue-500"
+                                className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition-colors focus:border-blue-500 disabled:bg-slate-50 disabled:text-slate-400"
+                                disabled={isLocked}
                             />
                         </div>
                         <Button
                             variant="primary"
-                            className="h-[46px] min-w-[140px] bg-blue-600 hover:bg-blue-700"
+                            className="h-[46px] min-w-[140px] bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 disabled:text-slate-500"
                             onClick={handleCreateMember}
-                            disabled={isCreating}
+                            disabled={isCreating || isLocked}
+                            title={isLocked ? "명부가 확정되어 조합원을 추가할 수 없습니다." : ""}
                         >
                             <UserPlus size={16} />
                             {isCreating ? '추가 중...' : '조합원 추가'}
@@ -442,17 +531,20 @@ export default function AdminMembersPage() {
                                                         <>
                                                             <Button
                                                                 variant="secondary"
-                                                                className="h-9 px-3 text-xs"
+                                                                className="h-9 px-3 text-xs disabled:opacity-50"
                                                                 onClick={() => startEdit(member)}
+                                                                disabled={isLocked}
+                                                                title={isLocked ? "명부 확정 상태에서는 수정할 수 없습니다." : ""}
                                                             >
                                                                 <Edit2 size={14} />
                                                                 수정
                                                             </Button>
                                                             <Button
                                                                 variant={isExcluded ? 'secondary' : 'danger'}
-                                                                className="h-9 px-3 text-xs"
+                                                                className="h-9 px-3 text-xs disabled:opacity-50"
                                                                 onClick={() => handleToggleMemberActive(member)}
-                                                                disabled={isPending}
+                                                                disabled={isPending || isLocked}
+                                                                title={isLocked ? "명부 확정 상태에서는 제외/복원할 수 없습니다." : ""}
                                                             >
                                                                 {isExcluded ? '복원' : '제외'}
                                                             </Button>

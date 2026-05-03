@@ -1855,6 +1855,27 @@ export function StoreProvider({ children }) {
             }
         },
 
+        setRosterConfirmedStatus: async (meetingId, isConfirmed) => {
+            if (!meetingId) return;
+
+            const currentVoteData = stateRef.current.voteData || {};
+            const rosterConfirmedStatus = currentVoteData.rosterConfirmedStatus || {};
+            const newVoteData = createStampedVoteData({
+                ...currentVoteData,
+                rosterConfirmedStatus: {
+                    ...rosterConfirmedStatus,
+                    [meetingId]: isConfirmed
+                }
+            });
+
+            setState(prev => ({ ...prev, voteData: newVoteData }));
+            const { error } = await supabase.from('system_settings')
+                .update({ vote_data: newVoteData })
+                .eq('id', 1);
+            if (error) console.error('Failed to set roster confirmed status:', error);
+            else broadcastSystemSettingsSync({ vote_data: newVoteData });
+        },
+
         checkInMember: async (memberId, typeOrPayload = 'direct', proxyName = null, votes = null) => {
             // USE ACTIVE MEETING ID (Global)
             const meetingId = stateRef.current.activeMeetingId;
