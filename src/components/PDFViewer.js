@@ -11,7 +11,7 @@ const buildPdfViewerUrl = (url, pageNumber) => {
     const [baseWithoutHash] = source.split('#');
     const targetPage = Math.max(1, parseInt(pageNumber, 10) || 1);
 
-    return `${baseWithoutHash}#page=${targetPage}&toolbar=0&navpanes=0&scrollbar=0&view=FitH`;
+    return `${baseWithoutHash}#page=${targetPage}&toolbar=0&navpanes=0&scrollbar=0&view=Fit`;
 };
 
 const PDFViewerFrame = ({ viewerUrl }) => {
@@ -27,6 +27,7 @@ const PDFViewerFrame = ({ viewerUrl }) => {
             <iframe
                 src={viewerUrl}
                 title="PDF Viewer"
+                scrolling="no"
                 onLoad={() => setIsLoaded(true)}
                 className={`h-full w-full border-0 transition-opacity duration-200 ${isLoaded ? 'opacity-100' : 'opacity-0'}`}
             />
