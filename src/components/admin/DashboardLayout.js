@@ -109,8 +109,8 @@ export default function DashboardLayout({ title, subtitle, titleBadge, sidebarCo
             {/* Main Content */}
             <main className="flex-1 flex flex-col h-full overflow-hidden relative">
                 {/* Header */}
-                <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-4 shadow-sm shrink-0 z-20">
-                    <div className="flex items-center gap-4 w-full">
+                <header className="h-16 bg-white border-b border-slate-200 shrink-0 z-20 px-4">
+                    <div className="flex items-center gap-4 w-full h-full max-w-[1280px] mx-auto">
                         {headerContent}
                     </div>
                 </header>
@@ -120,16 +120,18 @@ export default function DashboardLayout({ title, subtitle, titleBadge, sidebarCo
                     {/* Fixed Top Content as Sticky (Matches scroll context width) */}
                     {fixedTopContent && (
                         <div className="sticky top-0 z-20 px-4 pt-4 pb-0 w-full relative pointer-events-none">
-                            {/* Seamless masking to hide scrolling text ONLY in the top 16px gap */}
-                            <div className="absolute top-0 left-0 right-0 h-4 bg-slate-50"></div>
-                            <div className="w-full relative pointer-events-auto drop-shadow-xl rounded-xl">
-                                {fixedTopContent}
+                            <div className="max-w-[1280px] mx-auto relative">
+                                {/* Seamless masking to hide scrolling text ONLY in the top 16px gap */}
+                                <div className="absolute top-0 left-0 right-0 h-4 bg-slate-50"></div>
+                                <div className="w-full relative pointer-events-auto drop-shadow-xl rounded-xl">
+                                    {fixedTopContent}
+                                </div>
                             </div>
                         </div>
                     )}
 
                     <div className="px-4 pt-2 pb-2">
-                        <div className="w-full pb-4">
+                        <div className="max-w-[1280px] mx-auto w-full pb-4">
                             {children}
                         </div>
                     </div>
