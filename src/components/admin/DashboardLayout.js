@@ -75,7 +75,7 @@ export default function DashboardLayout({ title, subtitle, titleBadge, sidebarCo
 
                     {/* Sticky Sidebar Footer */}
                     {sidebarFooter && (
-                        <div className="shrink-0 z-20">
+                        <div className="shrink-0 z-20 relative">
                             {sidebarFooter}
                         </div>
                     )}
