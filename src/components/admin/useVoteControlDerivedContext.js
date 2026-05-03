@@ -14,6 +14,73 @@ import {
 import { buildSplitVoteDisplayCards, getVoteCountSummary } from '@/components/admin/voteControlDerivedData';
 
 const EMPTY_INACTIVE_MEMBER_IDS = [];
+const OFFICIAL_AGENDA_TITLE_PATTERN = /^제\s*\d+\s*호\s*안건/;
+
+const isOfficialAgenda = (agenda = {}) => (
+    OFFICIAL_AGENDA_TITLE_PATTERN.test(String(agenda.title || '').trim())
+);
+
+const getMeetingAgendaItems = (agendas = [], meetingId = null) => {
+    if (!meetingId) return agendas.filter(agenda => agenda.type !== 'folder');
+
+    const meetingIndex = agendas.findIndex(agenda => agenda.id === meetingId);
+    if (meetingIndex === -1) return agendas.filter(agenda => agenda.type !== 'folder');
+
+    const items = [];
+    for (let index = meetingIndex + 1; index < agendas.length; index += 1) {
+        const agenda = agendas[index];
+        if (agenda?.type === 'folder') break;
+        items.push(agenda);
+    }
+    return items;
+};
+
+const buildAgendaProgressSummary = ({ meetingAgendas = [], currentAgendaId = null }) => {
+    const currentIndex = meetingAgendas.findIndex(agenda => agenda.id === currentAgendaId);
+    const officialAgendaEntries = meetingAgendas
+        .map((agenda, index) => ({ agenda, index }))
+        .filter(({ agenda }) => isOfficialAgenda(agenda));
+    const totalOfficialAgendas = officialAgendaEntries.length || meetingAgendas.length;
+
+    if (totalOfficialAgendas === 0) {
+        return {
+            currentOfficialIndex: 0,
+            totalOfficialAgendas: 0,
+            progressPercent: 0,
+            electionVoteProgress: null
+        };
+    }
+
+    const currentOfficialEntry = officialAgendaEntries
+        .filter(({ index }) => index <= currentIndex)
+        .at(-1) || officialAgendaEntries[0] || null;
+    const currentOfficialIndex = currentOfficialEntry
+        ? officialAgendaEntries.findIndex(({ agenda }) => agenda.id === currentOfficialEntry.agenda.id)
+        : Math.max(0, currentIndex);
+
+    const nextOfficialEntry = officialAgendaEntries.find(({ index }) => (
+        currentOfficialEntry && index > currentOfficialEntry.index
+    )) || null;
+    const groupStartIndex = currentOfficialEntry ? currentOfficialEntry.index + 1 : 0;
+    const groupEndIndex = nextOfficialEntry ? nextOfficialEntry.index : meetingAgendas.length;
+    const electionVoteAgendas = meetingAgendas
+        .slice(groupStartIndex, groupEndIndex)
+        .filter(agenda => normalizeAgendaType(agenda?.type) === 'election' && !isOfficialAgenda(agenda));
+    const electionVoteIndex = electionVoteAgendas.findIndex(agenda => agenda.id === currentAgendaId);
+    const electionVoteProgress = electionVoteIndex >= 0
+        ? {
+            current: electionVoteIndex + 1,
+            total: electionVoteAgendas.length
+        }
+        : null;
+
+    return {
+        currentOfficialIndex,
+        totalOfficialAgendas,
+        progressPercent: Math.round(((currentOfficialIndex + 1) / totalOfficialAgendas) * 100),
+        electionVoteProgress
+    };
+};
 
 export default function useVoteControlDerivedContext({
     members,
@@ -112,9 +179,12 @@ export default function useVoteControlDerivedContext({
         : (isElection ? electionValidation.onsiteEligibleCount : (displayStats.direct + displayStats.proxy));
     const navigableAgendas = useMemo(() => agendas.filter(agenda => agenda.type !== 'folder'), [agendas]);
     const currentNavIndex = navigableAgendas.findIndex(agenda => agenda.id === currentAgendaId);
-    const progressPercent = navigableAgendas.length > 0
-        ? Math.round(((currentNavIndex + 1) / navigableAgendas.length) * 100)
-        : 0;
+    const meetingAgendas = useMemo(() => getMeetingAgendaItems(agendas, meetingId), [agendas, meetingId]);
+    const agendaProgressSummary = useMemo(
+        () => buildAgendaProgressSummary({ meetingAgendas, currentAgendaId }),
+        [currentAgendaId, meetingAgendas]
+    );
+    const progressPercent = agendaProgressSummary.progressPercent;
     const totalMembers = activeMembers.length;
     const quorumTarget = getAttendanceQuorumTarget(currentAgendaType, totalMembers);
     const directTarget = Math.ceil(totalMembers * 0.2);
@@ -164,6 +234,7 @@ export default function useVoteControlDerivedContext({
         effectiveOnsiteEligibleCount,
         navigableAgendas,
         currentNavIndex,
+        agendaProgressSummary,
         progressPercent,
         totalMembers,
         quorumTarget,

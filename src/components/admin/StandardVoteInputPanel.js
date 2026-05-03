@@ -90,7 +90,7 @@ export default function StandardVoteInputPanel({
                     )}
                 </div>
 
-                <div className={`grid grid-cols-1 md:grid-cols-3 gap-4 transition-opacity ${isQuorumLocked ? 'opacity-40 select-none' : ''}`}>
+                <div className={`grid grid-cols-1 md:grid-cols-3 gap-4 transition-opacity ${isQuorumLocked ? 'opacity-40 select-none' : ''}`} data-vote-input-scope="standard-vote">
                     <div className="flex flex-col gap-2 relative bg-emerald-50/50 p-4 border border-emerald-100 rounded-2xl transition-colors hover:bg-emerald-50">
                         <label className="text-base font-bold text-emerald-800 flex justify-between items-center w-full">
                             <span>찬성</span>

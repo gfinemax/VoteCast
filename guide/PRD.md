@@ -110,6 +110,8 @@
 - **Icons:** Lucide-react
 - **Platform:** Web-based application (Responsive, optimize for Desktop Admin & Large Screen Display)
 - **Special Feature:** Persistent Layered Rendering (for zero-latency transitions) **[NEW]**
+- **PDF Rendering:** Use `react-pdf` for single-page presentation view to ensure optimal layout and remove scrollbars in projector mode. **[UPDATED]**
+
 
 ## 4. 사용자 플로우 (User Flow)
 1.  **입장 시작:** 입구 안내 요원이 태블릿/PC로 조합원 입장을 처리합니다. (실시간 카운트 증가)
@@ -123,5 +125,6 @@
 - 다중 클라이언트 연동 (관리자 화면과 송출 화면을 별도 기기에서 제어하도록 WebSocket 도입)
 - [완료] 안건 동적 추가/수정/삭제 기능
 - [완료] 검산 및 결과 리포트 대시보드 (Tally Audit)
+- [완료] 송출 화면(Projector) PDF 렌더링 최적화 (react-pdf 도입)
 - 다중 클라이언트 연동 심화 (권한 분리 등)
 - 공식 확인서 PDF 출력 기능 고도화

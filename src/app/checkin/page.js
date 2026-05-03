@@ -23,6 +23,8 @@ import { Search, UserCheck, AlertCircle, Clock, Check, RotateCcw, ChevronDown, C
 import FlipNumber from '@/components/ui/FlipNumber';
 import FullscreenToggle from '@/components/ui/FullscreenToggle';
 import AuthStatus from '@/components/ui/AuthStatus';
+import { getMeetingIdForAgenda } from '@/lib/storeAgendaUtils';
+import { isAbortError } from '@/lib/storeSupabase';
 
 const EMPTY_INACTIVE_MEMBER_IDS = [];
 const MEETING_TYPE_LABELS = {
@@ -190,22 +192,7 @@ const getAttendanceBadges = (record, options = {}) => {
 
 export default function CheckInPage() {
     const { state, actions } = useStore();
-    const { members, attendance, activeMeetingId, agendas, voteData, mailElectionVotes } = state; // activeMeetingId is Global
-    const inactiveMemberIds = useMemo(
-        () => getInactiveMemberIds(voteData, activeMeetingId),
-        [voteData, activeMeetingId]
-    );
-    const activeMemberIdSet = useMemo(() => {
-        const inactiveMemberIdSet = new Set(inactiveMemberIds);
-        return new Set(
-            members
-                .filter(member => member.is_active !== false && !inactiveMemberIdSet.has(member.id))
-                .map(member => member.id)
-        );
-    }, [inactiveMemberIds, members]);
-    const activeMembers = useMemo(() => {
-        return members.filter(member => activeMemberIdSet.has(member.id));
-    }, [activeMemberIdSet, members]);
+    const { members, attendance, activeMeetingId, agendas, voteData, mailElectionVotes, currentAgendaId, dataConnectionError, lastDataSyncAt } = state; // activeMeetingId is Global
 
     const [searchTerm, setSearchTerm] = useState("");
     const [counterMode, setCounterMode] = useState("general"); // 'general' | 'election'
@@ -239,14 +226,50 @@ export default function CheckInPage() {
     // Identify Folders (General Meetings)
     const folders = useMemo(() => agendas.filter(a => a.type === 'folder'), [agendas]);
 
-    // Use Global Active Meeting
+    const displayMeetingId = useMemo(() => {
+        if (activeMeetingId) return activeMeetingId;
+
+        const currentAgendaMeetingId = getMeetingIdForAgenda(agendas, currentAgendaId);
+        if (currentAgendaMeetingId) return currentAgendaMeetingId;
+
+        return folders[0]?.id || null;
+    }, [activeMeetingId, agendas, currentAgendaId, folders]);
+
+    const displayAdmissionStatus = displayMeetingId
+        ? voteData?.meetingAdmissionStatus?.[displayMeetingId] || 'idle'
+        : 'idle';
+    const isDisplayedMeetingOpen = activeMeetingId === displayMeetingId;
+    const displayMeetingStatusLabel = isDisplayedMeetingOpen
+        ? '진행 중'
+        : displayAdmissionStatus === 'closed'
+            ? '총회 종료'
+            : '총회 시작 전';
+    const canRegisterForDisplayedMeeting = !!displayMeetingId && displayAdmissionStatus !== 'closed';
+
+    const inactiveMemberIds = useMemo(
+        () => getInactiveMemberIds(voteData, displayMeetingId),
+        [voteData, displayMeetingId]
+    );
+    const activeMemberIdSet = useMemo(() => {
+        const inactiveMemberIdSet = new Set(inactiveMemberIds);
+        return new Set(
+            members
+                .filter(member => member.is_active !== false && !inactiveMemberIdSet.has(member.id))
+                .map(member => member.id)
+        );
+    }, [inactiveMemberIds, members]);
+    const activeMembers = useMemo(() => {
+        return members.filter(member => activeMemberIdSet.has(member.id));
+    }, [activeMemberIdSet, members]);
+
+    // Use the active meeting for edits, or a display meeting for read-only summary.
     const currentMeeting = useMemo(() => {
-        return folders.find(f => f.id === activeMeetingId);
-    }, [folders, activeMeetingId]);
+        return folders.find(f => f.id === displayMeetingId);
+    }, [folders, displayMeetingId]);
 
     const meetingAttendanceRecords = useMemo(
-        () => getUniqueAttendanceRecords(attendance, activeMeetingId, activeMemberIdSet),
-        [activeMeetingId, activeMemberIdSet, attendance]
+        () => getUniqueAttendanceRecords(attendance, displayMeetingId, activeMemberIdSet),
+        [displayMeetingId, activeMemberIdSet, attendance]
     );
     const attendanceRecordByMemberId = useMemo(
         () => new Map(meetingAttendanceRecords.map((record) => [record.member_id, record])),
@@ -256,9 +279,9 @@ export default function CheckInPage() {
     // Derive Active Agendas (Items inside the current Active Meeting Folder)
     // Assumption: Agendas are ordered. Meeting is a folder. Items follow it until next folder.
     const activeAgendas = useMemo(() => {
-        if (!activeMeetingId || agendas.length === 0) return [];
+        if (!displayMeetingId || agendas.length === 0) return [];
 
-        const folderIndex = agendas.findIndex(a => a.id === activeMeetingId);
+        const folderIndex = agendas.findIndex(a => a.id === displayMeetingId);
         if (folderIndex === -1) return [];
 
         const items = [];
@@ -267,7 +290,7 @@ export default function CheckInPage() {
             items.push(agendas[i]);
         }
         return items;
-    }, [activeMeetingId, agendas]);
+    }, [displayMeetingId, agendas]);
     const writtenAgendas = useMemo(
         () => activeAgendas.filter((agenda) => normalizeAgendaType(agenda?.type) !== 'election'),
         [activeAgendas]
@@ -280,8 +303,8 @@ export default function CheckInPage() {
 
     // Filter Stats by Active Meeting
     const stats = useMemo(() => {
-        // If no active meeting, stats are 0
-        if (!activeMeetingId) return {
+        // If no display meeting, stats are 0
+        if (!displayMeetingId) return {
             total: activeMembers.length, // Show total anyway
             checkedIn: 0,
             participantCount: 0,
@@ -300,14 +323,14 @@ export default function CheckInPage() {
             isTwoThirdsMet: false
         };
 
-        const meetingStats = getMeetingAttendanceStats(attendance, activeMeetingId, activeMemberIdSet);
+        const meetingStats = getMeetingAttendanceStats(attendance, displayMeetingId, activeMemberIdSet);
         const directCount = meetingStats.direct;
         const proxyCount = meetingStats.proxy;
         const writtenCount = meetingStats.written;
         const electionValidation = hasElectionAgenda
             ? getElectionAgendaValidationStats({
                 agenda: electionAgendas[0],
-                meetingId: activeMeetingId,
+                meetingId: displayMeetingId,
                 attendance,
                 mailElectionVotes,
                 activeMemberIdSet
@@ -350,7 +373,7 @@ export default function CheckInPage() {
             isMajorityMet: checkedInCount >= majorityTarget,
             isTwoThirdsMet: checkedInCount >= twoThirdsTarget
         };
-    }, [activeMeetingId, activeMemberIdSet, activeMembers.length, attendance, electionAgendas, hasElectionAgenda, mailElectionVotes]);
+    }, [displayMeetingId, activeMemberIdSet, activeMembers.length, attendance, electionAgendas, hasElectionAgenda, mailElectionVotes]);
 
     const filteredMembers = useMemo(() => {
         if (!searchTerm) return activeMembers;
@@ -388,8 +411,12 @@ export default function CheckInPage() {
     };
 
     const handleOpenCheckInModal = (member) => {
-        if (!activeMeetingId) {
-            alert("⚠️ 현재 입장 접수 중인 총회가 없습니다.\n관리자에게 문의하세요.");
+        if (!displayMeetingId) {
+            alert("⚠️ 등록할 총회가 없습니다.\n관리자에게 문의하세요.");
+            return;
+        }
+        if (!canRegisterForDisplayedMeeting) {
+            alert("⚠️ 총회가 종료되어 입장 등록을 할 수 없습니다.");
             return;
         }
         setCheckInModalMode('create');
@@ -408,7 +435,7 @@ export default function CheckInPage() {
     };
 
     const handleOpenEditCheckInModal = async (member, record) => {
-        if (!activeMeetingId || !record) return;
+        if (!canRegisterForDisplayedMeeting || !displayMeetingId || !record) return;
 
         setCheckInModalMode('edit');
         setIsCheckInModalLoading(true);
@@ -425,7 +452,7 @@ export default function CheckInPage() {
         setIsCheckInModalOpen(true);
 
         try {
-            const detail = await actions.getCheckInDetails(member.id);
+            const detail = await actions.getCheckInDetails(member.id, displayMeetingId);
             if (!detail) {
                 throw new Error('기존 접수 정보를 불러오지 못했습니다.');
             }
@@ -441,6 +468,10 @@ export default function CheckInPage() {
                 electionVotes: hasElectionAgenda ? (detail.electionVotes || {}) : {}
             });
         } catch (error) {
+            if (isAbortError(error)) {
+                closeCheckInModal();
+                return;
+            }
             console.error('Failed to load check-in detail:', error);
             alert(error.message || '기존 접수 정보를 불러오지 못했습니다.');
             closeCheckInModal();
@@ -450,7 +481,7 @@ export default function CheckInPage() {
     };
 
     const handleCancelCheckIn = (memberId) => {
-        if (!activeMeetingId) return;
+        if (!canRegisterForDisplayedMeeting) return;
         setCancelMemberId(memberId);
         setIsCancelModalOpen(true);
     };
@@ -557,6 +588,7 @@ export default function CheckInPage() {
 
             closeCheckInModal();
         } catch (error) {
+            if (isAbortError(error)) return;
             console.error('Failed to save check-in:', error);
             alert(error.message || (checkInModalMode === 'edit' ? '접수 수정에 실패했습니다.' : '접수 처리에 실패했습니다.'));
         } finally {
@@ -586,8 +618,12 @@ export default function CheckInPage() {
 
     const handleConfirmCheckIn = async () => {
         if (!checkInForm.memberId) return;
-        if (!activeMeetingId) {
-            alert("⚠️ 현재 입장 접수 중인 총회가 없습니다.\n관리자에게 문의하세요.");
+        if (!displayMeetingId) {
+            alert("⚠️ 등록할 총회가 없습니다.\n관리자에게 문의하세요.");
+            return;
+        }
+        if (!canRegisterForDisplayedMeeting) {
+            alert("⚠️ 총회가 종료되어 입장 등록을 할 수 없습니다.");
             return;
         }
 
@@ -608,6 +644,7 @@ export default function CheckInPage() {
             }));
 
         const payload = {
+            meetingId: displayMeetingId,
             meetingType: checkInForm.meetingType === 'none' ? null : checkInForm.meetingType,
             electionMode: checkInForm.electionMode,
             ballotIssued: checkInForm.ballotIssued,
@@ -639,7 +676,7 @@ export default function CheckInPage() {
 
     const handleConfirmCancelCheckIn = () => {
         if (!cancelMemberId) return;
-        actions.cancelCheckInMember(cancelMemberId);
+        actions.cancelCheckInMember(cancelMemberId, displayMeetingId);
         setIsCancelModalOpen(false);
         setCancelMemberId(null);
     };
@@ -659,10 +696,15 @@ export default function CheckInPage() {
                         {currentMeeting ? (
                             <div className="flex items-center gap-2 min-w-0">
                                 <span className="relative flex h-2.5 w-2.5">
-                                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                                    <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+                                    {isDisplayedMeetingOpen && (
+                                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                                    )}
+                                    <span className={`relative inline-flex rounded-full h-2.5 w-2.5 ${isDisplayedMeetingOpen ? 'bg-emerald-500' : 'bg-slate-400'}`}></span>
                                 </span>
-                                <span className="text-lg font-bold text-emerald-700 truncate max-w-[200px] md:max-w-[320px]">{currentMeeting.title}</span>
+                                <span className={`text-lg font-bold truncate max-w-[200px] md:max-w-[320px] ${isDisplayedMeetingOpen ? 'text-emerald-700' : 'text-slate-700'}`}>{currentMeeting.title}</span>
+                                <span className={`hidden sm:inline-flex shrink-0 rounded-full px-2 py-0.5 text-[11px] font-bold ${isDisplayedMeetingOpen ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
+                                    {displayMeetingStatusLabel}
+                                </span>
                                 <Link
                                     href="/admin"
                                     className="hidden md:inline-flex shrink-0 items-center gap-1.5 rounded-full border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-bold text-blue-700 transition-colors hover:border-blue-300 hover:bg-blue-100 hover:text-blue-800"
@@ -681,8 +723,20 @@ export default function CheckInPage() {
                         <AuthStatus />
                     </div>
 
+                    {dataConnectionError && (
+                        <div className="flex items-center gap-2 border-b border-amber-200 bg-amber-50 px-4 py-2 text-xs font-bold text-amber-800">
+                            <AlertCircle size={14} className="shrink-0" />
+                            <span className="min-w-0 flex-1">{dataConnectionError}</span>
+                            {lastDataSyncAt && (
+                                <span className="hidden shrink-0 text-amber-700 sm:inline">
+                                    저장 시각 {new Date(lastDataSyncAt).toLocaleString('ko-KR')}
+                                </span>
+                            )}
+                        </div>
+                    )}
+
                     {/* Compact Stats Bar (Always Visible) */}
-                    {activeMeetingId && (
+                    {displayMeetingId && (
                         <div className="px-4 py-2 bg-white">
                             <div className="relative flex flex-col py-1 md:py-2 px-1 md:px-2 gap-2 cursor-pointer max-w-xl mx-auto" onClick={() => setIsStatsOpen(!isStatsOpen)}>
                                 
@@ -814,13 +868,13 @@ export default function CheckInPage() {
                         placeholder="조합원넘버 또는 성명..."
                         value={searchTerm}
                         onChange={e => setSearchTerm(e.target.value)}
-                        disabled={!activeMeetingId}
+                        disabled={!displayMeetingId}
                     />
                 </div>
 
                 <div className="flex-1 overflow-y-auto space-y-2 pb-40">
                     {filteredMembers.map(member => {
-                        const record = activeMeetingId ? attendanceRecordByMemberId.get(member.id) : null;
+                        const record = displayMeetingId ? attendanceRecordByMemberId.get(member.id) : null;
                         const isCheckedIn = !!record;
                         const checkInType = record?.type;
                         const displayProxyName = record?.proxy_name || member.proxy;
@@ -867,7 +921,7 @@ export default function CheckInPage() {
                                         {!isCheckedIn ? (
                                             <button
                                                 onClick={() => handleOpenCheckInModal(member)}
-                                                disabled={!activeMeetingId}
+                                                disabled={!canRegisterForDisplayedMeeting}
                                                 className="min-w-[4.25rem] h-10 md:h-12 px-3 rounded-lg bg-slate-600 hover:bg-slate-700 active:bg-slate-800 text-white shadow-sm disabled:opacity-30 disabled:cursor-not-allowed transition-all active:scale-95 flex items-center justify-center gap-1.5"
                                             >
                                                 <UserCheck size={16} className="md:w-[18px] md:h-[18px]" />
@@ -877,13 +931,15 @@ export default function CheckInPage() {
                                             <div className="flex items-center gap-1.5">
                                                 <button
                                                     onClick={() => handleOpenEditCheckInModal(member, record)}
-                                                    className="w-10 h-10 md:w-12 md:h-12 rounded-lg bg-white border border-slate-200 text-slate-400 active:text-blue-600 active:bg-blue-50 flex items-center justify-center transition-colors shadow-sm"
+                                                    disabled={!canRegisterForDisplayedMeeting}
+                                                    className="w-10 h-10 md:w-12 md:h-12 rounded-lg bg-white border border-slate-200 text-slate-400 active:text-blue-600 active:bg-blue-50 disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center transition-colors shadow-sm"
                                                 >
                                                     <Pencil size={18} className="md:w-5 md:h-5" />
                                                 </button>
                                                 <button
                                                     onClick={() => handleCancelCheckIn(member.id)}
-                                                    className="w-10 h-10 md:w-12 md:h-12 rounded-lg bg-white border border-slate-200 text-slate-400 active:text-red-500 active:bg-red-50 flex items-center justify-center transition-colors shadow-sm"
+                                                    disabled={!canRegisterForDisplayedMeeting}
+                                                    className="w-10 h-10 md:w-12 md:h-12 rounded-lg bg-white border border-slate-200 text-slate-400 active:text-red-500 active:bg-red-50 disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center transition-colors shadow-sm"
                                                 >
                                                     <RotateCcw size={18} className="md:w-5 md:h-5" />
                                                 </button>

@@ -37,7 +37,10 @@ export default function DashboardLayout({ title, subtitle, titleBadge, sidebarCo
     };
 
     return (
-        <div className="flex h-screen bg-slate-50 font-sans text-slate-800 overflow-hidden relative">
+        <div
+            className="flex h-screen bg-slate-50 font-sans text-slate-800 overflow-hidden relative"
+            style={{ '--votecast-sidebar-width': isCollapsed ? '0px' : '20rem' }}
+        >
             {/* Sidebar */}
             <aside 
                 className={`bg-white border-r border-slate-200 flex flex-col shadow-lg z-10 shrink-0 transition-all duration-300 ease-in-out ${

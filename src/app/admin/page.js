@@ -4,7 +4,7 @@ import React from 'react';
 import Link from 'next/link';
 import { useStore } from '@/lib/store';
 import { getAgendaAttendanceDisplayStats, getAgendaVoteBuckets, getInactiveMemberIds, getMeetingAttendanceStats } from '@/lib/store';
-import { ClipboardCheck, Settings, UserCheck, Users } from 'lucide-react';
+import { AlertTriangle, ClipboardCheck, Settings, UserCheck, Users } from 'lucide-react';
 import FullscreenToggle from '@/components/ui/FullscreenToggle';
 import DashboardLayout from '@/components/admin/DashboardLayout';
 import AgendaList from '@/components/admin/AgendaList';
@@ -15,7 +15,7 @@ import AuthStatus from '@/components/ui/AuthStatus';
 
 export default function AdminPage() {
     const { state, actions } = useStore();
-    const { voteData, currentAgendaId, agendas, projectorMode, attendance, members, mailElectionVotes } = state;
+    const { voteData, currentAgendaId, agendas, projectorMode, attendance, members, mailElectionVotes, dataConnectionError, lastDataSyncAt } = state;
     const currentAgenda = agendas.find(a => a.id === currentAgendaId);
 
     // 1. Identify Context (Meeting/Folder) for stats
@@ -155,6 +155,17 @@ export default function AdminPage() {
             }
             fixedTopContent={<LiveMonitor />}
         >
+            {dataConnectionError && (
+                <div className="mb-3 flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-800">
+                    <AlertTriangle size={16} className="shrink-0" />
+                    <span className="min-w-0 flex-1">{dataConnectionError}</span>
+                    {lastDataSyncAt && (
+                        <span className="shrink-0 text-xs text-amber-700">
+                            저장 시각 {new Date(lastDataSyncAt).toLocaleString('ko-KR')}
+                        </span>
+                    )}
+                </div>
+            )}
             <div className="bg-white p-4 pb-2 rounded-xl border border-slate-200 shadow-sm relative z-0">
                 <VoteControl />
             </div>

@@ -892,19 +892,19 @@ function AgendaGroup({
                                                         e.stopPropagation();
                                                         setConfirmModal({
                                                             isOpen: true,
-                                                            title: "입장 접수 완료",
-                                                            message: `'${group.folder.title}'의 입장 접수를 완료하시겠습니까?\n접수 완료 후에도 다시 재개할 수 있습니다.`,
-                                                            confirmText: "접수 완료",
+                                                            title: "총회 종료",
+                                                            message: `'${group.folder.title}' 총회를 종료하시겠습니까?\n종료 후에도 다시 진행 중으로 변경할 수 있습니다.`,
+                                                            confirmText: "총회 종료",
                                                             onConfirm: () => actions.setMeetingAdmissionStatus(group.folder.id, 'closed')
                                                         });
                                                     }}
-                                                    className="w-fit text-[10px] font-semibold text-orange-600 flex items-center gap-1 hover:text-red-600 transition-colors"
+                                                    className="w-fit text-[10px] font-semibold text-blue-600 flex items-center gap-1 hover:text-slate-700 transition-colors"
                                                 >
                                                     <span className="relative flex h-2 w-2">
-                                                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-orange-400 opacity-75"></span>
-                                                        <span className="relative inline-flex rounded-full h-2 w-2 bg-orange-500"></span>
+                                                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+                                                        <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500"></span>
                                                     </span>
-                                                    입장 접수 중
+                                                    진행 중
                                                     <Square size={8} className="ml-0.5 opacity-0 group-hover:opacity-100 transition-opacity" />
                                                 </button>
                                                 <button
@@ -913,7 +913,7 @@ function AgendaGroup({
                                                         setConfirmModal({
                                                             isOpen: true,
                                                             title: "상태 초기화",
-                                                            message: `'${group.folder.title}'의 상태를 '대기중'으로 초기화하시겠습니까?`,
+                                                            message: `'${group.folder.title}'의 상태를 대기 상태로 초기화하시겠습니까?`,
                                                             confirmText: "초기화",
                                                             onConfirm: () => actions.setMeetingAdmissionStatus(group.folder.id, 'idle')
                                                         });
@@ -935,9 +935,9 @@ function AgendaGroup({
                                                         e.stopPropagation();
                                                         setConfirmModal({
                                                             isOpen: true,
-                                                            title: "입장 접수 재개",
-                                                            message: `'${group.folder.title}'의 입장 접수를 다시 재개하시겠습니까?`,
-                                                            confirmText: "재개하기",
+                                                            title: "총회 진행 재개",
+                                                            message: `'${group.folder.title}' 총회를 다시 진행 중으로 변경하시겠습니까?`,
+                                                            confirmText: "진행 재개",
                                                             onConfirm: () => actions.setMeetingAdmissionStatus(group.folder.id, 'open')
                                                         });
                                                     }}
@@ -946,7 +946,7 @@ function AgendaGroup({
                                                     <span className="relative flex h-2 w-2">
                                                         <span className="relative inline-flex rounded-full h-2 w-2 bg-slate-400"></span>
                                                     </span>
-                                                    접수 완료
+                                                    총회 종료
                                                 </button>
                                                 <button
                                                     onClick={(e) => {
@@ -954,7 +954,7 @@ function AgendaGroup({
                                                         setConfirmModal({
                                                             isOpen: true,
                                                             title: "상태 초기화",
-                                                            message: `'${group.folder.title}'의 상태를 '대기중'으로 초기화하시겠습니까?`,
+                                                            message: `'${group.folder.title}'의 상태를 대기 상태로 초기화하시겠습니까?`,
                                                             confirmText: "초기화",
                                                             onConfirm: () => actions.setMeetingAdmissionStatus(group.folder.id, 'idle')
                                                         });
@@ -975,16 +975,16 @@ function AgendaGroup({
                                                 e.stopPropagation();
                                                 setConfirmModal({
                                                     isOpen: true,
-                                                    title: "입장 시작",
-                                                    message: `'${group.folder.title}'의 입장을 시작하시겠습니까?`,
-                                                    confirmText: "입장 시작",
+                                                    title: "총회 진행 시작",
+                                                    message: `'${group.folder.title}' 총회를 진행 중으로 변경하시겠습니까?`,
+                                                    confirmText: "진행 시작",
                                                     confirmVariant: "success",
                                                     onConfirm: () => actions.setMeetingAdmissionStatus(group.folder.id, 'open')
                                                 });
                                             }}
                                             className="w-fit text-[10px] text-slate-400 hover:text-blue-600 hover:underline flex items-center gap-0.5"
                                         >
-                                            <Play size={8} /> 입장 시작
+                                            <Play size={8} /> 진행 시작
                                         </button>
                                     );
                                 })()}

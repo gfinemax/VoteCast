@@ -1,12 +1,85 @@
 'use client';
 
 import React, { useState } from 'react';
-import { useRouter } from 'next/navigation';
 import { createClient } from '@/utils/supabase/client';
 import { Loader2, Mail, Lock, Eye, EyeOff, ArrowRight, CheckCircle, Users, Settings, Monitor, Zap } from 'lucide-react';
 
+const AUTH_REQUEST_TIMEOUT_MS = 15000;
+
+const AUTH_CONNECTION_ERROR_MESSAGE =
+    'Supabase 인증 서버 응답을 받지 못했습니다.\n인터넷 연결, Supabase 프로젝트 상태, NEXT_PUBLIC_SUPABASE_URL/API 키를 확인한 뒤 다시 시도해주세요.';
+
+const getErrorMessage = (err) => {
+    if (!err) return '';
+    if (typeof err === 'string') return err;
+    return err.message || err.error_description || err.error || '';
+};
+
+const isAuthConnectionError = (err) => {
+    const name = err?.name || '';
+    const message = getErrorMessage(err).toLowerCase();
+    const causeName = err?.cause?.name || '';
+    const causeMessage = getErrorMessage(err?.cause).toLowerCase();
+
+    return (
+        name === 'AuthRetryableFetchError' ||
+        causeName === 'AbortError' ||
+        message.includes('failed to fetch') ||
+        message.includes('fetch') ||
+        message.includes('network') ||
+        message.includes('timeout') ||
+        message.includes('aborted') ||
+        causeMessage.includes('aborted')
+    );
+};
+
+const getAuthDisplayMessage = (err, fallbackMessage) => {
+    const message = getErrorMessage(err);
+
+    if (isAuthConnectionError(err)) {
+        return AUTH_CONNECTION_ERROR_MESSAGE;
+    }
+
+    if (message.includes('Invalid login credentials')) {
+        return '이메일 또는 비밀번호가 올바르지 않습니다.';
+    }
+
+    if (message.includes('User already registered')) {
+        return '이미 등록된 이메일입니다.';
+    }
+
+    if (message.includes('Email not confirmed')) {
+        return '계정이 생성되었으나 이메일 인증이 완료되지 않았습니다.\nSupabase 대시보드 > Authentication > Users에서\n해당 유저 우측 점 3개를 클릭해 "Confirm user"를 눌러주세요.';
+    }
+
+    return message || fallbackMessage;
+};
+
+const logAuthError = (label, err) => {
+    console.error(label, {
+        name: err?.name,
+        message: getErrorMessage(err),
+        status: err?.status,
+        code: err?.code,
+        causeName: err?.cause?.name,
+        causeMessage: getErrorMessage(err?.cause),
+    });
+};
+
+const withAuthTimeout = (promise) => {
+    let timeoutId;
+    const timeoutPromise = new Promise((_, reject) => {
+        timeoutId = window.setTimeout(() => {
+            reject(new Error('Supabase 인증 서버 응답 시간이 초과되었습니다.'));
+        }, AUTH_REQUEST_TIMEOUT_MS);
+    });
+
+    return Promise.race([promise, timeoutPromise]).finally(() => {
+        window.clearTimeout(timeoutId);
+    });
+};
+
 export default function LoginPage() {
-    const router = useRouter();
     const [mode, setMode] = useState('login'); // 'login' | 'signup'
     const [isLoading, setIsLoading] = useState(false);
     const [isGoogleLoading, setIsGoogleLoading] = useState(false);
@@ -18,6 +91,20 @@ export default function LoginPage() {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
+
+    const redirectAfterAuth = async (supabase) => {
+        const {
+            data: { session },
+            error: sessionError
+        } = await supabase.auth.getSession();
+
+        if (sessionError) throw sessionError;
+        if (!session) {
+            throw new Error('로그인은 완료되었지만 브라우저 세션이 생성되지 않았습니다. 새로고침 후 다시 시도해주세요.');
+        }
+
+        window.location.replace('/admin');
+    };
 
     const handleEmailAuth = async (e) => {
         e.preventDefault();
@@ -46,13 +133,13 @@ export default function LoginPage() {
 
             if (mode === 'signup') {
                 // Sign up
-                const { error } = await supabase.auth.signUp({
+                const { error } = await withAuthTimeout(supabase.auth.signUp({
                     email,
                     password,
                     options: {
-                        emailRedirectTo: `${window.location.origin}/auth/callback`,
+                        emailRedirectTo: `${window.location.origin}/auth/callback?next=/admin`,
                     },
-                });
+                }));
 
                 if (error) throw error;
 
@@ -62,25 +149,18 @@ export default function LoginPage() {
                 setConfirmPassword('');
             } else {
                 // Login
-                const { error } = await supabase.auth.signInWithPassword({
+                const { error } = await withAuthTimeout(supabase.auth.signInWithPassword({
                     email,
                     password,
-                });
+                }));
 
                 if (error) throw error;
 
-                router.push('/');
-                router.refresh();
+                await redirectAfterAuth(supabase);
             }
         } catch (err) {
-            console.error('Auth error:', err);
-            if (err.message.includes('Invalid login credentials')) {
-                setError('이메일 또는 비밀번호가 올바르지 않습니다.');
-            } else if (err.message.includes('User already registered')) {
-                setError('이미 등록된 이메일입니다.');
-            } else {
-                setError(err.message || '인증 중 오류가 발생했습니다.');
-            }
+            logAuthError('Auth error:', err);
+            setError(getAuthDisplayMessage(err, '인증 중 오류가 발생했습니다.'));
         } finally {
             setIsLoading(false);
         }
@@ -93,17 +173,17 @@ export default function LoginPage() {
 
             const supabase = createClient();
 
-            const { error } = await supabase.auth.signInWithOAuth({
+            const { error } = await withAuthTimeout(supabase.auth.signInWithOAuth({
                 provider: 'google',
                 options: {
-                    redirectTo: `${window.location.origin}/auth/callback`,
+                    redirectTo: `${window.location.origin}/auth/callback?next=/admin`,
                 },
-            });
+            }));
 
             if (error) throw error;
         } catch (err) {
-            console.error('Google login error:', err);
-            setError(err.message || 'Google 로그인 중 오류가 발생했습니다.');
+            logAuthError('Google login error:', err);
+            setError(getAuthDisplayMessage(err, 'Google 로그인 중 오류가 발생했습니다.'));
             setIsGoogleLoading(false);
         }
     };
@@ -118,16 +198,18 @@ export default function LoginPage() {
 
             const supabase = createClient();
 
-            const { error: signInError } = await supabase.auth.signInWithPassword({
+            const { error: signInError } = await withAuthTimeout(supabase.auth.signInWithPassword({
                 email: demoEmail,
                 password: demoPassword,
-            });
+            }));
 
             if (signInError) {
-                if (signInError.message.includes('Invalid login credentials')) {
+                const signInMessage = getErrorMessage(signInError);
+
+                if (signInMessage.includes('Invalid login credentials')) {
                     console.log('Demo account not found. Attempting auto-creation...');
 
-                    const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+                    const { data: signUpData, error: signUpError } = await withAuthTimeout(supabase.auth.signUp({
                         email: demoEmail,
                         password: demoPassword,
                         options: {
@@ -135,7 +217,7 @@ export default function LoginPage() {
                                 full_name: demoEmail.includes('admin') ? '관리자(Demo)' : '안내데스크(Demo)',
                             }
                         }
-                    });
+                    }));
 
                     if (signUpError) {
                         throw signUpError;
@@ -143,8 +225,7 @@ export default function LoginPage() {
 
                     if (signUpData?.session) {
                         setSuccess('체험용 계정이 생성되고 로그인되었습니다.');
-                        router.push('/');
-                        router.refresh();
+                        await redirectAfterAuth(supabase);
                         return;
                     }
 
@@ -153,18 +234,17 @@ export default function LoginPage() {
                     }
                 }
 
-                if (signInError.message.includes('Email not confirmed')) {
-                    throw new Error('계정이 생성되었으나 이메일 인증이 완료되지 않았습니다.\nSupabase 대시보드 > Authentication > Users에서\n해당 유저 우측 점 3개를 클릭해 "Confirm user"를 눌러주세요.');
+                if (signInMessage.includes('Email not confirmed')) {
+                    throw signInError;
                 }
 
                 throw signInError;
             }
 
-            router.push('/');
-            router.refresh();
+            await redirectAfterAuth(supabase);
         } catch (err) {
-            console.error('Demo login error:', err);
-            setError(err.message || '체험 모드 로그인 중 오류가 발생했습니다.');
+            logAuthError('Demo login error:', err);
+            setError(getAuthDisplayMessage(err, '체험 모드 로그인 중 오류가 발생했습니다.'));
         } finally {
             setIsLoading(false);
         }
@@ -310,7 +390,7 @@ export default function LoginPage() {
 
                     {/* Error Message */}
                     {error && (
-                        <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-xl text-red-600 text-sm">
+                        <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-xl text-red-600 text-sm whitespace-pre-line">
                             {error}
                         </div>
                     )}

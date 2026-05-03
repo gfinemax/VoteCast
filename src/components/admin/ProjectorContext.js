@@ -2,6 +2,7 @@
 
 import React, { createContext, useContext, useState, useRef, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
+import { isAbortError } from '@/lib/storeSupabase';
 
 const ProjectorContext = createContext(null);
 
@@ -46,12 +47,18 @@ export function ProjectorProvider({ children }) {
 
         await channel.subscribe(async (status) => {
             if (status === 'SUBSCRIBED') {
-                await channel.send({
-                    type: 'broadcast',
-                    event: 'close_projector',
-                    payload: {},
-                });
-                supabase.removeChannel(channel);
+                try {
+                    await channel.send({
+                        type: 'broadcast',
+                        event: 'close_projector',
+                        payload: {},
+                    });
+                } catch (error) {
+                    if (isAbortError(error)) return;
+                    console.warn('[ProjectorContext] Failed to broadcast close_projector:', error);
+                } finally {
+                    supabase.removeChannel(channel);
+                }
             }
         });
     };

@@ -107,7 +107,7 @@ export default function SplitVoteInputPanel({
                     <div className="min-w-0 text-center leading-tight text-emerald-400/70 break-keep">입력합계 {displayTotalVotesCast}명</div>
                 </div>
 
-                <div className="space-y-2">
+                <div className="space-y-2" data-vote-input-scope="onsite-split">
                     {splitVoteDisplayCards.map((card) => (
                         <div
                             key={`${card.key}-row`}

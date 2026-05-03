@@ -6,6 +6,7 @@ import { calculateAgendaPass, getAgendaAttendanceDisplayStats, getAgendaVoteBuck
 import { Monitor, CheckCircle2, Play, Settings } from 'lucide-react';
 import AlertModal from '@/components/ui/AlertModal';
 import { useProjector } from '@/components/admin/ProjectorContext';
+import { shouldHandleGlobalShortcut } from '@/components/admin/keyboardScope';
 
 import dynamic from 'next/dynamic';
 
@@ -121,28 +122,27 @@ export default function LiveMonitor({ mode = 'admin' }) {
         () => getAgendaPresentation(currentAgenda, agendas, voteData?.presentationPage),
         [agendas, currentAgenda, voteData?.presentationPage]
     );
+    const nearbyPresentationPages = useMemo(() => {
+        const pages = new Set([currentPage - 1, currentPage, currentPage + 1]);
+        const currentIndex = agendas.findIndex((agenda) => agenda.id === currentAgendaId);
+
+        if (currentIndex >= 0) {
+            for (let offset = -3; offset <= 3; offset += 1) {
+                const agenda = agendas[currentIndex + offset];
+                if (agenda?.type !== 'folder') {
+                    pages.add(agenda?.start_page || 1);
+                }
+            }
+        }
+
+        return Array.from(pages).filter((page) => page > 0);
+    }, [agendas, currentAgendaId, currentPage]);
 
     useEffect(() => {
         const handleKeyDown = (e) => {
-            if (e.isComposing || e.altKey || e.ctrlKey || e.metaKey) return;
+            if (!shouldHandleGlobalShortcut(e)) return;
 
-            const activeElement = document.activeElement;
-            if (
-                ['INPUT', 'TEXTAREA', 'SELECT'].includes(activeElement?.tagName) ||
-                activeElement?.isContentEditable
-            ) {
-                return;
-            }
-
-            if (projectorMode !== 'PPT' && projectorMode !== 'IDLE') return;
-
-            if (e.key === 'ArrowDown') {
-                e.preventDefault();
-                actions.moveAgendaSelection(1);
-            } else if (e.key === 'ArrowUp') {
-                e.preventDefault();
-                actions.moveAgendaSelection(-1);
-            } else if (e.key === 'ArrowRight') {
+            if (e.key === 'ArrowRight') {
                 e.preventDefault();
                 actions.updatePresentationPage(1);
             } else if (e.key === 'ArrowLeft') {
@@ -155,7 +155,6 @@ export default function LiveMonitor({ mode = 'admin' }) {
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, [
         actions,
-        projectorMode,
     ]);
 
     // Calculate result stats (Snapshot support)
@@ -340,6 +339,7 @@ export default function LiveMonitor({ mode = 'admin' }) {
                                 <PDFViewer
                                     url={getAgendaPresentation(currentAgenda, agendas, currentPage).finalSource}
                                     pageNumber={currentPage}
+                                    preloadPages={nearbyPresentationPages}
                                 />
                                 <div className="absolute inset-0 bg-transparent z-20" />
                             </div>

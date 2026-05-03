@@ -30,6 +30,10 @@ export const fetchAgendaById = (id) => (
         .single()
 );
 
+export const updateAgendaOrderIndex = (id, orderIndex) => (
+    updateAgendaFields(id, { order_index: orderIndex })
+);
+
 export const fetchAgendaOrderRowsFrom = (orderIndex) => (
     supabase
         .from('agendas')
@@ -119,6 +123,13 @@ export const fetchAttendance = () => (
     supabase
         .from('attendance')
         .select('*')
+);
+
+export const fetchAttendanceForMeetings = (meetingIds) => (
+    supabase
+        .from('attendance')
+        .select('id, created_at, meeting_id, member_id, type, proxy_name, has_election')
+        .in('meeting_id', meetingIds)
 );
 
 export const insertAttendance = (attendance) => (

@@ -64,6 +64,7 @@ export default function VoteControl() {
         effectiveOnsiteEligibleCount,
         navigableAgendas,
         currentNavIndex,
+        agendaProgressSummary,
         progressPercent,
         totalMembers,
         quorumTarget,
@@ -143,11 +144,7 @@ export default function VoteControl() {
         updateAgenda,
         setAgendaTypeLock
     });
-    const primaryOnsiteInputRef = useSplitVoteAutoFocus({
-        currentAgendaId,
-        hasSplitVoteColumns,
-        isConfirmed
-    });
+    const primaryOnsiteInputRef = useSplitVoteAutoFocus();
 
     const {
         handleLocalVoteChange,
@@ -252,7 +249,7 @@ export default function VoteControl() {
     };
 
     return (
-        <div className="space-y-2 pb-2">
+        <div className="space-y-2 pb-28">
             {confirmedDecisionToast.isVisible && (
                 <ConfirmedDecisionToast onDismiss={confirmedDecisionToast.dismiss} />
             )}
@@ -363,6 +360,7 @@ export default function VoteControl() {
             <VoteProgressFooter
                 currentNavIndex={currentNavIndex}
                 navigableAgendas={navigableAgendas}
+                agendaProgressSummary={agendaProgressSummary}
                 progressPercent={progressPercent}
                 onPrevious={() => moveAgendaSelection(-1)}
                 onNext={() => moveAgendaSelection(1)}

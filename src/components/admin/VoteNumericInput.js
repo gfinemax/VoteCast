@@ -3,6 +3,29 @@
 import { useLayoutEffect, useRef } from 'react';
 
 const getRestingValue = (value) => ((value === 0 || value === '0') ? '' : (value ?? ''));
+const ARROW_KEYS = new Set(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']);
+
+const moveWithinVoteInputScope = (currentInput, direction) => {
+    const scope = currentInput.closest('[data-vote-input-scope]');
+    if (!scope) return false;
+
+    const inputs = Array.from(scope.querySelectorAll('[data-vote-numeric-input="true"]'))
+        .filter((input) => !input.disabled && input.offsetParent !== null);
+    const currentIndex = inputs.indexOf(currentInput);
+    if (currentIndex === -1) return false;
+
+    const nextIndex = Math.min(
+        inputs.length - 1,
+        Math.max(0, currentIndex + direction)
+    );
+
+    if (nextIndex === currentIndex) return true;
+
+    const nextInput = inputs[nextIndex];
+    nextInput.focus();
+    nextInput.select?.();
+    return true;
+};
 
 export default function VoteNumericInput({
     value,
@@ -50,6 +73,17 @@ export default function VoteNumericInput({
                 }
                 onChange(nextValue);
             }}
+            onKeyDown={(event) => {
+                if (!ARROW_KEYS.has(event.key)) return;
+
+                event.stopPropagation();
+
+                if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
+                    event.preventDefault();
+                    moveWithinVoteInputScope(event.currentTarget, event.key === 'ArrowDown' ? 1 : -1);
+                }
+            }}
+            data-vote-numeric-input="true"
             disabled={disabled}
             className={className}
         />

@@ -95,6 +95,21 @@ export default function ProjectorPage() {
             return undefined;
         }
 
+        if (rawRenderState.projectorMode === 'IDLE' || rawRenderState.projectorMode === 'PPT') {
+            if (holdTimerRef.current) {
+                window.clearTimeout(holdTimerRef.current);
+                holdTimerRef.current = null;
+            }
+
+            const frameId = window.requestAnimationFrame(() => {
+                setHeldRenderState(rawRenderState);
+                appendProjectorLog('ppt_applied_immediately', {
+                    applied: summarizeProjectorRenderState(rawRenderState)
+                });
+            });
+            return () => window.cancelAnimationFrame(frameId);
+        }
+
         if (holdTimerRef.current) {
             window.clearTimeout(holdTimerRef.current);
             appendProjectorLog('hold_restarted', {
@@ -389,6 +404,21 @@ export default function ProjectorPage() {
 
         return { finalSource: source, currentPage: parseInt(startPage) };
     }, [currentAgenda, displayVoteData?.presentationPage, agendas]);
+    const nearbyPresentationPages = useMemo(() => {
+        const pages = new Set([currentPage - 1, currentPage, currentPage + 1]);
+        const currentIndex = agendas.findIndex((agenda) => agenda.id === currentAgendaId);
+
+        if (currentIndex >= 0) {
+            for (let offset = -3; offset <= 3; offset += 1) {
+                const agenda = agendas[currentIndex + offset];
+                if (agenda?.type !== 'folder') {
+                    pages.add(agenda?.start_page || 1);
+                }
+            }
+        }
+
+        return Array.from(pages).filter((page) => page > 0);
+    }, [agendas, currentAgendaId, currentPage]);
 
     if (!isMounted) {
         return (
@@ -414,6 +444,7 @@ export default function ProjectorPage() {
                             <PDFViewer
                                 url={finalSource}
                                 pageNumber={currentPage}
+                                preloadPages={nearbyPresentationPages}
                             />
                         </div>
 
