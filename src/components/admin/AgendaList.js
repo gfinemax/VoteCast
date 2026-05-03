@@ -475,13 +475,17 @@ export default function AgendaList() {
 
     useEffect(() => {
         if (!currentAgendaFolderId) return;
-        if (expandedFolders[currentAgendaFolderId] !== false) return;
-
-        setExpandedFolders((prev) => ({
-            ...prev,
-            [currentAgendaFolderId]: true
-        }));
-    }, [currentAgendaFolderId, expandedFolders]);
+        
+        setExpandedFolders((prev) => {
+            // 이미 확정된 상태라면 건드리지 않음 (수동으로 접은 상태 유지)
+            if (prev[currentAgendaFolderId] !== undefined) return prev;
+            
+            return {
+                ...prev,
+                [currentAgendaFolderId]: true
+            };
+        });
+    }, [currentAgendaFolderId]);
 
     useEffect(() => {
         const frame = window.requestAnimationFrame(() => {
