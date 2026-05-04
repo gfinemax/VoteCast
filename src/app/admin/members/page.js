@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { ArrowLeft, Edit2, FolderOpen, Plus, Save, UserPlus, Users, X, Lock } from 'lucide-react';
 import { useStore, getInactiveMemberIds } from '@/lib/store';
@@ -16,6 +16,18 @@ const EMPTY_MEMBER_FORM = {
     name: '',
     proxy: ''
 };
+
+const SELECTED_MEMBER_MEETING_KEY = 'votecast_selected_member_meeting_id';
+
+const getMeetingIdKey = (id) => (id == null ? '' : String(id));
+
+const isSameMeetingId = (left, right) => (
+    getMeetingIdKey(left) !== '' && getMeetingIdKey(left) === getMeetingIdKey(right)
+);
+
+const findMeetingFolderById = (folders, id) => (
+    folders.find((folder) => isSameMeetingId(folder.id, id)) || null
+);
 
 export default function AdminMembersPage() {
     const { state, actions } = useStore();
@@ -33,18 +45,47 @@ export default function AdminMembersPage() {
         () => agendas.filter((agenda) => agenda.type === 'folder'),
         [agendas]
     );
-    const [selectedMeetingId, setSelectedMeetingId] = useState(
-        () => meetingFolders[0]?.id || null
-    );
+    const [selectedMeetingId, setSelectedMeetingId] = useState(null);
 
-    // Build ordered list of meeting IDs for determining "added after this meeting"
-    const meetingIdOrder = useMemo(() => {
-        return meetingFolders.map((folder) => folder.id);
-    }, [meetingFolders]);
+    useEffect(() => {
+        if (meetingFolders.length === 0) {
+            setSelectedMeetingId(null);
+            return;
+        }
+
+        if (selectedMeetingId != null && findMeetingFolderById(meetingFolders, selectedMeetingId)) {
+            return;
+        }
+
+        let savedMeetingId = null;
+        try {
+            savedMeetingId = window.localStorage.getItem(SELECTED_MEMBER_MEETING_KEY);
+        } catch (error) {
+            console.error('Failed to read selected member meeting:', error);
+        }
+
+        const savedMeetingFolder = savedMeetingId
+            ? findMeetingFolderById(meetingFolders, savedMeetingId)
+            : null;
+        const nextMeetingId = savedMeetingFolder?.id ?? meetingFolders[0].id;
+
+        setSelectedMeetingId(nextMeetingId);
+    }, [meetingFolders, selectedMeetingId]);
+
+    useEffect(() => {
+        const selectedMeetingFolder = findMeetingFolderById(meetingFolders, selectedMeetingId);
+        if (!selectedMeetingFolder) return;
+
+        try {
+            window.localStorage.setItem(SELECTED_MEMBER_MEETING_KEY, getMeetingIdKey(selectedMeetingFolder.id));
+        } catch (error) {
+            console.error('Failed to save selected member meeting:', error);
+        }
+    }, [meetingFolders, selectedMeetingId]);
 
     const selectedMeetingIndex = useMemo(
-        () => meetingIdOrder.indexOf(selectedMeetingId),
-        [meetingIdOrder, selectedMeetingId]
+        () => meetingFolders.findIndex((folder) => isSameMeetingId(folder.id, selectedMeetingId)),
+        [meetingFolders, selectedMeetingId]
     );
 
     // Get inactive member IDs for the selected meeting
@@ -68,14 +109,14 @@ export default function AdminMembersPage() {
             const joinedMeetingId = getMemberJoinedMeetingId(voteData, member.id);
             if (!joinedMeetingId) return; // Original member — existed before tracking
 
-            const joinedIndex = meetingIdOrder.indexOf(joinedMeetingId);
+            const joinedIndex = meetingFolders.findIndex((folder) => isSameMeetingId(folder.id, joinedMeetingId));
             if (joinedIndex === -1) return;
             if (joinedIndex > selectedMeetingIndex) {
                 afterSet.add(member.id);
             }
         });
         return afterSet;
-    }, [members, voteData, selectedMeetingId, selectedMeetingIndex, meetingIdOrder]);
+    }, [members, voteData, selectedMeetingId, selectedMeetingIndex, meetingFolders]);
 
     const activeMembers = useMemo(
         () => members.filter((member) =>
@@ -94,6 +135,36 @@ export default function AdminMembersPage() {
         [inactiveMemberIdSet, memberJoinedAfterSet, members]
     );
     const addedAfterCount = memberJoinedAfterSet.size;
+    const getRosterSummaryForMeeting = React.useCallback((meetingId) => {
+        const inactiveIds = new Set(getInactiveMemberIds(voteData, meetingId));
+        const targetMeetingIndex = meetingFolders.findIndex((folder) => isSameMeetingId(folder.id, meetingId));
+        const joinedAfterIds = new Set();
+
+        members.forEach((member) => {
+            if (member.is_active === false) return;
+            const joinedMeetingId = getMemberJoinedMeetingId(voteData, member.id);
+            if (!joinedMeetingId) return;
+
+            const joinedIndex = meetingFolders.findIndex((folder) => isSameMeetingId(folder.id, joinedMeetingId));
+            if (joinedIndex === -1 || targetMeetingIndex === -1) return;
+            if (joinedIndex > targetMeetingIndex) {
+                joinedAfterIds.add(member.id);
+            }
+        });
+
+        let total = 0;
+        let excluded = 0;
+        members.forEach((member) => {
+            if (member.is_active === false || joinedAfterIds.has(member.id)) return;
+            if (inactiveIds.has(member.id)) {
+                excluded += 1;
+                return;
+            }
+            total += 1;
+        });
+
+        return { total, excluded };
+    }, [meetingFolders, members, voteData]);
 
     const filteredMembers = useMemo(() => {
         const keyword = searchTerm.trim();
@@ -168,7 +239,7 @@ export default function AdminMembersPage() {
 
     const handleToggleMemberActive = async (member) => {
         const isExcluded = inactiveMemberIdSet.has(member.id) || member.is_active === false;
-        const selectedMeetingName = meetingFolders.find((f) => f.id === selectedMeetingId)?.title || '현재 총회';
+        const selectedMeetingName = findMeetingFolderById(meetingFolders, selectedMeetingId)?.title || '현재 총회';
         const message = isExcluded
             ? `"${member.unit} ${member.name}" 조합원을 [${selectedMeetingName}] 명부에 다시 포함하시겠습니까?\n복원하면 해당 총회의 전체 조합원 수에 즉시 반영됩니다.`
             : `"${member.unit} ${member.name}" 조합원을 [${selectedMeetingName}] 명부에서 제외하시겠습니까?\n제외하면 해당 총회의 전체 조합원 수 계산과 입구안내 목록에서 바로 빠집니다.\n다른 총회의 명부에는 영향을 주지 않습니다.`;
@@ -191,7 +262,10 @@ export default function AdminMembersPage() {
         }
     };
 
-    const selectedMeetingFolder = useMemo(() => meetingFolders.find((f) => f.id === selectedMeetingId), [meetingFolders, selectedMeetingId]);
+    const selectedMeetingFolder = useMemo(
+        () => findMeetingFolderById(meetingFolders, selectedMeetingId),
+        [meetingFolders, selectedMeetingId]
+    );
     const selectedMeetingName = selectedMeetingFolder?.title || '-';
 
     // Roster lock logic
@@ -214,70 +288,123 @@ export default function AdminMembersPage() {
     };
 
     const sidebarContent = (
-        <div className="p-4 space-y-4">
-            <Card className="p-4">
-                <div className="flex items-center gap-3">
-                    <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-blue-50 text-blue-700">
-                        <Users size={20} />
-                    </div>
-                    <div>
-                        <div className="text-sm font-bold text-slate-900">조합원 명부 관리</div>
-                        <div className="text-xs text-slate-500">총회별로 명단을 분리 관리할 수 있습니다.</div>
-                    </div>
-                </div>
-            </Card>
-
+        <div className="p-4 space-y-3">
             {/* Meeting selector */}
             <Card className="p-4 space-y-3">
-                <div className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">총회 선택</div>
-                <div className="space-y-1">
+                <div>
+                    <div className="text-sm font-bold text-slate-900">총회 선택</div>
+                    <div className="text-xs text-slate-500">명부를 관리할 총회를 선택합니다.</div>
+                </div>
+                <div className="space-y-1.5">
                     {meetingFolders.map((folder) => {
                         const fAdmissionStatus = voteData?.meetingAdmissionStatus?.[folder.id] || 'idle';
                         const fIsHardLocked = fAdmissionStatus === 'closed';
                         const fIsRosterConfirmed = voteData?.rosterConfirmedStatus?.[folder.id] || false;
+                        const fStatusLabel = fIsHardLocked ? '마감' : fIsRosterConfirmed ? '확정' : '편집중';
+                        const fSummary = getRosterSummaryForMeeting(folder.id);
+                        const fIsSelected = isSameMeetingId(selectedMeetingId, folder.id);
                         
                         return (
                             <button
                                 key={folder.id}
                                 type="button"
                                 onClick={() => setSelectedMeetingId(folder.id)}
-                                className={`group flex w-full items-center justify-between gap-2 rounded-xl px-3 py-2.5 text-left text-sm font-semibold transition-all ${
-                                    selectedMeetingId === folder.id
-                                        ? 'bg-blue-600 text-white shadow-sm'
-                                        : 'bg-slate-50 text-slate-700 hover:bg-slate-100'
+                                className={`w-full rounded-xl border px-3 py-3 text-left transition-colors ${
+                                    fIsSelected
+                                        ? 'border-blue-200 bg-blue-50 text-blue-800'
+                                        : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
                                 }`}
                             >
-                                <div className="flex items-center gap-2 overflow-hidden">
-                                    <FolderOpen size={14} className="shrink-0" />
-                                    <span className="truncate">{folder.title}</span>
+                                <div className="flex items-center justify-between gap-2">
+                                    <div className="flex min-w-0 items-center gap-2">
+                                        <FolderOpen size={14} className="shrink-0" />
+                                        <span className="truncate text-sm font-bold">{folder.title}</span>
+                                    </div>
+                                    <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-bold ${
+                                        fIsSelected
+                                            ? fIsHardLocked
+                                                ? 'bg-rose-100 text-rose-700'
+                                                : fIsRosterConfirmed
+                                                    ? 'bg-blue-100 text-blue-700'
+                                                    : 'bg-blue-100 text-blue-700'
+                                            : fIsHardLocked
+                                                ? 'bg-rose-50 text-rose-600'
+                                                : fIsRosterConfirmed
+                                                    ? 'bg-slate-100 text-slate-600'
+                                                    : 'bg-blue-50 text-blue-600'
+                                    }`}>
+                                        {fStatusLabel}
+                                    </span>
                                 </div>
-                                {fIsHardLocked ? (
-                                    <X size={14} className={`shrink-0 ${selectedMeetingId === folder.id ? 'text-white/80' : 'text-rose-500'}`} title="입장 및 명부 마감" />
-                                ) : fIsRosterConfirmed ? (
-                                    <Lock size={14} className={`shrink-0 ${selectedMeetingId === folder.id ? 'text-white/80' : 'text-slate-400'}`} title="명부 확정됨" />
-                                ) : null}
+                                <div className="mt-1.5 flex flex-wrap gap-1.5 text-[11px] font-semibold">
+                                    <span className={`rounded-full px-2 py-0.5 ${fIsSelected ? 'bg-white/70 text-blue-700' : 'bg-slate-50 text-slate-500'}`}>
+                                        총 {fSummary.total}명
+                                    </span>
+                                    <span className={`rounded-full px-2 py-0.5 ${fIsSelected ? 'bg-white/70 text-blue-700' : 'bg-slate-50 text-slate-500'}`}>
+                                        제외 {fSummary.excluded}명
+                                    </span>
+                                </div>
                             </button>
                         );
                     })}
                     {meetingFolders.length === 0 && (
-                        <div className="text-xs text-slate-400 py-2">등록된 총회가 없습니다.</div>
+                        <div className="rounded-xl border border-dashed border-slate-300 px-3 py-6 text-center text-xs text-slate-400">
+                            등록된 총회가 없습니다.
+                        </div>
                     )}
                 </div>
             </Card>
 
             <Card className="p-4 space-y-3">
                 <div>
-                    <div className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">Roster Status</div>
-                    <div className="mt-2 text-2xl font-black text-slate-900">{activeMembers.length}</div>
-                    <div className="text-xs text-slate-500">{selectedMeetingName} 기준 조합원 수</div>
+                    <div className="text-sm font-bold text-slate-900">현재 명부</div>
+                    <div className="text-xs text-slate-500">{selectedMeetingName}</div>
                 </div>
-                <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
-                    <div className="text-[11px] font-semibold text-slate-500">검색 결과</div>
-                    <div className="mt-1 text-lg font-bold text-slate-900">{filteredMembers.length}명</div>
+
+                <div>
+                    <div className="mt-2 text-2xl font-black text-slate-900">{activeMembers.length}명</div>
+                    <div className="mt-1 text-xs text-slate-500">전체 조합원 수</div>
                 </div>
-                <div className="rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-3 text-xs leading-relaxed text-emerald-700">
-                    현재 {excludedCount}명이 이 총회 명부에서 제외되어 있으며{addedAfterCount > 0 ? `, ${addedAfterCount}명은 이후 총회에서 추가된 조합원` : ''}입니다.
-                    제외된 조합원은 해당 총회의 입구안내 목록과 전체 조합원 수 계산에서 빠집니다.
+
+                <div className="grid grid-cols-3 gap-2">
+                    <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5">
+                        <div className="text-[11px] font-semibold text-slate-500">검색</div>
+                        <div className="mt-0.5 text-sm font-black text-slate-900">{filteredMembers.length}명</div>
+                    </div>
+                    <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5">
+                        <div className="text-[11px] font-semibold text-slate-500">제외</div>
+                        <div className="mt-0.5 text-sm font-black text-slate-900">{excludedCount}명</div>
+                    </div>
+                    <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5">
+                        <div className="text-[11px] font-semibold text-slate-500">이후 가입</div>
+                        <div className="mt-0.5 text-sm font-black text-slate-900">{addedAfterCount}명</div>
+                    </div>
+                </div>
+
+                <div className={`rounded-xl border px-3 py-3 text-xs leading-relaxed ${
+                    isHardLocked
+                        ? 'border-rose-100 bg-rose-50 text-rose-700'
+                        : isRosterConfirmed
+                            ? 'border-slate-200 bg-slate-50 text-slate-600'
+                            : 'border-emerald-100 bg-emerald-50 text-emerald-700'
+                }`}>
+                    <div className="flex items-center gap-2 font-bold">
+                        {isHardLocked ? (
+                            <X size={13} />
+                        ) : isRosterConfirmed ? (
+                            <Lock size={13} />
+                        ) : (
+                            <Users size={13} />
+                        )}
+                        {isHardLocked ? '입장 및 명부 마감' : isRosterConfirmed ? '명부 확정됨' : '편집 가능'}
+                    </div>
+                    <div className="mt-1">
+                        {isHardLocked
+                            ? '입장 마감 해제 후 수정할 수 있습니다.'
+                            : isRosterConfirmed
+                                ? '확정 해제 후 추가/수정할 수 있습니다.'
+                                : '변경 사항은 다른 총회에 영향을 주지 않습니다.'}
+                    </div>
                 </div>
             </Card>
         </div>
@@ -313,147 +440,136 @@ export default function AdminMembersPage() {
                 </>
             }
         >
-            <div className="space-y-6">
-                {/* Current meeting context banner */}
-                {selectedMeetingId && selectedMeetingFolder && (
-                    <div className={`flex flex-col items-start gap-1 rounded-2xl border px-5 py-3 text-sm font-semibold transition-colors ${
-                        isHardLocked ? 'border-rose-200 bg-rose-50 text-rose-800' :
-                        isRosterConfirmed ? 'border-slate-300 bg-slate-50 text-slate-800' :
-                        'border-blue-200 bg-blue-50 text-blue-800'
-                    }`}>
-                        <div className="flex w-full items-center justify-between">
+            <div className="pb-24">
+                <div className="sticky top-0 z-30 -mx-4 bg-slate-50 px-4 pt-4 shadow-[0_10px_24px_rgba(15,23,42,0.08)]">
+                    <Card className="overflow-hidden rounded-b-none border-b-0">
+                        {selectedMeetingId && selectedMeetingFolder && (
+                            <div className={`flex flex-wrap items-center justify-between gap-3 border-b px-5 py-3 text-sm transition-colors ${
+                                isHardLocked ? 'border-rose-100 bg-rose-50 text-rose-800' :
+                                isRosterConfirmed ? 'border-slate-200 bg-slate-50 text-slate-800' :
+                                'border-blue-100 bg-blue-50 text-blue-800'
+                            }`}>
+                                <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1">
+                                    <div className="flex min-w-0 items-center gap-2 font-semibold">
+                                        <FolderOpen size={16} className={
+                                            isHardLocked ? 'text-rose-500' :
+                                            isRosterConfirmed ? 'text-slate-500' : 'text-blue-500'
+                                        } />
+                                        <span className="truncate">
+                                            <span className="font-black">[{selectedMeetingName}]</span>
+                                            {isHardLocked ? (
+                                                <>
+                                                    {selectedMeetingFolder?.meeting_date ? (
+                                                        ` ${selectedMeetingFolder.meeting_date.replace(/-/g, '.')} `
+                                                    ) : selectedMeetingFolder?.updated_at ? (
+                                                        ` ${new Date(selectedMeetingFolder.updated_at).toLocaleDateString('ko-KR', { year: 'numeric', month: 'numeric', day: 'numeric' }).replace(/\s/g, '').replace(/\.$/, '')} `
+                                                    ) : ''}
+                                                    종료
+                                                </>
+                                            ) :
+                                            isRosterConfirmed ? ' 명부 확정' :
+                                            ' 명부 편집 중'}
+                                        </span>
+                                    </div>
+
+                                    <span className={`text-xs ${
+                                        isHardLocked ? 'text-rose-600' :
+                                        isRosterConfirmed ? 'text-slate-500' : 'text-blue-600'
+                                    }`}>
+                                        {isHardLocked
+                                            ? '입장 마감 상태에서는 명부를 수정할 수 없습니다.'
+                                            : isRosterConfirmed
+                                                ? '조합원 추가, 수정, 제외/복원이 잠금 처리되었습니다.'
+                                                : '제외/복원 처리는 다른 총회의 명부에 영향을 주지 않습니다.'}
+                                    </span>
+
+                                    {isHardLocked && (
+                                        <span className="flex items-center gap-1 rounded-full border border-rose-200 bg-rose-50 px-2.5 py-0.5 text-xs font-bold text-rose-700" title="입장이 마감된 총회는 명부를 수정할 수 없습니다. 대시보드에서 입장 마감을 해제해야 합니다.">
+                                            <X size={12} />
+                                            입장 및 명부 마감
+                                        </span>
+                                    )}
+                                    {!isHardLocked && isRosterConfirmed && (
+                                        <span className="flex items-center gap-1 rounded-full border border-slate-200 bg-slate-100 px-2.5 py-0.5 text-xs font-bold text-slate-600">
+                                            <Lock size={12} />
+                                            명부 확정됨
+                                        </span>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+
+                        <div className="grid grid-cols-1 items-center gap-3 border-b border-slate-200 px-5 py-3 md:grid-cols-[minmax(180px,1fr)_minmax(180px,1fr)_minmax(180px,1fr)_auto]">
                             <div className="flex items-center gap-2">
-                                <FolderOpen size={16} className={
-                                    isHardLocked ? 'text-rose-500' :
-                                    isRosterConfirmed ? 'text-slate-500' : 'text-blue-500'
-                                } />
-                                <span>
-                                    현재 <span className="font-black">[{selectedMeetingName}]</span>
-                                    {isHardLocked ? (
-                                        <>
-                                            {selectedMeetingFolder?.meeting_date ? (
-                                                ` ${selectedMeetingFolder.meeting_date.replace(/-/g, '.')} `
-                                            ) : selectedMeetingFolder?.updated_at ? (
-                                                ` ${new Date(selectedMeetingFolder.updated_at).toLocaleDateString('ko-KR', { year: 'numeric', month: 'numeric', day: 'numeric' }).replace(/\s/g, '').replace(/\.$/, '')} `
-                                            ) : ''}
-                                            종료되었습니다.
-                                        </>
-                                    ) : 
-                                     isRosterConfirmed ? '의 명부가 확정되었습니다.' : 
-                                     '의 명부를 편집 중입니다.'}
-                                </span>
-                                
-                                {isHardLocked && (
-                                    <span className="ml-2 flex items-center gap-1 rounded-full bg-rose-600 px-2.5 py-0.5 text-xs font-bold text-white shadow-sm" title="입장이 마감된 총회는 명부를 수정할 수 없습니다. 대시보드에서 입장 마감을 해제해야 합니다.">
-                                        <X size={12} />
-                                        입장 및 명부 마감
-                                    </span>
-                                )}
-                                {!isHardLocked && isRosterConfirmed && (
-                                    <span className="ml-2 flex items-center gap-1 rounded-full bg-slate-800 px-2.5 py-0.5 text-xs font-bold text-white shadow-sm">
-                                        <Lock size={12} />
-                                        명부 확정됨
-                                    </span>
-                                )}
+                                <label className="shrink-0 text-xs font-bold uppercase tracking-[0.12em] text-slate-400">동/호수</label>
+                                <input
+                                    value={newMember.unit}
+                                    onChange={(e) => setNewMember((prev) => ({ ...prev, unit: e.target.value }))}
+                                    placeholder="예: 116"
+                                    className="h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 outline-none transition-colors focus:border-blue-500 disabled:bg-slate-50 disabled:text-slate-400"
+                                    disabled={isLocked}
+                                />
                             </div>
-                            
-                            <button 
-                                className={`text-xs font-bold underline underline-offset-2 transition-colors ${
-                                    isHardLocked ? 'text-rose-400 cursor-not-allowed opacity-50' : 
-                                    isRosterConfirmed ? 'text-slate-500 hover:text-slate-800' : 
-                                    'text-blue-600 hover:text-blue-800'
-                                }`}
-                                onClick={handleToggleRosterLock}
-                                title={isHardLocked ? "입장 마감 상태에서는 확정을 해제할 수 없습니다." : ""}
-                                disabled={isHardLocked}
+                            <div className="flex items-center gap-2">
+                                <label className="shrink-0 text-xs font-bold uppercase tracking-[0.12em] text-slate-400">성명</label>
+                                <input
+                                    value={newMember.name}
+                                    onChange={(e) => setNewMember((prev) => ({ ...prev, name: e.target.value }))}
+                                    placeholder="홍길동"
+                                    className="h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 outline-none transition-colors focus:border-blue-500 disabled:bg-slate-50 disabled:text-slate-400"
+                                    disabled={isLocked}
+                                />
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <label className="shrink-0 text-xs font-bold uppercase tracking-[0.12em] text-slate-400">대리인</label>
+                                <input
+                                    value={newMember.proxy}
+                                    onChange={(e) => setNewMember((prev) => ({ ...prev, proxy: e.target.value }))}
+                                    placeholder="선택 입력"
+                                    className="h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 outline-none transition-colors focus:border-blue-500 disabled:bg-slate-50 disabled:text-slate-400"
+                                    disabled={isLocked}
+                                />
+                            </div>
+                            <Button
+                                variant="primary"
+                                className="h-10 min-w-[104px] !bg-blue-600 px-4 text-sm !text-white hover:!bg-blue-700 disabled:!bg-slate-300 disabled:!text-slate-500"
+                                onClick={handleCreateMember}
+                                disabled={isCreating || isLocked}
+                                title={isLocked ? "명부가 확정되어 조합원을 추가할 수 없습니다." : ""}
                             >
-                                {isRosterConfirmed ? '확정 해제하기' : '명부 확정하기'}
-                            </button>
+                                <UserPlus size={16} />
+                                {isCreating ? '추가 중' : '추가'}
+                            </Button>
                         </div>
-                        
-                        <span className={`ml-6 text-xs font-normal ${
-                            isHardLocked ? 'text-rose-600' :
-                            isRosterConfirmed ? 'text-slate-500' : 'text-blue-600'
-                        }`}>
-                            {isHardLocked 
-                                ? '입장이 마감된 총회는 명부를 수정할 수 없습니다. 대시보드에서 입장 마감을 해제해야 합니다.'
-                                : isRosterConfirmed 
-                                    ? '이 총회의 명부가 최종 확정되어 조합원 추가/제외/수정 작업이 잠금 처리되었습니다.' 
-                                    : '여기서 제외/복원 처리를 하더라도 다른 총회의 명부에는 영향을 주지 않습니다.'}
-                        </span>
-                    </div>
-                )}
 
-                <Card className="p-5">
-                    <div className="flex flex-wrap items-end gap-3">
-                        <div className="min-w-[120px] flex-1">
-                            <label className="mb-1 block text-xs font-bold uppercase tracking-[0.14em] text-slate-400">동/호수</label>
-                            <input
-                                value={newMember.unit}
-                                onChange={(e) => setNewMember((prev) => ({ ...prev, unit: e.target.value }))}
-                                placeholder="예: 116"
-                                className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition-colors focus:border-blue-500 disabled:bg-slate-50 disabled:text-slate-400"
-                                disabled={isLocked}
-                            />
-                        </div>
-                        <div className="min-w-[160px] flex-1">
-                            <label className="mb-1 block text-xs font-bold uppercase tracking-[0.14em] text-slate-400">성명</label>
-                            <input
-                                value={newMember.name}
-                                onChange={(e) => setNewMember((prev) => ({ ...prev, name: e.target.value }))}
-                                placeholder="홍길동"
-                                className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition-colors focus:border-blue-500 disabled:bg-slate-50 disabled:text-slate-400"
-                                disabled={isLocked}
-                            />
-                        </div>
-                        <div className="min-w-[160px] flex-1">
-                            <label className="mb-1 block text-xs font-bold uppercase tracking-[0.14em] text-slate-400">대리인</label>
-                            <input
-                                value={newMember.proxy}
-                                onChange={(e) => setNewMember((prev) => ({ ...prev, proxy: e.target.value }))}
-                                placeholder="없으면 비워두기"
-                                className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition-colors focus:border-blue-500 disabled:bg-slate-50 disabled:text-slate-400"
-                                disabled={isLocked}
-                            />
-                        </div>
-                        <Button
-                            variant="primary"
-                            className="h-[46px] min-w-[140px] bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 disabled:text-slate-500"
-                            onClick={handleCreateMember}
-                            disabled={isCreating || isLocked}
-                            title={isLocked ? "명부가 확정되어 조합원을 추가할 수 없습니다." : ""}
-                        >
-                            <UserPlus size={16} />
-                            {isCreating ? '추가 중...' : '조합원 추가'}
-                        </Button>
-                    </div>
-                </Card>
-
-                <Card className="overflow-hidden">
-                    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-5 py-4">
-                        <div>
-                            <div className="text-sm font-bold text-slate-900">조합원 명부</div>
-                            <div className="text-xs text-slate-500">
-                                [{selectedMeetingName}] 기준 총 {activeMembers.length}명이 전체 조합원 수로 계산됩니다.
+                        <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-3">
+                            <div>
+                                <div className="text-sm font-bold text-slate-900">조합원 명부</div>
+                                <div className="text-xs text-slate-500">
+                                    총 {activeMembers.length}명 · 제외 {excludedCount}명 · 검색 결과 {filteredMembers.length}명
+                                </div>
                             </div>
+                            <input
+                                value={searchTerm}
+                                onChange={(e) => setSearchTerm(e.target.value)}
+                                placeholder="번호, 동/호수, 성명, 대리인 검색"
+                                className="h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 outline-none transition-colors focus:border-blue-500 sm:max-w-md"
+                            />
                         </div>
-                        <input
-                            value={searchTerm}
-                            onChange={(e) => setSearchTerm(e.target.value)}
-                            placeholder="번호, 동/호수, 성명, 대리인 검색"
-                            className="w-full max-w-xs rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition-colors focus:border-blue-500"
-                        />
-                    </div>
+                    </Card>
+                </div>
+
+                <Card className="overflow-hidden rounded-t-none border-t-0">
 
                     <div className="overflow-x-auto">
                         <table className="min-w-full text-sm">
                             <thead className="bg-slate-50 text-left text-xs font-bold uppercase tracking-[0.14em] text-slate-500">
                                 <tr>
-                                    <th className="px-5 py-3">ID</th>
-                                    <th className="px-5 py-3">동/호수</th>
-                                    <th className="px-5 py-3">성명</th>
-                                    <th className="px-5 py-3">대리인</th>
-                                    <th className="px-5 py-3 text-right">관리</th>
+                                    <th className="px-5 py-2">ID</th>
+                                    <th className="px-5 py-2">동/호수</th>
+                                    <th className="px-5 py-2">성명</th>
+                                    <th className="px-5 py-2">대리인</th>
+                                    <th className="px-5 py-2 text-right">관리</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -465,24 +581,24 @@ export default function AdminMembersPage() {
 
                                     return (
                                         <tr key={member.id} className={`border-t border-slate-100 ${isAddedAfter ? 'bg-slate-50/80' : isExcluded ? 'bg-amber-50/60' : ''}`}>
-                                            <td className="px-5 py-3 font-mono text-slate-500">{member.id}</td>
-                                            <td className="px-5 py-3">
+                                            <td className="px-5 py-1.5 font-mono text-slate-500">{member.id}</td>
+                                            <td className="px-5 py-1.5">
                                                 {isEditing ? (
                                                     <input
                                                         value={editForm.unit}
                                                         onChange={(e) => setEditForm((prev) => ({ ...prev, unit: e.target.value }))}
-                                                        className="w-full min-w-[100px] rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500"
+                                                        className="w-full min-w-[100px] rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-900 outline-none focus:border-blue-500"
                                                     />
                                                 ) : (
                                                     <span className="font-semibold text-slate-700">{member.unit || '-'}</span>
                                                 )}
                                             </td>
-                                            <td className="px-5 py-3">
+                                            <td className="px-5 py-1.5">
                                                 {isEditing ? (
                                                     <input
                                                         value={editForm.name}
                                                         onChange={(e) => setEditForm((prev) => ({ ...prev, name: e.target.value }))}
-                                                        className="w-full min-w-[140px] rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500"
+                                                        className="w-full min-w-[140px] rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-900 outline-none focus:border-blue-500"
                                                     />
                                                 ) : (
                                                     <div className="flex items-center gap-2">
@@ -500,18 +616,18 @@ export default function AdminMembersPage() {
                                                     </div>
                                                 )}
                                             </td>
-                                            <td className="px-5 py-3">
+                                            <td className="px-5 py-1.5">
                                                 {isEditing ? (
                                                     <input
                                                         value={editForm.proxy}
                                                         onChange={(e) => setEditForm((prev) => ({ ...prev, proxy: e.target.value }))}
-                                                        className="w-full min-w-[160px] rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500"
+                                                        className="w-full min-w-[160px] rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-900 outline-none focus:border-blue-500"
                                                     />
                                                 ) : (
                                                     <span className="text-slate-600">{member.proxy || '-'}</span>
                                                 )}
                                             </td>
-                                            <td className="px-5 py-3">
+                                            <td className="px-5 py-1.5">
                                                 <div className="flex items-center justify-end gap-2">
                                                     {isAddedAfter ? (
                                                         <span className="text-xs text-slate-400">이 총회 이후 가입</span>
@@ -519,7 +635,7 @@ export default function AdminMembersPage() {
                                                         <>
                                                             <Button
                                                                 variant="primary"
-                                                                className="h-9 px-3 text-xs bg-emerald-600 hover:bg-emerald-700"
+                                                                className="h-8 px-2.5 text-xs !bg-emerald-600 !text-white hover:!bg-emerald-700"
                                                                 onClick={handleSaveEdit}
                                                                 disabled={isPending}
                                                             >
@@ -528,7 +644,7 @@ export default function AdminMembersPage() {
                                                             </Button>
                                                             <Button
                                                                 variant="ghost"
-                                                                className="h-9 px-3 text-xs"
+                                                                className="h-8 px-2.5 text-xs"
                                                                 onClick={resetEdit}
                                                                 disabled={isPending}
                                                             >
@@ -540,7 +656,7 @@ export default function AdminMembersPage() {
                                                         <>
                                                             <Button
                                                                 variant="secondary"
-                                                                className="h-9 px-3 text-xs disabled:opacity-50"
+                                                                className="h-8 px-2.5 text-xs disabled:opacity-50"
                                                                 onClick={() => startEdit(member)}
                                                                 disabled={isLocked}
                                                                 title={isLocked ? "명부 확정 상태에서는 수정할 수 없습니다." : ""}
@@ -550,7 +666,7 @@ export default function AdminMembersPage() {
                                                             </Button>
                                                             <Button
                                                                 variant={isExcluded ? 'secondary' : 'danger'}
-                                                                className="h-9 px-3 text-xs disabled:opacity-50"
+                                                                className="h-8 px-2.5 text-xs disabled:opacity-50"
                                                                 onClick={() => handleToggleMemberActive(member)}
                                                                 disabled={isPending || isLocked}
                                                                 title={isLocked ? "명부 확정 상태에서는 제외/복원할 수 없습니다." : ""}
@@ -576,10 +692,44 @@ export default function AdminMembersPage() {
                     )}
                 </Card>
 
-                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-5 py-4 text-xs leading-relaxed text-slate-500">
-                    조합원 명부를 추가하거나 제외/복원하면 해당 총회의 입구안내요원 화면 전체 조합원 수와 성원 계산 기준이 즉시 바뀝니다.
-                    제외는 DB 레코드를 지우지 않고 운영 기준에서만 빼므로, 과거 출석 기록이 있는 조합원도 안전하게 인원 수에서 제외할 수 있습니다.
-                    각 총회마다 독립적으로 제외/복원 관리가 가능하며, 다른 총회의 명부에는 영향을 주지 않습니다.
+                <div className="fixed bottom-0 left-[var(--votecast-sidebar-width)] right-0 z-40 border-t border-slate-200 bg-slate-50/95 px-4 py-3 shadow-[0_-10px_24px_rgba(15,23,42,0.08)] backdrop-blur transition-[left] duration-300 ease-in-out">
+                    <div className="mx-auto flex max-w-[1280px] flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+                        <div className="min-w-0">
+                            <div className="flex flex-wrap items-center gap-2">
+                                <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${
+                                    isHardLocked
+                                        ? 'bg-rose-50 text-rose-600'
+                                        : isRosterConfirmed
+                                            ? 'bg-slate-100 text-slate-600'
+                                            : 'bg-blue-50 text-blue-600'
+                                }`}>
+                                    {isHardLocked ? '마감' : isRosterConfirmed ? '확정' : '편집중'}
+                                </span>
+                                <span className="truncate text-sm font-bold text-slate-900">{selectedMeetingName}</span>
+                                <span className="text-xs text-slate-500">
+                                    총 {activeMembers.length}명 · 검색 {filteredMembers.length}명 · 제외 {excludedCount}명 · 이후 가입 {addedAfterCount}명
+                                </span>
+                            </div>
+                            <div className="mt-1 text-xs text-slate-500">
+                                변경 사항은 이 총회에만 적용됩니다. 제외는 DB 삭제가 아닙니다.
+                            </div>
+                        </div>
+
+                        <Button
+                            variant={isRosterConfirmed ? 'secondary' : 'primary'}
+                            className={`h-10 min-w-[116px] px-4 text-sm ${
+                                isHardLocked
+                                    ? 'disabled:!bg-slate-200 disabled:!text-slate-500'
+                                    : isRosterConfirmed
+                                        ? ''
+                                        : '!bg-blue-600 !text-white hover:!bg-blue-700'
+                            }`}
+                            onClick={handleToggleRosterLock}
+                            disabled={!selectedMeetingId || isHardLocked}
+                        >
+                            {isHardLocked ? '입장 마감됨' : isRosterConfirmed ? '확정 해제' : '명부 확정'}
+                        </Button>
+                    </div>
                 </div>
             </div>
         </DashboardLayout>

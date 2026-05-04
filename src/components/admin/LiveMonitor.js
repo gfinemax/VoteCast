@@ -37,7 +37,7 @@ const getAgendaPresentation = (agenda, agendas, pageOverride) => {
 
 export default function LiveMonitor({ mode = 'admin' }) {
     const { state, actions } = useStore();
-    const { projectorMode, agendas, currentAgendaId, voteData, attendance, members, projectorConnectedCount, mailElectionVotes } = state;
+    const { projectorMode, agendas, currentAgendaId, voteData, projectorData, attendance, members, projectorConnectedCount, mailElectionVotes } = state;
     
     const currentAgenda = useMemo(() => agendas.find(a => a.id === currentAgendaId), [agendas, currentAgendaId]);
 
@@ -193,6 +193,32 @@ export default function LiveMonitor({ mode = 'admin' }) {
     const quorumLinePosition = isSpecialVote ? '66.66%' : '50%';
     const isPptOnAir = projectorMode === 'PPT' || projectorMode === 'IDLE';
     const centerScreenBorder = isPptOnAir ? 'border-emerald-500' : 'border-slate-800';
+    const resultAgendaId = voteData?.resultAgendaId || projectorData?.agendaId || null;
+    const resultAgenda = useMemo(
+        () => agendas.find((agenda) => String(agenda.id) === String(resultAgendaId)) || currentAgenda,
+        [agendas, currentAgenda, resultAgendaId]
+    );
+    const resultPreviewTitle = projectorMode === 'RESULT'
+        ? (projectorData?.agendaTitle || resultAgenda?.title || currentAgenda?.title)
+        : currentAgenda?.title;
+    const resultPreviewDeclaration = projectorMode === 'RESULT'
+        ? (projectorData?.declaration || voteData?.resultDeclaration || resultAgenda?.declaration || '')
+        : (currentAgenda?.declaration || '');
+    const resultPreviewVotesYes = projectorMode === 'RESULT'
+        ? (projectorData?.votesYes ?? voteData?.resultVotesYes ?? votesYes)
+        : votesYes;
+    const resultPreviewVotesNo = projectorMode === 'RESULT'
+        ? (projectorData?.votesNo ?? voteData?.resultVotesNo ?? votesNo)
+        : votesNo;
+    const resultPreviewVotesAbstain = projectorMode === 'RESULT'
+        ? (projectorData?.votesAbstain ?? voteData?.resultVotesAbstain ?? votesAbstain)
+        : votesAbstain;
+    const resultPreviewTotalAttendance = projectorMode === 'RESULT'
+        ? (projectorData?.totalAttendance ?? voteData?.resultTotalAttendance ?? totalAttendance)
+        : totalAttendance;
+    const resultPreviewIsPassed = projectorMode === 'RESULT'
+        ? (projectorData?.isPassed ?? voteData?.resultIsPassed ?? isPassed)
+        : isPassed;
     return (
         <div className="bg-slate-900 rounded-xl overflow-hidden shadow-2xl border-4 border-slate-800">
             {/* Header Status Bar */}
@@ -240,7 +266,7 @@ export default function LiveMonitor({ mode = 'admin' }) {
                                         {projectorMode === 'ADJUSTING' ? '잠시 대기' : '투표 결과 보고'}
                                     </div>
                                     <h1 className="text-[11px] font-black text-slate-900 leading-tight text-center line-clamp-2 w-full px-1 break-keep">
-                                        {projectorMode === 'ADJUSTING' ? '결과 데이터 정정 중...' : currentAgenda?.title}
+                                        {projectorMode === 'ADJUSTING' ? '결과 데이터 정정 중...' : resultPreviewTitle}
                                     </h1>
                                 </div>
 
@@ -248,9 +274,9 @@ export default function LiveMonitor({ mode = 'admin' }) {
                                 <div className="w-full flex-grow flex items-center justify-center px-1 py-1">
                                     <div className="w-full h-full bg-white border border-slate-800 p-1 rounded shadow-sm flex flex-col items-center justify-center text-center relative overflow-hidden">
                                         <div className="absolute top-0 left-0 w-full h-[2px] bg-slate-100"></div>
-                                        {currentAgenda?.declaration ? (
+                                        {resultPreviewDeclaration ? (
                                             <div className="text-[5px] font-sans leading-relaxed text-slate-800 font-medium break-keep whitespace-pre-wrap">
-                                                {currentAgenda.declaration.split(/(가결|부결)/g).map((part, i) => {
+                                                {resultPreviewDeclaration.split(/(가결|부결)/g).map((part, i) => {
                                                     if (part === '가결') return <span key={i} className="inline-block bg-emerald-600 text-white px-1 py-0.5 rounded mx-0.5 font-bold align-middle text-[6px]">가결</span>;
                                                     if (part === '부결') return <span key={i} className="inline-block bg-red-600 text-white px-1 py-0.5 rounded mx-0.5 font-bold align-middle text-[6px]">부결</span>;
                                                     return part;
@@ -258,9 +284,9 @@ export default function LiveMonitor({ mode = 'admin' }) {
                                             </div>
                                         ) : (
                                             <div className="text-[5px] font-serif leading-relaxed text-slate-800">
-                                                &quot;<span className="font-bold underline decoration-slate-300 underline-offset-2 decoration-2">{currentAgenda?.title}</span>&quot;...
-                                                <div className={`mt-1 px-2 py-0.5 rounded text-white font-bold inline-block text-[6px] ${isPassed ? 'bg-emerald-600' : 'bg-red-600'}`}>
-                                                    {isPassed ? '가 결' : '부 결'}
+                                                &quot;<span className="font-bold underline decoration-slate-300 underline-offset-2 decoration-2">{resultPreviewTitle}</span>&quot;...
+                                                <div className={`mt-1 px-2 py-0.5 rounded text-white font-bold inline-block text-[6px] ${resultPreviewIsPassed ? 'bg-emerald-600' : 'bg-red-600'}`}>
+                                                    {resultPreviewIsPassed ? '가 결' : '부 결'}
                                                 </div>
                                             </div>
                                         )}
@@ -271,19 +297,19 @@ export default function LiveMonitor({ mode = 'admin' }) {
                                 <div className="grid grid-cols-4 gap-1 w-full mb-0.5">
                                     <div className="flex flex-col items-center bg-blue-50 rounded p-0.5 border border-blue-100">
                                         <div className="text-[6px] font-bold text-blue-600">찬</div>
-                                        <div className="text-[8px] font-black font-mono text-blue-700 tracking-tight">{votesYes}</div>
+                                        <div className="text-[8px] font-black font-mono text-blue-700 tracking-tight">{resultPreviewVotesYes}</div>
                                     </div>
                                     <div className="flex flex-col items-center bg-red-50 rounded p-0.5 border border-red-50">
                                         <div className="text-[6px] font-bold text-red-700">반</div>
-                                        <div className="text-[8px] font-black font-mono text-red-800 tracking-tight">{votesNo}</div>
+                                        <div className="text-[8px] font-black font-mono text-red-800 tracking-tight">{resultPreviewVotesNo}</div>
                                     </div>
                                     <div className="flex flex-col items-center bg-slate-100 rounded p-0.5 border border-slate-200">
                                         <div className="text-[6px] font-bold text-slate-600">무</div>
-                                        <div className="text-[8px] font-black font-mono text-slate-700 tracking-tight">{votesAbstain}</div>
+                                        <div className="text-[8px] font-black font-mono text-slate-700 tracking-tight">{resultPreviewVotesAbstain}</div>
                                     </div>
                                     <div className="flex flex-col items-center bg-slate-50 rounded p-0.5 border border-slate-100">
                                         <div className="text-[6px] font-bold text-slate-500">총</div>
-                                        <div className="text-[8px] font-black font-mono text-slate-800 tracking-tight">{totalAttendance}</div>
+                                        <div className="text-[8px] font-black font-mono text-slate-800 tracking-tight">{resultPreviewTotalAttendance}</div>
                                     </div>
                                 </div>
                             </div>
@@ -350,6 +376,8 @@ export default function LiveMonitor({ mode = 'admin' }) {
                                 <div className="text-[6px] text-slate-600 mt-1">No PPT URL Linked</div>
                             </div>
                         )}
+                        <div className="absolute top-1 left-1 px-1 py-0.5 bg-black/60 text-[8px] text-slate-300 font-mono rounded z-30">SCREEN 2</div>
+                        {isPptOnAir && <div className="absolute top-1 right-1 px-1.5 py-0.5 bg-emerald-600/90 text-white text-[8px] font-bold rounded z-30">ON AIR</div>}
                     </div>
                     {/* Button */}
                     <button

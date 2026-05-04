@@ -127,6 +127,7 @@ export default function VoteControl() {
         votesAbstain,
         projectorMode,
         projectorData,
+        resultAgendaId: voteData?.resultAgendaId,
         updateAgenda,
         updateProjectorData,
         setDeclarationEditMode

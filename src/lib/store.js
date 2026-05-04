@@ -476,20 +476,7 @@ export function StoreProvider({ children }) {
 
 
         const currentProjectorMode = stateRef.current.projectorMode;
-        const isPassedForProjector = isQuorumSatisfied && calculateAgendaPass(votesYes, total, newType === 'twoThirds');
-        const nextProjectorData = currentProjectorMode === 'RESULT'
-            ? {
-                ...(stateRef.current.projectorData || {}),
-                agendaId: targetAgenda.id,
-                agendaTitle: targetAgenda.title,
-                declaration: defaultDecl,
-                votesYes,
-                votesNo,
-                votesAbstain,
-                totalAttendance: total,
-                isPassed: isPassedForProjector
-            }
-            : stateRef.current.projectorData;
+        const nextProjectorData = stateRef.current.projectorData;
 
         const nextVoteDataPatch = {
             ...vData,
@@ -497,18 +484,6 @@ export function StoreProvider({ children }) {
             customDeclaration: defaultDecl,
             presentationPage: targetAgenda.start_page || 1
         };
-
-        if (currentProjectorMode === 'RESULT') {
-            Object.assign(nextVoteDataPatch, {
-                resultAgendaId: targetAgenda.id,
-                resultDeclaration: defaultDecl,
-                resultVotesYes: votesYes,
-                resultVotesNo: votesNo,
-                resultVotesAbstain: votesAbstain,
-                resultTotalAttendance: total,
-                resultIsPassed: isPassedForProjector
-            });
-        }
 
         const newVoteData = createStampedVoteData(nextVoteDataPatch);
 
@@ -1246,13 +1221,22 @@ export function StoreProvider({ children }) {
                 resultIsPassed: data?.isPassed ?? currentVoteData.resultIsPassed ?? false
             });
 
+            stateRef.current = {
+                ...stateRef.current,
+                projectorData: data,
+                voteData: nextVoteData
+            };
+
             setState(prev => ({
                 ...prev,
                 projectorData: data,
                 voteData: nextVoteData
             }));
 
-            const { error } = await updateSystemSettings({ vote_data: nextVoteData });
+            const { error } = await updateSystemSettings({
+                projector_data: data,
+                vote_data: nextVoteData
+            });
 
             if (error) {
                 console.error('Update Projector Data Error:', error);

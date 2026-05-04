@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import {
     AlertTriangle,
@@ -11,6 +11,7 @@ import {
     ClipboardCheck,
     FileText,
     PenLine,
+    Plus,
     Printer,
     RotateCcw,
     Save,
@@ -18,6 +19,7 @@ import {
     ShieldCheck,
     Table2,
     Ticket,
+    Trash2,
     Users
 } from 'lucide-react';
 import DashboardLayout from '@/components/admin/DashboardLayout';
@@ -27,6 +29,7 @@ import Card from '@/components/ui/Card';
 import FullscreenToggle from '@/components/ui/FullscreenToggle';
 import { supabase } from '@/lib/supabase';
 import { useStore, getInactiveMemberIds } from '@/lib/store';
+import { normalizeAgendaType } from '@/lib/voteCalculations';
 import {
     ATTENDANCE_TYPE_LABELS,
     CONFIRMATION_SOURCE_LABELS,
@@ -43,17 +46,79 @@ import {
 } from '@/lib/electionRules';
 
 const EMPTY_INACTIVE_MEMBER_IDS = [];
+const SELECTED_TALLY_MEETING_KEY = 'votecast_tally_selected_meeting_id';
+const ACTIVE_TALLY_TAB_KEY = 'votecast_tally_active_tab';
+const TALLY_DRAFTS_KEY = 'votecast_tally_drafts';
 const DEFAULT_COMMITTEE_MEMBERS = [
     { role: '선거관리위원장', name: '한재호' },
     { role: '선거관리위원', name: '전경분' },
     { role: '선거관리위원', name: '최인순' }
 ];
+
+const normalizeCommitteeMembers = (members = []) => {
+    const sourceMembers = Array.isArray(members) ? members : [];
+    const memberCount = Math.max(DEFAULT_COMMITTEE_MEMBERS.length, sourceMembers.length);
+
+    return Array.from({ length: memberCount }, (_, index) => {
+        const defaultMember = DEFAULT_COMMITTEE_MEMBERS[index] || { role: '선거관리위원', name: '' };
+        return {
+            role: sourceMembers[index]?.role || defaultMember.role,
+            name: sourceMembers[index]?.name ?? defaultMember.name
+        };
+    });
+};
 const TAB_ITEMS = [
     { id: 'summary', label: '집계 현황', icon: ClipboardCheck },
     { id: 'matrix', label: '조합원별 검산표', icon: Table2 },
     { id: 'manual', label: '수기 보정/확정', icon: PenLine },
     { id: 'certificate', label: '선관위 확인서', icon: FileText }
 ];
+
+const getMeetingIdKey = (id) => (id == null ? '' : String(id));
+
+const isSameMeetingId = (left, right) => (
+    getMeetingIdKey(left) !== '' && getMeetingIdKey(left) === getMeetingIdKey(right)
+);
+
+const isValidTallyTab = (tabId) => TAB_ITEMS.some((tab) => tab.id === tabId);
+
+const readTallyDrafts = () => {
+    if (typeof window === 'undefined') return {};
+    try {
+        return JSON.parse(window.localStorage.getItem(TALLY_DRAFTS_KEY) || '{}');
+    } catch (error) {
+        console.error('Failed to read tally drafts:', error);
+        return {};
+    }
+};
+
+const readLocalStorageValue = (key) => {
+    if (typeof window === 'undefined') return null;
+    try {
+        return window.localStorage.getItem(key);
+    } catch (error) {
+        console.error(`Failed to read localStorage key ${key}:`, error);
+        return null;
+    }
+};
+
+const writeLocalStorageValue = (key, value) => {
+    if (typeof window === 'undefined') return;
+    try {
+        window.localStorage.setItem(key, value);
+    } catch (error) {
+        console.error(`Failed to save localStorage key ${key}:`, error);
+    }
+};
+
+const writeTallyDrafts = (drafts) => {
+    if (typeof window === 'undefined') return;
+    try {
+        window.localStorage.setItem(TALLY_DRAFTS_KEY, JSON.stringify(drafts));
+    } catch (error) {
+        console.error('Failed to save tally drafts:', error);
+    }
+};
 
 const numberFormatter = new Intl.NumberFormat('ko-KR');
 const formatNumber = (value) => numberFormatter.format(Number(value) || 0);
@@ -121,38 +186,53 @@ function NumberInput({ value, onChange }) {
     );
 }
 
-function SidebarContent({ groups, selectedMeetingId, setSelectedMeetingId, audit, confirmation }) {
-    return (
-        <div className="p-4 space-y-4">
-            <Card className="p-4">
-                <div className="flex items-start gap-3">
-                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-700">
-                        <ShieldCheck size={21} />
-                    </div>
-                    <div>
-                        <div className="text-sm font-bold text-slate-900">검산 및 확인서</div>
-                        <div className="mt-1 text-xs leading-relaxed text-slate-500">
-                            자동 집계를 검토하고 필요 시 수기 확정 후 선관위 확인서를 출력합니다.
-                        </div>
-                    </div>
-                </div>
-            </Card>
+function SidebarContent({ groups, selectedMeetingId, setSelectedMeetingId, audit, confirmation, isMounted }) {
+    const meetingGroups = groups.filter((group) => group.folder);
 
-            <Card className="p-4 space-y-3">
-                <div className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">Meeting</div>
-                <div className="space-y-2">
-                    {groups.filter((group) => group.folder).map((group) => (
-                        <button
-                            key={group.folder.id}
-                            type="button"
-                            onClick={() => setSelectedMeetingId(group.folder.id)}
-                            className={`w-full rounded-xl border px-3 py-3 text-left transition-colors ${selectedMeetingId === group.folder.id ? 'border-blue-200 bg-blue-50 text-blue-800' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'}`}
-                        >
-                            <div className="text-sm font-bold">{group.folder.title}</div>
-                            <div className="mt-1 text-xs text-slate-500">{group.items.length}개 안건</div>
-                        </button>
-                    ))}
-                    {groups.filter((group) => group.folder).length === 0 && (
+    return (
+        <div className="space-y-3 p-4">
+            <Card className="space-y-3 p-4">
+                <div>
+                    <div className="text-sm font-bold text-slate-900">총회 선택</div>
+                    <div className="text-xs text-slate-500">검산할 총회와 안건 구성을 확인합니다.</div>
+                </div>
+                <div className="space-y-1.5">
+                    {meetingGroups.map((group) => {
+                        const standardCount = group.items.filter((item) => normalizeAgendaType(item?.type) !== 'election').length;
+                        const electionCount = group.items.filter((item) => normalizeAgendaType(item?.type) === 'election').length;
+                        const isSelected = isSameMeetingId(selectedMeetingId, group.folder.id);
+
+                        return (
+                            <button
+                                key={group.folder.id}
+                                type="button"
+                                onClick={() => setSelectedMeetingId(group.folder.id)}
+                                className={`w-full rounded-xl border px-3 py-3 text-left transition-colors ${
+                                    isSelected
+                                        ? 'border-blue-200 bg-blue-50 text-blue-800'
+                                        : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+                                }`}
+                            >
+                                <div className="flex items-center justify-between gap-2">
+                                    <div className="truncate text-sm font-bold">{group.folder.title}</div>
+                                    <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-bold ${
+                                        isSelected ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-500'
+                                    }`}>
+                                        총 {group.items.length}건
+                                    </span>
+                                </div>
+                                <div className="mt-1.5 flex flex-wrap gap-1.5 text-[11px] font-semibold">
+                                    <span className={`rounded-full px-2 py-0.5 ${isSelected ? 'bg-white/70 text-blue-700' : 'bg-slate-50 text-slate-500'}`}>
+                                        일반 안건 {standardCount}
+                                    </span>
+                                    <span className={`rounded-full px-2 py-0.5 ${isSelected ? 'bg-indigo-100 text-indigo-700' : 'bg-indigo-50 text-indigo-600'}`}>
+                                        선거 {electionCount}
+                                    </span>
+                                </div>
+                            </button>
+                        );
+                    })}
+                    {meetingGroups.length === 0 && (
                         <div className="rounded-xl border border-dashed border-slate-300 px-3 py-6 text-center text-xs text-slate-400">
                             등록된 총회 폴더가 없습니다.
                         </div>
@@ -160,17 +240,19 @@ function SidebarContent({ groups, selectedMeetingId, setSelectedMeetingId, audit
                 </div>
             </Card>
 
-            <Card className="p-4 space-y-3">
+            <Card className="space-y-3 p-4">
                 <div>
-                    <div className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">Audit Status</div>
-                    <div className="mt-2 text-2xl font-black text-slate-900">{formatNumber(audit.activeMembers.length)}</div>
+                    <div className="text-sm font-bold text-slate-900">검산 상태</div>
+                    <div className="mt-2 text-2xl font-black text-slate-900">{isMounted ? formatNumber(audit.activeMembers.length) : '-'}</div>
                     <div className="text-xs text-slate-500">검산 대상 조합원</div>
                 </div>
-                <div className={`rounded-xl border px-3 py-3 text-xs font-bold ${getStatusClass(audit.hasIssues)}`}>
-                    {audit.hasIssues ? `확인 필요 ${audit.issueList.length}건` : '현재 감지된 문제 없음'}
+                <div className={`rounded-xl border px-3 py-2.5 text-xs font-bold ${isMounted ? getStatusClass(audit.hasIssues) : 'border-slate-200 bg-slate-50 text-slate-500'}`}>
+                    {isMounted
+                        ? (audit.hasIssues ? `확인 필요 ${audit.issueList.length}건` : '현재 감지된 문제 없음')
+                        : '검산 상태 확인 중'}
                 </div>
-                <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-xs leading-relaxed text-slate-500">
-                    최종 확정: {confirmation?.confirmedAt ? formatKoreanDate(confirmation.confirmedAt) : '아직 없음'}
+                <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs leading-relaxed text-slate-500">
+                    최종 확정: {isMounted && confirmation?.confirmedAt ? formatKoreanDate(confirmation.confirmedAt) : '아직 없음'}
                 </div>
             </Card>
         </div>
@@ -799,6 +881,9 @@ function ManualTab({
     const standardResults = finalResults.filter((r) => !r.isElection);
     const electionResults = finalResults.filter((r) => r.isElection);
     const hasElection = electionResults.length > 0;
+    const handleRestoreAutoValues = () => {
+        setManualResults(buildManualResultsFromAgendaResults(finalResults));
+    };
 
     const renderTable = (results, isElection) => (
         <div className="overflow-x-auto">
@@ -863,7 +948,22 @@ function ManualTab({
     return (
         <div className="space-y-4">
             <Card className="p-5">
-                <div className="text-sm font-bold text-slate-900">집계 방식 선택</div>
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                        <div className="text-sm font-bold text-slate-900">집계 방식 선택</div>
+                        <div className="mt-1 text-xs text-slate-500">수기 입력값은 이 탭의 최종 확정표에만 적용됩니다.</div>
+                    </div>
+                    <Button
+                        variant="secondary"
+                        className="h-8 px-3 text-xs"
+                        onClick={handleRestoreAutoValues}
+                        disabled={sourceType !== 'manual'}
+                        title={sourceType !== 'manual' ? '수기 확정 모드에서 사용할 수 있습니다.' : '현재 자동 집계값으로 수기 입력값을 복원합니다.'}
+                    >
+                        <RotateCcw size={14} />
+                        자동 집계로 복원
+                    </Button>
+                </div>
                 <div className="mt-4 grid gap-3 lg:grid-cols-3">
                     {Object.entries(CONFIRMATION_SOURCE_LABELS).map(([value, label]) => (
                         <button
@@ -949,89 +1049,155 @@ function CertificatePreview({
         )));
     };
 
+    const addCommitteeMember = () => {
+        setCommitteeMembers((prev) => [
+            ...prev,
+            { role: '선거관리위원', name: '' }
+        ]);
+    };
+
+    const removeCommitteeMember = (index) => {
+        if (index === 0) return;
+        setCommitteeMembers((prev) => prev.filter((_, currentIndex) => currentIndex !== index));
+    };
+
     const standardResults = finalResults.filter((r) => !r.isElection);
     const electionResults = finalResults.filter((r) => r.isElection);
     const hasElection = electionResults.length > 0;
+    const electionMailMemberIds = new Set();
+    audit.memberRows?.forEach((row) => {
+        if (row.electionVotes?.some((vote) => !!vote.choice)) {
+            electionMailMemberIds.add(row.member.id);
+        }
+    });
+    const electionMailCount = electionMailMemberIds.size;
+    const electionOnsiteCount = Math.max((audit.meetingStats.election || 0) - electionMailCount, 0);
 
     return (
         <div className="space-y-4">
             <Card className="no-print overflow-hidden border-none shadow-xl ring-1 ring-slate-200/60 bg-white">
-                <div className="flex flex-col lg:flex-row">
-                    {/* Left Section: Information Input */}
-                    <div className="flex-grow p-7 bg-slate-50/30">
-                        <div className="flex items-center gap-2 mb-6">
-                            <div className="w-1.5 h-4 bg-blue-600 rounded-full"></div>
-                            <h3 className="text-sm font-black text-slate-800">확인서 정보 설정</h3>
-                        </div>
-                        
-                        <div className="grid gap-x-6 gap-y-5 md:grid-cols-2">
-                            {[
-                                { label: '총회 명칭', key: 'title', placeholder: '총회 이름을 입력하세요' },
-                                { label: '개최 일시', key: 'heldAt', placeholder: '202X년 X월 X일' },
-                                { label: '개최 장소', key: 'location', placeholder: '장소를 입력하세요' },
-                                { label: '작성 일자', key: 'certificateDate', placeholder: '문서 작성일을 입력하세요' }
-                            ].map((field) => (
-                                <div key={field.key} className="space-y-1.5">
-                                    <label className="text-[11px] font-bold text-slate-400 ml-1">{field.label}</label>
-                                    <input
-                                        value={meetingDetails[field.key]}
-                                        onChange={(event) => setMeetingDetails((prev) => ({ ...prev, [field.key]: event.target.value }))}
-                                        className="w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/5 transition-all shadow-sm placeholder:text-slate-300"
-                                        placeholder={field.placeholder}
-                                    />
+                <div className="grid lg:grid-cols-[1fr_300px]">
+                    <div className="space-y-4 bg-slate-50/30 p-4">
+                        <section>
+                            <div className="mb-3 flex items-center gap-2">
+                                <div className="h-3.5 w-1.5 rounded-full bg-blue-600"></div>
+                                <h3 className="text-sm font-black text-slate-800">확인서 정보</h3>
+                            </div>
+
+                            <div className="grid gap-x-4 gap-y-2.5 md:grid-cols-2">
+                                {[
+                                    { label: '총회 명칭', key: 'title', placeholder: '총회 이름을 입력하세요' },
+                                    { label: '개최 일시', key: 'heldAt', placeholder: '202X년 X월 X일' },
+                                    { label: '개최 장소', key: 'location', placeholder: '장소를 입력하세요' },
+                                    { label: '작성 일자', key: 'certificateDate', placeholder: '문서 작성일을 입력하세요' }
+                                ].map((field) => (
+                                    <div key={field.key} className="space-y-1">
+                                        <label className="ml-1 text-[11px] font-bold text-slate-400">{field.label}</label>
+                                        <input
+                                            value={meetingDetails[field.key]}
+                                            onChange={(event) => setMeetingDetails((prev) => ({ ...prev, [field.key]: event.target.value }))}
+                                            className="h-9 w-full rounded-md border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 shadow-sm outline-none transition-all placeholder:text-slate-300 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/5"
+                                            placeholder={field.placeholder}
+                                        />
+                                    </div>
+                                ))}
+                            </div>
+                        </section>
+
+                        <section className="border-t border-slate-200 pt-3">
+                            <div className="mb-2.5 flex flex-wrap items-center justify-between gap-2">
+                                <div className="flex items-center gap-2">
+                                    <div className="h-3 w-1.5 rounded-full bg-slate-400"></div>
+                                    <h4 className="text-sm font-black text-slate-800">선거관리위원</h4>
                                 </div>
-                            ))}
-                        </div>
+                                <Button
+                                    variant="secondary"
+                                    className="h-7 rounded-md px-2.5 text-xs"
+                                    onClick={addCommitteeMember}
+                                >
+                                    <Plus size={14} />
+                                    선관위원 추가
+                                </Button>
+                            </div>
+
+                            <div className="grid gap-x-3 gap-y-2.5 md:grid-cols-3">
+                                {committeeMembers.map((member, index) => (
+                                    <div key={`${member.role}-input-${index}`} className="space-y-1">
+                                        <label className="ml-1 text-[11px] font-bold text-slate-400">
+                                            {index === 0 ? '위원장' : `위원 ${index}`}
+                                        </label>
+                                        <div className="flex gap-1.5">
+                                            <input
+                                                value={member.name}
+                                                onChange={(event) => updateCommitteeMember(index, 'name', event.target.value)}
+                                                className="h-9 min-w-0 flex-1 rounded-md border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 shadow-sm outline-none transition-all placeholder:text-slate-300 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/5"
+                                                placeholder={index === 0 ? '위원장 성명' : '위원 성명'}
+                                            />
+                                            {index > 0 && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => removeCommitteeMember(index)}
+                                                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-400 transition-colors hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600"
+                                                    title="선관위원 삭제"
+                                                >
+                                                    <Trash2 size={15} />
+                                                </button>
+                                            )}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </section>
                     </div>
 
-                    {/* Right Section: Seal & Print Action */}
-                    <div className="w-full lg:w-[340px] p-7 bg-white border-l border-slate-100 flex flex-col justify-between">
-                        <div className="space-y-6">
-                            <div className="flex items-center gap-2 mb-4">
-                                <div className="w-1.5 h-4 bg-indigo-600 rounded-full"></div>
-                                <h3 className="text-sm font-black text-slate-800">직인 및 출력</h3>
+                    <aside className="flex flex-col justify-between border-l border-slate-100 bg-white p-4">
+                        <div className="space-y-3">
+                            <div className="flex items-center gap-2">
+                                <div className="h-3.5 w-1.5 rounded-full bg-indigo-600"></div>
+                                <h3 className="text-sm font-black text-slate-800">작업</h3>
                             </div>
-                            
-                            <div className="flex items-center gap-5 p-4 rounded-2xl bg-slate-50 border border-slate-100">
-                                <div className="relative shrink-0">
-                                    {sealImage ? (
-                                        <div className="relative group w-20 h-20 bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex items-center justify-center p-1.5">
-                                            <img src={sealImage} alt="직인" className="max-w-full max-h-full object-contain" />
-                                            <button 
-                                                onClick={() => setSealImage(null)}
-                                                className="absolute inset-0 flex items-center justify-center bg-slate-900/80 text-white opacity-0 group-hover:opacity-100 transition-all text-[10px] font-bold backdrop-blur-[2px]"
-                                            >
-                                                이미지 삭제
-                                            </button>
-                                        </div>
-                                    ) : (
-                                        <label className="flex h-20 w-20 cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-slate-300 bg-white hover:bg-slate-50 hover:border-blue-400 transition-all group">
-                                            <RotateCcw size={20} className="text-slate-400 group-hover:text-blue-500 transition-colors" />
-                                            <span className="mt-2 text-[10px] font-black text-slate-500 leading-tight">직인 업로드</span>
-                                            <input type="file" className="hidden" accept="image/*" onChange={(e) => {
-                                                const file = e.target.files[0];
-                                                if (file) {
-                                                    const reader = new FileReader();
-                                                    reader.onloadend = () => setSealImage(reader.result);
-                                                    reader.readAsDataURL(file);
-                                                }
-                                            }} />
-                                        </label>
-                                    )}
-                                </div>
-                                <div className="space-y-1">
-                                    <div className="text-[12px] font-black text-slate-800 leading-tight">투명 배경 직인</div>
-                                    <div className="text-[10px] font-medium text-slate-500 leading-relaxed">
-                                        위원회 명단 옆에<br/>표시될 도장 이미지
+
+                            <div className="rounded-lg border border-slate-100 bg-slate-50 p-2.5">
+                                <div className="mb-2 text-[12px] font-black text-slate-800">직인 미리보기</div>
+                                <div className="flex items-center gap-2.5">
+                                    <div className="relative shrink-0">
+                                        {sealImage ? (
+                                            <div className="group relative flex h-16 w-16 items-center justify-center overflow-hidden rounded-md border border-slate-200 bg-white p-1 shadow-sm">
+                                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                                <img src={sealImage} alt="직인" className="max-h-full max-w-full object-contain" />
+                                                <button
+                                                    onClick={() => setSealImage(null)}
+                                                    className="absolute inset-0 flex items-center justify-center bg-slate-900/80 text-[10px] font-bold text-white opacity-0 backdrop-blur-[2px] transition-all group-hover:opacity-100"
+                                                >
+                                                    삭제
+                                                </button>
+                                            </div>
+                                        ) : (
+                                            <label className="group flex h-16 w-16 cursor-pointer flex-col items-center justify-center rounded-md border-2 border-dashed border-slate-300 bg-white transition-all hover:border-blue-400 hover:bg-slate-50">
+                                                <RotateCcw size={17} className="text-slate-400 transition-colors group-hover:text-blue-500" />
+                                                <span className="mt-1 text-[10px] font-black leading-tight text-slate-500">업로드</span>
+                                                <input type="file" className="hidden" accept="image/*" onChange={(e) => {
+                                                    const file = e.target.files[0];
+                                                    if (file) {
+                                                        const reader = new FileReader();
+                                                        reader.onloadend = () => setSealImage(reader.result);
+                                                        reader.readAsDataURL(file);
+                                                    }
+                                                }} />
+                                            </label>
+                                        )}
+                                    </div>
+                                    <div className="text-[11px] leading-relaxed text-slate-500">
+                                        확인서 하단 위원회명 옆에 표시
                                     </div>
                                 </div>
                             </div>
                         </div>
 
-                        <div className="mt-8 space-y-3">
+                        <div className="mt-4 space-y-2">
                             <Button 
                                 variant="primary" 
-                                className="w-full bg-blue-600 hover:bg-blue-700 h-12 rounded-xl text-xs font-black shadow-lg shadow-blue-200 transition-all active:scale-[0.98]" 
+                                className="h-9 w-full rounded-md !bg-blue-600 text-xs font-black !text-white shadow-md shadow-blue-200 transition-all active:scale-[0.98] hover:!bg-blue-700"
                                 onClick={onSave}
                                 disabled={isSaving}
                             >
@@ -1040,15 +1206,15 @@ function CertificatePreview({
                             </Button>
 
                             <Button 
-                                variant="outline" 
-                                className="w-full border-slate-200 hover:bg-slate-50 h-12 rounded-xl text-xs font-black transition-all active:scale-[0.98]" 
+                                variant="secondary"
+                                className="h-9 w-full rounded-md border-slate-200 text-xs font-black transition-all active:scale-[0.98] hover:bg-slate-50"
                                 onClick={onPrint}
                             >
                                 <Printer size={16} className="mr-2" />
                                 확인서 PDF 저장 / 인쇄
                             </Button>
                         </div>
-                    </div>
+                    </aside>
                 </div>
             </Card>
 
@@ -1078,25 +1244,52 @@ function CertificatePreview({
                 </section>
 
                 <section className="mt-7">
-                    <h2 className="border-b-2 border-slate-900 pb-2 text-base font-black">참석 현황</h2>
-                    <table className="mt-3 w-full border-collapse text-center text-sm">
+                    <h2 className="border-b-2 border-slate-900 pb-2 text-base font-black">참석 및 투표 현황</h2>
+                    <table className="mt-3 w-full border-collapse text-sm">
                         <thead>
-                            <tr className="bg-slate-50">
-                                <th className="border border-slate-400 px-2 py-2">전체 조합원 수</th>
-                                <th className="border border-slate-400 px-2 py-2">직접 출석</th>
-                                <th className="border border-slate-400 px-2 py-2">대리 참석</th>
-                                <th className="border border-slate-400 px-2 py-2">서면결의서 제출</th>
-                                <th className="border border-slate-400 px-2 py-2">출석 인정 합계</th>
+                            <tr className="bg-slate-50 text-center">
+                                <th className="w-32 border border-slate-400 px-2 py-1.5">구분</th>
+                                <th className="border border-slate-400 px-2 py-1.5">항목</th>
+                                <th className="w-32 border border-slate-400 px-2 py-1.5">수량</th>
+                                <th className="w-32 border border-slate-400 px-2 py-1.5">인정 합계</th>
                             </tr>
                         </thead>
                         <tbody>
-                            <tr>
-                                <td className="border border-slate-400 px-2 py-2">{formatNumber(audit.activeMembers.length)}명</td>
-                                <td className="border border-slate-400 px-2 py-2">{formatNumber(audit.meetingStats.direct)}명</td>
-                                <td className="border border-slate-400 px-2 py-2">{formatNumber(audit.meetingStats.proxy)}명</td>
-                                <td className="border border-slate-400 px-2 py-2">{formatNumber(audit.meetingStats.written)}명</td>
-                                <td className="border border-slate-400 px-2 py-2">{formatNumber(audit.meetingStats.total)}명</td>
-                            </tr>
+                            {[
+                                { category: '공통', label: '전체 조합원 수', value: `${formatNumber(audit.activeMembers.length)}명`, total: '-' },
+                                { category: '일반 의결', label: '직접 출석', value: `${formatNumber(audit.meetingStats.direct)}명`, total: `${formatNumber(audit.meetingStats.total)}명`, totalRowSpan: 3 },
+                                { category: '일반 의결', label: '대리 참석', value: `${formatNumber(audit.meetingStats.proxy)}명` },
+                                { category: '일반 의결', label: '서면결의서 제출', value: `${formatNumber(audit.meetingStats.written)}명` },
+                                ...(hasElection ? [
+                                    { category: '선거', label: '선거 안건 수', value: `${formatNumber(electionResults.length)}건`, total: '-' },
+                                    { category: '선거', label: '우편투표', value: `${formatNumber(electionMailCount)}명`, total: `${formatNumber(audit.meetingStats.election)}명`, totalRowSpan: 2 },
+                                    { category: '선거', label: '현장 투표', value: `${formatNumber(electionOnsiteCount)}명` }
+                                ] : [])
+                            ].map((row, index, rows) => {
+                                const { category, label, value, total, totalRowSpan } = row;
+                                const isFirstInCategory = index === 0 || rows[index - 1].category !== category;
+                                const rowSpan = rows.filter((item) => item.category === category).length;
+
+                                return (
+                                    <tr key={`${category}-${label}`}>
+                                        {isFirstInCategory && (
+                                            <th
+                                                rowSpan={rowSpan}
+                                                className="border border-slate-400 bg-slate-100 px-2 py-1.5 text-center font-bold"
+                                            >
+                                                {category}
+                                            </th>
+                                        )}
+                                        <td className="border border-slate-400 px-3 py-1.5">{label}</td>
+                                        <td className="border border-slate-400 px-3 py-1.5 text-center">{value}</td>
+                                        {totalRowSpan ? (
+                                            <td rowSpan={totalRowSpan} className="border border-slate-400 px-3 py-1.5 text-center font-bold">{total}</td>
+                                        ) : total !== undefined ? (
+                                            <td className="border border-slate-400 px-3 py-1.5 text-center text-slate-500">{total}</td>
+                                        ) : null}
+                                    </tr>
+                                );
+                            })}
                         </tbody>
                     </table>
                 </section>
@@ -1215,6 +1408,7 @@ function CertificatePreview({
                                 대방동 지역주택조합 선거관리위원회
                             </span>
                             {sealImage && (
+                                /* eslint-disable-next-line @next/next/no-img-element */
                                 <img 
                                     src={sealImage} 
                                     alt="직인" 
@@ -1234,6 +1428,7 @@ export default function AdminTallyPage() {
     const { state, actions } = useStore();
     const { agendas, members, attendance, mailElectionVotes, activeMeetingId, currentMeetingId, currentAgendaId, voteData } = state;
     const groups = useMemo(() => buildAgendaGroups(agendas), [agendas]);
+    const meetingGroups = useMemo(() => groups.filter((group) => group.folder), [groups]);
     const initialMeetingId = useMemo(() => getDefaultMeetingId({
         agendas,
         activeMeetingId,
@@ -1241,43 +1436,113 @@ export default function AdminTallyPage() {
         currentAgendaId
     }), [activeMeetingId, agendas, currentAgendaId, currentMeetingId]);
 
-    const [selectedMeetingId, setSelectedMeetingId] = useState(initialMeetingId);
+    const [selectedMeetingId, setSelectedMeetingId] = useState(null);
     const [activeTab, setActiveTab] = useState('summary');
+    const [hasMounted, setHasMounted] = useState(false);
     const [writtenVotes, setWrittenVotes] = useState([]);
     const [writtenVoteError, setWrittenVoteError] = useState('');
+    const hydratedDraftMeetingRef = useRef(null);
+    const suppressNextDraftSaveRef = useRef(false);
+    const activeTabReadyToSaveRef = useRef(false);
     const selectedMeeting = useMemo(
-        () => agendas.find((agenda) => agenda.id === selectedMeetingId && agenda.type === 'folder') || null,
-        [agendas, selectedMeetingId]
+        () => meetingGroups.find((group) => isSameMeetingId(group.folder?.id, selectedMeetingId))?.folder || null,
+        [meetingGroups, selectedMeetingId]
     );
     const inactiveMemberIds = useMemo(
         () => getInactiveMemberIds(voteData, selectedMeetingId),
         [voteData, selectedMeetingId]
     );
 
-    const initialConf = voteData?.tallyConfirmations?.[selectedMeetingId] || voteData?.tallyConfirmation;
-    const [sourceType, setSourceType] = useState(initialConf?.sourceType || 'auto');
-    const [manualResults, setManualResults] = useState(initialConf?.manualResults || {});
-    const [overrideReason, setOverrideReason] = useState(initialConf?.overrideReason || '');
+    const [sourceType, setSourceType] = useState('auto');
+    const [manualResults, setManualResults] = useState({});
+    const [overrideReason, setOverrideReason] = useState('');
     const [isSaving, setIsSaving] = useState(false);
-    const [meetingDetails, setMeetingDetails] = useState(initialConf?.meetingDetails || {
-        title: selectedMeeting?.title || '',
+    const [meetingDetails, setMeetingDetails] = useState({
+        title: '',
         heldAt: formatKoreanDate(new Date()),
         location: '',
         certificateDate: formatKoreanDate(new Date())
     });
-    const [committeeMembers, setCommitteeMembers] = useState(initialConf?.committeeMembers || DEFAULT_COMMITTEE_MEMBERS);
-    const [sealImage, setSealImage] = useState(initialConf?.sealImage || null);
+    const [committeeMembers, setCommitteeMembers] = useState(normalizeCommitteeMembers());
+    const [sealImage, setSealImage] = useState(null);
 
-    // Sync local state when selectedMeetingId or voteData changes
     useEffect(() => {
-        const conf = voteData?.tallyConfirmations?.[selectedMeetingId] || voteData?.tallyConfirmation;
-        if (conf) {
-            if (conf.meetingDetails) setMeetingDetails(conf.meetingDetails);
-            if (conf.committeeMembers) setCommitteeMembers(conf.committeeMembers);
-            if (conf.sealImage !== undefined) setSealImage(conf.sealImage);
-            if (conf.sourceType) setSourceType(conf.sourceType);
-            if (conf.manualResults) setManualResults(conf.manualResults);
-            if (conf.overrideReason !== undefined) setOverrideReason(conf.overrideReason);
+        setHasMounted(true);
+    }, []);
+
+    useEffect(() => {
+        const savedTab = readLocalStorageValue(ACTIVE_TALLY_TAB_KEY);
+        if (isValidTallyTab(savedTab)) {
+            setActiveTab(savedTab);
+        }
+    }, []);
+
+    useEffect(() => {
+        if (meetingGroups.length === 0) {
+            return;
+        }
+
+        const selectedMeetingGroup = selectedMeetingId != null
+            ? meetingGroups.find((group) => isSameMeetingId(group.folder?.id, selectedMeetingId))
+            : null;
+        if (selectedMeetingGroup) {
+            if (!Object.is(selectedMeetingId, selectedMeetingGroup.folder.id)) {
+                setSelectedMeetingId(selectedMeetingGroup.folder.id);
+            }
+            return;
+        }
+
+        const savedMeetingId = readLocalStorageValue(SELECTED_TALLY_MEETING_KEY);
+        const savedMeetingGroup = savedMeetingId
+            ? meetingGroups.find((group) => isSameMeetingId(group.folder?.id, savedMeetingId))
+            : null;
+        const initialMeetingGroup = initialMeetingId
+            ? meetingGroups.find((group) => isSameMeetingId(group.folder?.id, initialMeetingId))
+            : null;
+        const nextMeetingId = savedMeetingGroup?.folder?.id ?? initialMeetingGroup?.folder?.id ?? meetingGroups[0].folder.id;
+
+        setSelectedMeetingId(nextMeetingId);
+    }, [initialMeetingId, meetingGroups, selectedMeetingId]);
+
+    useEffect(() => {
+        const selectedMeetingGroup = meetingGroups.find((group) => isSameMeetingId(group.folder?.id, selectedMeetingId));
+        if (!selectedMeetingGroup) return;
+
+        writeLocalStorageValue(SELECTED_TALLY_MEETING_KEY, getMeetingIdKey(selectedMeetingGroup.folder.id));
+    }, [meetingGroups, selectedMeetingId]);
+
+    useEffect(() => {
+        if (!isValidTallyTab(activeTab)) return;
+        if (!activeTabReadyToSaveRef.current) {
+            activeTabReadyToSaveRef.current = true;
+            return;
+        }
+
+        writeLocalStorageValue(ACTIVE_TALLY_TAB_KEY, activeTab);
+    }, [activeTab]);
+
+    useEffect(() => {
+        if (!selectedMeetingId) return;
+
+        const meetingKey = getMeetingIdKey(selectedMeetingId);
+        const draft = readTallyDrafts()[meetingKey];
+        const conf = voteData?.tallyConfirmations?.[selectedMeetingId] || voteData?.tallyConfirmations?.[meetingKey] || voteData?.tallyConfirmation;
+        const source = draft || conf;
+
+        suppressNextDraftSaveRef.current = true;
+
+        if (source) {
+            setMeetingDetails({
+                title: source.meetingDetails?.title || selectedMeeting?.title || '',
+                heldAt: source.meetingDetails?.heldAt || formatKoreanDate(new Date()),
+                location: source.meetingDetails?.location || '',
+                certificateDate: source.meetingDetails?.certificateDate || formatKoreanDate(new Date())
+            });
+            setCommitteeMembers(normalizeCommitteeMembers(source.committeeMembers));
+            setSealImage(source.sealImage || null);
+            setSourceType(source.sourceType || 'auto');
+            setManualResults(source.manualResults || {});
+            setOverrideReason(source.overrideReason || '');
         } else {
             setMeetingDetails({
                 title: selectedMeeting?.title || '',
@@ -1285,19 +1550,39 @@ export default function AdminTallyPage() {
                 location: '',
                 certificateDate: formatKoreanDate(new Date())
             });
-            setCommitteeMembers(DEFAULT_COMMITTEE_MEMBERS);
+            setCommitteeMembers(normalizeCommitteeMembers());
             setSealImage(null);
             setSourceType('auto');
             setManualResults({});
             setOverrideReason('');
         }
+
+        hydratedDraftMeetingRef.current = meetingKey;
     }, [selectedMeetingId, voteData?.tallyConfirmations, voteData?.tallyConfirmation, selectedMeeting?.title]);
 
     useEffect(() => {
-        if (!selectedMeetingId && initialMeetingId) {
-            setSelectedMeetingId(initialMeetingId);
+        if (!selectedMeetingId) return;
+
+        const meetingKey = getMeetingIdKey(selectedMeetingId);
+        if (hydratedDraftMeetingRef.current !== meetingKey) return;
+        if (suppressNextDraftSaveRef.current) {
+            suppressNextDraftSaveRef.current = false;
+            return;
         }
-    }, [initialMeetingId, selectedMeetingId]);
+
+        const drafts = readTallyDrafts();
+        writeTallyDrafts({
+            ...drafts,
+            [meetingKey]: {
+                sourceType,
+                manualResults,
+                overrideReason,
+                meetingDetails,
+                committeeMembers,
+                sealImage
+            }
+        });
+    }, [committeeMembers, manualResults, meetingDetails, overrideReason, sealImage, selectedMeetingId, sourceType]);
 
     useEffect(() => {
         if (!meetingDetails.title && selectedMeeting?.title) {
@@ -1306,7 +1591,7 @@ export default function AdminTallyPage() {
     }, [meetingDetails.title, selectedMeeting]);
 
     const meetingAgendaIds = useMemo(() => {
-        const group = groups.find((item) => item.folder?.id === selectedMeetingId);
+        const group = groups.find((item) => isSameMeetingId(item.folder?.id, selectedMeetingId));
         return (group?.items || []).map((agenda) => agenda.id);
     }, [groups, selectedMeetingId]);
 
@@ -1367,10 +1652,6 @@ export default function AdminTallyPage() {
     );
 
     const confirmation = voteData?.tallyConfirmations?.[selectedMeetingId] || voteData?.tallyConfirmation || null;
-
-    const handleResetManualValues = () => {
-        setManualResults(buildManualResultsFromAgendaResults(audit.agendaResults));
-    };
 
     const handleConfirm = async () => {
         setIsSaving(true);
@@ -1433,10 +1714,6 @@ export default function AdminTallyPage() {
                     <ArrowLeft size={14} />
                     메인 제어로 돌아가기
                 </Link>
-                <Button variant="secondary" className="h-9 px-3 text-xs" onClick={handleResetManualValues}>
-                    <RotateCcw size={14} />
-                    수기값 초기화
-                </Button>
                 <FullscreenToggle />
                 <AuthStatus />
             </div>
@@ -1454,6 +1731,7 @@ export default function AdminTallyPage() {
                     setSelectedMeetingId={setSelectedMeetingId}
                     audit={audit}
                     confirmation={confirmation}
+                    isMounted={hasMounted}
                 />
             )}
             headerContent={headerContent}

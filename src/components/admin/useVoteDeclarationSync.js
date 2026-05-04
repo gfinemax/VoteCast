@@ -18,6 +18,7 @@ export default function useVoteDeclarationSync({
     votesAbstain,
     projectorMode,
     projectorData,
+    resultAgendaId,
     updateAgenda,
     updateProjectorData,
     setDeclarationEditMode
@@ -41,9 +42,12 @@ export default function useVoteDeclarationSync({
         votesAbstain,
         overrides
     });
+    const isCurrentAgendaResultOnAir = projectorMode === 'RESULT'
+        && currentAgenda
+        && String(resultAgendaId || projectorData?.agendaId || '') === String(currentAgenda.id);
 
     const syncProjectorDeclaration = (nextDeclaration, overrides = {}) => {
-        if (projectorMode !== 'RESULT' || !currentAgenda) return;
+        if (!isCurrentAgendaResultOnAir) return;
 
         const totalAttendance = overrides.totalAttendance ?? effectiveTotalAttendance;
         const votesYesForProjector = overrides.yes ?? votesYes;
@@ -113,7 +117,7 @@ export default function useVoteDeclarationSync({
 
         if (newDeclaration !== currentAgenda.declaration) {
             updateAgenda({ id: currentAgenda.id, declaration: newDeclaration });
-            if (projectorMode === 'RESULT') {
+            if (isCurrentAgendaResultOnAir) {
                 updateProjectorData({
                     ...(projectorData || {}),
                     agendaId: currentAgenda.id,
@@ -127,7 +131,7 @@ export default function useVoteDeclarationSync({
                 });
             }
         }
-    }, [currentAgenda, effectiveTotalAttendance, isAutoCalc, isConfirmed, isEditingDeclaration, isElection, isQuorumSatisfied, isSpecialVote, projectorData, projectorMode, updateAgenda, updateProjectorData, votesAbstain, votesNo, votesYes]);
+    }, [currentAgenda, effectiveTotalAttendance, isAutoCalc, isConfirmed, isCurrentAgendaResultOnAir, isEditingDeclaration, isElection, isQuorumSatisfied, isSpecialVote, projectorData, updateAgenda, updateProjectorData, votesAbstain, votesNo, votesYes]);
 
     return {
         generateDefaultDeclaration,

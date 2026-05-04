@@ -146,6 +146,10 @@ export default function ProjectorPage() {
 
     const projectorMode = heldRenderState.projectorMode;
     const currentAgendaId = heldRenderState.currentAgendaId;
+    const resultAgendaId = heldRenderState.resultAgendaId;
+    const displayAgendaId = projectorMode === 'RESULT' && resultAgendaId
+        ? resultAgendaId
+        : currentAgendaId;
     const displayVoteData = useMemo(() => ({
         ...voteData,
         presentationPage: heldRenderState.presentationPage,
@@ -161,17 +165,17 @@ export default function ProjectorPage() {
     }), [heldRenderState, voteData]);
 
     // 1. Identify Context (Meeting/Folder) for Stats
-    const currentAgenda = useMemo(() => agendas.find(a => a.id === currentAgendaId), [agendas, currentAgendaId]);
+    const currentAgenda = useMemo(() => agendas.find(a => a.id === displayAgendaId), [agendas, displayAgendaId]);
 
     const meetingId = useMemo(() => {
         if (!currentAgenda) return null;
         if (currentAgenda.type === 'folder') return currentAgenda.id;
-        const currentIndex = agendas.findIndex(a => a.id === currentAgendaId);
+        const currentIndex = agendas.findIndex(a => a.id === displayAgendaId);
         for (let i = currentIndex - 1; i >= 0; i--) {
             if (agendas[i].type === 'folder') return agendas[i].id;
         }
         return null;
-    }, [agendas, currentAgendaId, currentAgenda]);
+    }, [agendas, displayAgendaId, currentAgenda]);
 
     const inactiveMemberIds = useMemo(
         () => getInactiveMemberIds(voteData, meetingId),
@@ -406,7 +410,7 @@ export default function ProjectorPage() {
     }, [currentAgenda, displayVoteData?.presentationPage, agendas]);
     const nearbyPresentationPages = useMemo(() => {
         const pages = new Set([currentPage - 1, currentPage, currentPage + 1]);
-        const currentIndex = agendas.findIndex((agenda) => agenda.id === currentAgendaId);
+        const currentIndex = agendas.findIndex((agenda) => agenda.id === displayAgendaId);
 
         if (currentIndex >= 0) {
             for (let offset = -3; offset <= 3; offset += 1) {
@@ -418,7 +422,7 @@ export default function ProjectorPage() {
         }
 
         return Array.from(pages).filter((page) => page > 0);
-    }, [agendas, currentAgendaId, currentPage]);
+    }, [agendas, displayAgendaId, currentPage]);
 
     if (!isMounted) {
         return (
@@ -577,10 +581,10 @@ export default function ProjectorPage() {
                 <div className="w-full h-full flex flex-col bg-slate-50 text-slate-900 relative p-[2vh]">
                     <div className="absolute inset-[2vh] border-4 border-slate-700 pointer-events-none z-10 rounded-xl opacity-10"></div>
 
-                    {/* Header: Adjusted to be half-way between previous positions */}
-                    <div className="flex-none h-[25%] flex flex-col items-center justify-end pb-[2vh] z-20">
-                        <div className="bg-slate-900 text-white px-[3vw] py-[0.9vh] rounded-full text-[min(2.25vw,3vh)] font-bold shadow-md mb-[2vh] tracking-wide">투표 결과 보고</div>
-                        <h1 className="text-[min(5vw,7vh)] font-black text-slate-900 leading-tight text-center break-keep drop-shadow-sm px-8">{resultStats.agendaTitle}</h1>
+                    {/* Header */}
+                    <div className="flex-none min-h-[29vh] flex flex-col items-center justify-center pt-[4vh] pb-[1.5vh] z-20 overflow-visible">
+                        <div className="bg-slate-900 text-white px-[3vw] py-[0.9vh] rounded-full text-[min(2.25vw,3vh)] font-bold shadow-md mb-[1.6vh] tracking-wide">투표 결과 보고</div>
+                        <h1 className="text-[min(4.7vw,6.6vh)] font-black text-slate-900 leading-[1.08] text-center break-keep drop-shadow-sm px-8">{resultStats.agendaTitle}</h1>
                     </div>
 
                     <div className="w-full h-px bg-slate-200 opacity-50 my-[1vh]"></div>

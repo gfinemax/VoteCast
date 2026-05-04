@@ -1151,7 +1151,7 @@ function AgendaItem({
     return (
         <div
             ref={(node) => setRowRef(agenda.id, node)}
-            className={`group w-full text-left p-1.5 text-sm font-medium transition-all relative flex items-center gap-2 ${currentAgendaId === agenda.id ? "bg-slate-900 text-white border border-slate-900 rounded-md z-10 shadow-md my-1 scale-[1.02]" : "bg-white text-slate-600 hover:bg-slate-50 border-b border-x border-slate-100 first:border-t rounded-none first:rounded-t-md last:rounded-b-md"} ${isAgendaDeleteTarget ? 'ring-2 ring-red-300 ring-offset-1 border-red-200 shadow-lg' : ''} ${isDragged ? 'opacity-45' : ''}`}
+            className={`group w-full text-left p-1.5 text-sm font-medium transition-all relative flex items-center gap-2 ${currentAgendaId === agenda.id ? "bg-blue-600 text-white border border-blue-700 rounded-md z-10 shadow-md shadow-blue-900/20 my-1 scale-[1.02]" : "bg-white text-slate-600 hover:bg-slate-50 border-b border-x border-slate-100 first:border-t rounded-none first:rounded-t-md last:rounded-b-md"} ${isAgendaDeleteTarget ? 'ring-2 ring-red-300 ring-offset-1 border-red-200 shadow-lg' : ''} ${isDragged ? 'opacity-45' : ''}`}
             onClick={() => {
                 if (editingId !== agenda.id) {
                     setDeleteTarget(null);
@@ -1303,7 +1303,7 @@ function AgendaItem({
                         onDragStart={handleAgendaDragStart(agenda.id)}
                         onDragEnd={handleAgendaDragEnd}
                         onClick={(e) => e.stopPropagation()}
-                        className={`flex h-6 w-5 flex-shrink-0 cursor-grab items-center justify-center rounded transition-colors active:cursor-grabbing ${currentAgendaId === agenda.id ? 'text-slate-400 hover:bg-slate-800 hover:text-slate-200' : 'text-slate-300 hover:bg-slate-100 hover:text-slate-500'} ${!canDragAgendas || isReordering ? 'cursor-not-allowed opacity-40' : ''}`}
+                        className={`flex h-6 w-5 flex-shrink-0 cursor-grab items-center justify-center rounded transition-colors active:cursor-grabbing ${currentAgendaId === agenda.id ? 'text-white/70 hover:bg-blue-700 hover:text-white' : 'text-slate-300 hover:bg-slate-100 hover:text-slate-500'} ${!canDragAgendas || isReordering ? 'cursor-not-allowed opacity-40' : ''}`}
                         title={canDragAgendas ? '드래그해서 순서 변경' : '편집 중에는 순서를 변경할 수 없습니다.'}
                     >
                         <GripVertical size={12} />
@@ -1326,9 +1326,9 @@ function AgendaItem({
                             {electionMethodBadge}
                         </span>
                     )}
-                    <div className={`flex gap-0.5 transition-opacity ${currentAgendaId === agenda.id ? 'text-slate-400 opacity-100' : 'text-slate-300 opacity-0 group-hover:opacity-100'}`}>
-                        <button className="p-1 hover:text-white hover:bg-slate-700/50 rounded" onClick={(e) => { e.stopPropagation(); startEdit(agenda); }}><Edit2 size={10} /></button>
-                        <button className="p-1 hover:text-red-400 hover:bg-red-900/20 rounded" onClick={(e) => openDeleteConfirm(e, agenda)}><Trash2 size={10} /></button>
+                    <div className={`flex gap-0.5 transition-opacity ${currentAgendaId === agenda.id ? 'text-white/70 opacity-100' : 'text-slate-300 opacity-0 group-hover:opacity-100'}`}>
+                        <button className="p-1 hover:text-white hover:bg-blue-700 rounded" onClick={(e) => { e.stopPropagation(); startEdit(agenda); }}><Edit2 size={10} /></button>
+                        <button className="p-1 hover:text-red-100 hover:bg-red-500/30 rounded" onClick={(e) => openDeleteConfirm(e, agenda)}><Trash2 size={10} /></button>
                     </div>
                 </>
             )}
