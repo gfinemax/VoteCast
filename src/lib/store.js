@@ -1233,20 +1233,18 @@ export function StoreProvider({ children }) {
                 voteData: nextVoteData
             }));
 
-            const { error } = await updateSystemSettings({
-                projector_data: data,
-                vote_data: nextVoteData
-            });
-
-            if (error) {
-                console.error('Update Projector Data Error:', error);
-                return;
-            }
-
             broadcastSystemSettingsSync({
                 projector_data: data,
                 vote_data: nextVoteData
             });
+
+            await updateSystemSettingsWithRetry(
+                {
+                    projector_data: data,
+                    vote_data: nextVoteData
+                },
+                'Update Projector Data Error'
+            );
         },
 
         // Declaration Editing State Management (per-agenda, local only)

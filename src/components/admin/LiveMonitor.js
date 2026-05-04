@@ -35,6 +35,38 @@ const getAgendaPresentation = (agenda, agendas, pageOverride) => {
     };
 };
 
+function BroadcastGlow() {
+    return (
+        <div className="pointer-events-none absolute -inset-1 rounded-lg border border-emerald-300/50 shadow-[0_0_18px_rgba(16,185,129,0.45)] animate-pulse" />
+    );
+}
+
+function OnAirBadge({ className = 'z-10' }) {
+    return (
+        <div className={`absolute top-1 right-1 inline-flex items-center gap-1 rounded bg-emerald-600/90 px-1.5 py-0.5 text-[8px] font-bold text-white ${className}`}>
+            <span className="relative flex h-1.5 w-1.5">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-white/80" />
+                <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-white" />
+            </span>
+            <span>ON AIR</span>
+        </div>
+    );
+}
+
+function PreviewBadge({ isBroadcasting = false, className = 'z-10' }) {
+    return (
+        <div className={`absolute top-1 right-1 inline-flex items-center gap-1 rounded bg-blue-600/90 px-1.5 py-0.5 text-[8px] font-bold text-white ${className}`}>
+            {isBroadcasting && (
+                <span className="relative flex h-1.5 w-1.5">
+                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-300/80" />
+                    <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-300" />
+                </span>
+            )}
+            <span>PREVIEW</span>
+        </div>
+    );
+}
+
 export default function LiveMonitor({ mode = 'admin' }) {
     const { state, actions } = useStore();
     const { projectorMode, agendas, currentAgendaId, voteData, projectorData, attendance, members, projectorConnectedCount, mailElectionVotes } = state;
@@ -89,14 +121,14 @@ export default function LiveMonitor({ mode = 'admin' }) {
         actionFn();
     }, [hasProjectorWindow]);
 
-    const handleCommissionCheck = (callback) => {
+    const handleCommissionCheck = React.useCallback((callback) => {
         // Explicitly check mode string
         if (mode === 'commission') {
             setShowRestrictionAlert(true);
             return;
         }
         handleProjectorAction(callback);
-    };
+    }, [handleProjectorAction, mode]);
 
     // Debug Mode
     useEffect(() => {
@@ -191,41 +223,102 @@ export default function LiveMonitor({ mode = 'admin' }) {
         : isQuorumSatisfied && calculateAgendaPass(votesYes, totalAttendance, isSpecialVote);
     const quorumLabel = isSpecialVote ? '3분의 2' : '과반수';
     const quorumLinePosition = isSpecialVote ? '66.66%' : '50%';
-    const isPptOnAir = projectorMode === 'PPT' || projectorMode === 'IDLE';
-    const centerScreenBorder = isPptOnAir ? 'border-emerald-500' : 'border-slate-800';
+    const isPptModeOnAir = projectorMode === 'PPT' || projectorMode === 'IDLE';
+    const pptAgendaId = projectorMode === 'PPT' ? projectorData?.agendaId : null;
+    const pptProjectorPage = Math.max(1, parseInt(projectorData?.presentationPage, 10) || 1);
+    const isSelectedPptOnAir = projectorMode === 'PPT'
+        && pptAgendaId
+        && currentAgenda?.id
+        && String(pptAgendaId) === String(currentAgenda.id)
+        && pptProjectorPage === currentPage;
+    const centerScreenBorder = isPptModeOnAir ? 'border-emerald-500' : 'border-blue-500';
     const resultAgendaId = voteData?.resultAgendaId || projectorData?.agendaId || null;
-    const resultAgenda = useMemo(
-        () => agendas.find((agenda) => String(agenda.id) === String(resultAgendaId)) || currentAgenda,
-        [agendas, currentAgenda, resultAgendaId]
-    );
-    const resultPreviewTitle = projectorMode === 'RESULT'
-        ? (projectorData?.agendaTitle || resultAgenda?.title || currentAgenda?.title)
-        : currentAgenda?.title;
-    const resultPreviewDeclaration = projectorMode === 'RESULT'
-        ? (projectorData?.declaration || voteData?.resultDeclaration || resultAgenda?.declaration || '')
-        : (currentAgenda?.declaration || '');
-    const resultPreviewVotesYes = projectorMode === 'RESULT'
-        ? (projectorData?.votesYes ?? voteData?.resultVotesYes ?? votesYes)
-        : votesYes;
-    const resultPreviewVotesNo = projectorMode === 'RESULT'
-        ? (projectorData?.votesNo ?? voteData?.resultVotesNo ?? votesNo)
-        : votesNo;
-    const resultPreviewVotesAbstain = projectorMode === 'RESULT'
-        ? (projectorData?.votesAbstain ?? voteData?.resultVotesAbstain ?? votesAbstain)
-        : votesAbstain;
-    const resultPreviewTotalAttendance = projectorMode === 'RESULT'
-        ? (projectorData?.totalAttendance ?? voteData?.resultTotalAttendance ?? totalAttendance)
-        : totalAttendance;
-    const resultPreviewIsPassed = projectorMode === 'RESULT'
-        ? (projectorData?.isPassed ?? voteData?.resultIsPassed ?? isPassed)
-        : isPassed;
+    const isSelectedResultOnAir = projectorMode === 'RESULT'
+        && resultAgendaId
+        && currentAgenda?.id
+        && String(resultAgendaId) === String(currentAgenda.id);
+    const resultScreenBorder = projectorMode === 'RESULT' ? 'border-emerald-500' : 'border-blue-500';
+    const waitingScreenBorder = projectorMode === 'WAITING' ? 'border-emerald-500' : 'border-slate-800';
+    const resultButtonStateClass = projectorMode === 'RESULT'
+        ? (isSelectedResultOnAir
+            ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/30'
+            : 'bg-blue-600 text-white shadow-lg shadow-blue-500/30 hover:bg-blue-500')
+        : (projectorMode === 'ADJUSTING'
+            ? 'bg-amber-600 text-white shadow-lg shadow-amber-500/30'
+            : 'bg-blue-600 text-white shadow-lg shadow-blue-500/30 hover:bg-blue-500');
+    const pptButtonStateClass = isPptModeOnAir
+        ? (isSelectedPptOnAir
+            ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/30'
+            : 'bg-blue-600 text-white shadow-lg shadow-blue-500/30 hover:bg-blue-500')
+        : 'bg-blue-600 text-white shadow-lg shadow-blue-500/30 hover:bg-blue-500';
+    const waitingButtonStateClass = projectorMode === 'WAITING'
+        ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/30'
+        : 'bg-blue-600 text-white shadow-lg shadow-blue-500/30 hover:bg-blue-500';
+    const resultPreviewTitle = currentAgenda?.title;
+    const resultPreviewDeclaration = currentAgenda?.declaration || '';
+    const resultPreviewVotesYes = votesYes;
+    const resultPreviewVotesNo = votesNo;
+    const resultPreviewVotesAbstain = votesAbstain;
+    const resultPreviewTotalAttendance = totalAttendance;
+    const resultPreviewIsPassed = isPassed;
+    const publishSelectedResult = React.useCallback(() => {
+        handleProjectorAction(() => {
+            console.log('[VoteResult] Shortcut/Click. Current:', projectorMode);
+            actions.setProjectorMode('RESULT', {
+                agendaId: currentAgenda?.id,
+                agendaTitle: currentAgenda?.title,
+                declaration: currentAgenda?.declaration || '',
+                votesYes,
+                votesNo,
+                votesAbstain,
+                totalAttendance,
+                isPassed
+            });
+        });
+    }, [actions, currentAgenda?.declaration, currentAgenda?.id, currentAgenda?.title, handleProjectorAction, isPassed, projectorMode, totalAttendance, votesAbstain, votesNo, votesYes]);
+    const publishSelectedPpt = React.useCallback(() => {
+        handleCommissionCheck(() => actions.setProjectorMode('PPT', {
+            agendaId: currentAgenda?.id,
+            agendaTitle: currentAgenda?.title,
+            presentationPage: currentPage
+        }));
+    }, [actions, currentAgenda?.id, currentAgenda?.title, currentPage, handleCommissionCheck]);
+
+    useEffect(() => {
+        const handleKeyDown = (e) => {
+            if (!shouldHandleGlobalShortcut(e)) return;
+            if (e.code !== 'Space' && e.key !== ' ') return;
+
+            if (projectorMode === 'RESULT' && !isSelectedResultOnAir) {
+                e.preventDefault();
+                publishSelectedResult();
+                return;
+            }
+
+            if (isPptModeOnAir && !isSelectedPptOnAir) {
+                e.preventDefault();
+                publishSelectedPpt();
+            }
+        };
+
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [
+        isPptModeOnAir,
+        isSelectedPptOnAir,
+        isSelectedResultOnAir,
+        projectorMode,
+        publishSelectedPpt,
+        publishSelectedResult
+    ]);
+
     return (
         <div className="bg-slate-900 rounded-xl overflow-hidden shadow-2xl border-4 border-slate-800">
             {/* Header Status Bar */}
             <div className="bg-slate-950 px-4 py-2 flex justify-between items-center border-b border-slate-800">
                 <div className="flex items-center gap-2 text-white font-bold text-sm">
                     <Monitor size={16} className="text-emerald-500" />
-                    <span className="tracking-widest text-emerald-500">TRIPLE LIVE MONITOR</span>
+                    <span className="tracking-widest text-emerald-500">ON AIR / PREVIEW MONITOR</span>
                 </div>
                 <div className="flex items-center gap-3">
                     <button
@@ -256,8 +349,10 @@ export default function LiveMonitor({ mode = 'admin' }) {
 
                 {/* 1. RESULT SCREEN (Left) */}
                 <div className="flex flex-col gap-2">
-                    <div className={`relative aspect-video bg-white rounded overflow-hidden group border-2 transition-colors ${projectorMode === 'RESULT' ? 'border-emerald-500' : 'border-slate-800'}`}>
-                        <div className="w-full h-full flex flex-col items-center bg-slate-50 relative overflow-hidden">
+                    <div className="relative overflow-visible">
+                        {projectorMode === 'RESULT' && <BroadcastGlow />}
+                        <div className={`relative aspect-video bg-white rounded overflow-hidden group border-[3px] transition-colors ${resultScreenBorder}`}>
+                            <div className="w-full h-full flex flex-col items-center bg-slate-50 relative overflow-hidden">
                             <div className="absolute inset-1 border border-slate-200 rounded pointer-events-none"></div>
                             <div className="w-full h-full flex flex-col items-center justify-between p-2 z-10">
                                 {/* Header */}
@@ -324,42 +419,29 @@ export default function LiveMonitor({ mode = 'admin' }) {
                         )}
 
                         <div className="absolute top-1 left-1 px-1 py-0.5 bg-black/60 text-[8px] text-slate-300 font-mono rounded z-10">SCREEN 1</div>
-                        {projectorMode === 'RESULT' && <div className="absolute top-1 right-1 px-1.5 py-0.5 bg-emerald-600/90 text-white text-[8px] font-bold rounded z-10">ON AIR</div>}
+                        {isSelectedResultOnAir && <OnAirBadge />}
+                        {projectorMode !== 'ADJUSTING' && !isSelectedResultOnAir && <PreviewBadge isBroadcasting={projectorMode === 'RESULT'} />}
                         {projectorMode === 'ADJUSTING' && <div className="absolute top-1 right-1 px-1.5 py-0.5 bg-amber-600/90 text-white text-[8px] font-bold rounded z-10">WAIT</div>}
+                        </div>
                     </div>
                     {/* Button */}
                     <button
-                        onClick={() => handleProjectorAction(() => {
-                            console.log('[VoteResult] Clicked. Current:', projectorMode);
-                            actions.setProjectorMode('RESULT', {
-                                agendaId: currentAgenda?.id,
-                                agendaTitle: currentAgenda?.title,
-                                declaration: currentAgenda?.declaration || '',
-                                votesYes,
-                                votesNo,
-                                votesAbstain,
-                                totalAttendance,
-                                isPassed
-                            });
-                        })}
-                        className={`w-full py-2 px-3 rounded-lg font-semibold text-xs flex items-center justify-center gap-2 transition-all ${projectorMode === 'RESULT'
-                            ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/30'
-                            : projectorMode === 'ADJUSTING'
-                                ? 'bg-amber-600 text-white shadow-lg shadow-amber-500/30' // Adjusting State
-                                : 'bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white'
-                            }`}
+                        onClick={publishSelectedResult}
+                        className={`w-full py-2 px-3 rounded-lg font-semibold text-xs flex items-center justify-center gap-2 transition-all ${resultButtonStateClass}`}
                     >
                         {projectorMode === 'ADJUSTING' ? <Settings size={14} className="animate-spin" /> : <Play size={14} />}
-                        <span>{projectorMode === 'ADJUSTING' ? '화면 켜기 (대기중)' : '투표 결과'}</span>
-                        {projectorMode === 'RESULT' && <span className="w-2 h-2 bg-white rounded-full animate-pulse"></span>}
+                        <span>{projectorMode === 'ADJUSTING' ? '화면 켜기 (대기중)' : '선택 안건 결과 송출'}</span>
+                        {isSelectedResultOnAir && <span className="w-2 h-2 bg-white rounded-full animate-pulse"></span>}
                     </button>
                 </div>
 
                 {/* 2. PPT SCREEN (Center) */}
                 <div className="flex flex-col gap-2">
-                    <div
-                        className={`relative aspect-video bg-black rounded overflow-hidden group border-2 transition-colors ${centerScreenBorder}`}
-                    >
+                    <div className="relative overflow-visible">
+                        {isPptModeOnAir && <BroadcastGlow />}
+                        <div
+                            className={`relative aspect-video bg-black rounded overflow-hidden group border-[3px] transition-colors ${centerScreenBorder}`}
+                        >
                         {getAgendaPresentation(currentAgenda, agendas, currentPage).finalSource ? (
                             <div className="w-full h-full bg-white relative overflow-hidden">
                                 <PDFViewer
@@ -377,28 +459,31 @@ export default function LiveMonitor({ mode = 'admin' }) {
                             </div>
                         )}
                         <div className="absolute top-1 left-1 px-1 py-0.5 bg-black/60 text-[8px] text-slate-300 font-mono rounded z-30">SCREEN 2</div>
-                        {isPptOnAir && <div className="absolute top-1 right-1 px-1.5 py-0.5 bg-emerald-600/90 text-white text-[8px] font-bold rounded z-30">ON AIR</div>}
+                        {isSelectedPptOnAir && <OnAirBadge className="z-30" />}
+                        {!isSelectedPptOnAir && isPptModeOnAir && <PreviewBadge isBroadcasting className="z-30" />}
+                        {!isPptModeOnAir && <PreviewBadge className="z-30" />}
+                        </div>
                     </div>
                     {/* Button */}
                     <button
-                        onClick={() => handleCommissionCheck(() => actions.setProjectorMode('PPT', { agendaTitle: currentAgenda?.title }))}
+                        onClick={publishSelectedPpt}
                         className={`w-full py-2 px-3 rounded-lg font-semibold text-xs flex items-center justify-center gap-2 transition-all ${mode === 'commission'
                             ? 'bg-slate-800/50 text-slate-600 cursor-not-allowed border border-slate-800' // Restricted Style
-                            : ((projectorMode === 'PPT' || projectorMode === 'IDLE')
-                                ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/30'
-                                : 'bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white')
+                            : pptButtonStateClass
                             }`}
                     >
                         <Monitor size={14} />
-                        <span>안건 설명</span>
-                        {mode !== 'commission' && (projectorMode === 'PPT' || projectorMode === 'IDLE') && <span className="w-2 h-2 bg-white rounded-full animate-pulse"></span>}
+                        <span>안건 설명 송출</span>
+                        {mode !== 'commission' && isSelectedPptOnAir && <span className="w-2 h-2 bg-white rounded-full animate-pulse"></span>}
                     </button>
                 </div>
 
 
                 {/* 3. WAITING SCREEN (Right) */}
                 <div className="flex flex-col gap-2">
-                    <div className={`relative aspect-video bg-slate-900 rounded overflow-hidden group border-2 transition-colors ${projectorMode === 'WAITING' ? 'border-emerald-500' : 'border-slate-800'}`}>
+                    <div className="relative overflow-visible">
+                        {projectorMode === 'WAITING' && <BroadcastGlow />}
+                        <div className={`relative aspect-video bg-slate-900 rounded overflow-hidden group border-[3px] transition-colors ${waitingScreenBorder}`}>
                         <div className="absolute inset-0 overflow-hidden opacity-20">
                             <div className="absolute -top-[20%] -right-[10%] w-20 h-20 bg-blue-600 rounded-full blur-xl"></div>
                             <div className="absolute -bottom-[20%] -left-[10%] w-20 h-20 bg-emerald-600 rounded-full blur-xl"></div>
@@ -471,7 +556,9 @@ export default function LiveMonitor({ mode = 'admin' }) {
                         </div>
 
                         <div className="absolute top-1 left-1 px-1 py-0.5 bg-black/60 text-[8px] text-slate-300 font-mono rounded z-10">SCREEN 3</div>
-                        {projectorMode === 'WAITING' && <div className="absolute top-1 right-1 px-1.5 py-0.5 bg-emerald-600/90 text-white text-[8px] font-bold rounded z-10">ON AIR</div>}
+                        {projectorMode === 'WAITING' && <OnAirBadge />}
+                        {projectorMode !== 'WAITING' && <PreviewBadge />}
+                        </div>
                     </div>
                     {/* Button */}
                     <button
@@ -480,13 +567,11 @@ export default function LiveMonitor({ mode = 'admin' }) {
                         )}
                         className={`w-full py-2 px-3 rounded-lg font-semibold text-xs flex items-center justify-center gap-2 transition-all ${mode === 'commission'
                             ? 'bg-slate-800/50 text-slate-600 cursor-not-allowed border border-slate-800' // Restricted Style
-                            : (projectorMode === 'WAITING'
-                                ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/30'
-                                : 'bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white')
+                            : waitingButtonStateClass
                             }`}
                     >
                         <Settings size={14} />
-                        <span>성원현황</span>
+                        <span>성원현황 송출</span>
                         {mode !== 'commission' && projectorMode === 'WAITING' && <span className="w-2 h-2 bg-white rounded-full animate-pulse"></span>}
                     </button>
                 </div>

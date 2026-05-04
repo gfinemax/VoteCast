@@ -16,6 +16,8 @@ const toProjectorRenderState = ({ projectorMode, currentAgendaId, voteData, proj
     projectorMode: projectorMode || 'IDLE',
     currentAgendaId: currentAgendaId || 1,
     presentationPage: Math.max(1, parseInt(voteData?.presentationPage, 10) || 1),
+    pptAgendaId: projectorData?.agendaId || null,
+    pptPresentationPage: Math.max(1, parseInt(projectorData?.presentationPage, 10) || 1),
     resultAgendaId: voteData?.resultAgendaId || null,
     resultDeclaration: String(voteData?.resultDeclaration || '').trim(),
     customDeclaration: String(voteData?.customDeclaration || '').trim(),
@@ -32,6 +34,8 @@ const summarizeProjectorRenderState = (renderState = {}) => ({
     projectorMode: renderState.projectorMode || 'IDLE',
     currentAgendaId: renderState.currentAgendaId || null,
     presentationPage: renderState.presentationPage || 1,
+    pptAgendaId: renderState.pptAgendaId || null,
+    pptPresentationPage: renderState.pptPresentationPage || 1,
     resultAgendaId: renderState.resultAgendaId || null,
     syncVersion: renderState.syncVersion || 0
 });
@@ -147,12 +151,18 @@ export default function ProjectorPage() {
     const projectorMode = heldRenderState.projectorMode;
     const currentAgendaId = heldRenderState.currentAgendaId;
     const resultAgendaId = heldRenderState.resultAgendaId;
+    const pptAgendaId = heldRenderState.pptAgendaId;
     const displayAgendaId = projectorMode === 'RESULT' && resultAgendaId
         ? resultAgendaId
-        : currentAgendaId;
+        : (projectorMode === 'PPT' && pptAgendaId
+            ? pptAgendaId
+            : currentAgendaId);
+    const displayPresentationPage = projectorMode === 'PPT' && pptAgendaId
+        ? heldRenderState.pptPresentationPage
+        : heldRenderState.presentationPage;
     const displayVoteData = useMemo(() => ({
         ...voteData,
-        presentationPage: heldRenderState.presentationPage,
+        presentationPage: displayPresentationPage,
         resultAgendaId: heldRenderState.resultAgendaId,
         resultDeclaration: heldRenderState.resultDeclaration,
         customDeclaration: heldRenderState.customDeclaration || voteData?.customDeclaration || '',
@@ -162,7 +172,7 @@ export default function ProjectorPage() {
         resultTotalAttendance: heldRenderState.resultTotalAttendance,
         resultIsPassed: heldRenderState.resultIsPassed,
         __syncVersion: heldRenderState.syncVersion
-    }), [heldRenderState, voteData]);
+    }), [displayPresentationPage, heldRenderState, voteData]);
 
     // 1. Identify Context (Meeting/Folder) for Stats
     const currentAgenda = useMemo(() => agendas.find(a => a.id === displayAgendaId), [agendas, displayAgendaId]);
@@ -305,7 +315,7 @@ export default function ProjectorPage() {
         });
         const isResultSnapshot = projectorMode === 'RESULT' && displayVoteData?.resultAgendaId === currentAgenda?.id;
         const projectorDeclaration = isResultSnapshot
-            ? String(displayVoteData?.resultDeclaration || displayVoteData?.customDeclaration || '').trim()
+            ? String(displayVoteData?.resultDeclaration || '').trim()
             : '';
 
         const baseTotalAttendance = isResultSnapshot
