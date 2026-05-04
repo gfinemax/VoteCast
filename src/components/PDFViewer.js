@@ -17,16 +17,24 @@ function normalizePageNumber(pageNumber) {
     return Math.max(1, parseInt(pageNumber, 10) || 1);
 }
 
-function getPersistentPdfCacheKey(url) {
+function getPersistentPdfCacheKey(url, cacheVersion = '') {
     if (!url) return '';
+
+    const versionSuffix = cacheVersion ? `|version:${cacheVersion}` : '';
 
     try {
         const parsedUrl = new URL(url, typeof window !== 'undefined' ? window.location.href : 'http://localhost');
+        const cacheVersionParam = (
+            parsedUrl.searchParams.get('v')
+            || parsedUrl.searchParams.get('version')
+            || parsedUrl.searchParams.get('updated_at')
+            || parsedUrl.searchParams.get('updatedAt')
+        );
         parsedUrl.search = '';
         parsedUrl.hash = '';
-        return parsedUrl.toString();
+        return `${parsedUrl.toString()}${cacheVersionParam ? `|queryVersion:${cacheVersionParam}` : ''}${versionSuffix}`;
     } catch {
-        return String(url).split(/[?#]/)[0];
+        return `${String(url).split(/[?#]/)[0]}${versionSuffix}`;
     }
 }
 
@@ -111,39 +119,79 @@ function trimPdfSourceCache(db, protectedKey) {
     });
 }
 
-async function getCachedPdfObjectUrl(url) {
+function getPdfSourceSignatureFromHeaders(headers) {
+    const etag = headers.get('etag');
+    const lastModified = headers.get('last-modified');
+    const contentLength = headers.get('content-length');
+
+    if (!etag && !lastModified && !contentLength) return null;
+
+    return [
+        etag || '',
+        lastModified || '',
+        contentLength || ''
+    ].join('|');
+}
+
+async function getRemotePdfSourceSignature(url) {
+    try {
+        const response = await fetch(url, {
+            method: 'HEAD',
+            cache: 'no-cache'
+        });
+        if (!response.ok) return null;
+        return getPdfSourceSignatureFromHeaders(response.headers);
+    } catch {
+        return null;
+    }
+}
+
+async function fetchPdfSourceBlob(url) {
+    const response = await fetch(url, { cache: 'no-cache' });
+    if (!response.ok) throw new Error(`PDF fetch failed: ${response.status}`);
+
+    return {
+        blob: await response.blob(),
+        sourceSignature: getPdfSourceSignatureFromHeaders(response.headers)
+    };
+}
+
+async function getCachedPdfObjectUrl(url, cacheVersion = '') {
     if (!canUsePersistentPdfCache(url)) {
         return { objectUrl: url, shouldRevoke: false };
     }
 
-    const cacheKey = getPersistentPdfCacheKey(url);
+    const cacheKey = getPersistentPdfCacheKey(url, cacheVersion);
     const db = await openPdfSourceCacheDb();
     if (!db) return { objectUrl: url, shouldRevoke: false };
 
     const cachedRecord = await readPdfSourceRecord(db, cacheKey);
     if (cachedRecord?.blob) {
-        writePdfSourceRecord(db, {
-            ...cachedRecord,
-            lastAccessedAt: Date.now()
-        });
+        const remoteSignature = await getRemotePdfSourceSignature(url);
+        const cachedSignature = cachedRecord.sourceSignature || null;
+        const canUseCachedRecord = !remoteSignature || (cachedSignature && remoteSignature === cachedSignature);
 
-        return {
-            objectUrl: URL.createObjectURL(cachedRecord.blob),
-            shouldRevoke: true
-        };
+        if (canUseCachedRecord) {
+            writePdfSourceRecord(db, {
+                ...cachedRecord,
+                lastAccessedAt: Date.now()
+            });
+
+            return {
+                objectUrl: URL.createObjectURL(cachedRecord.blob),
+                shouldRevoke: true
+            };
+        }
     }
 
     let fetchPromise = pendingPdfSourceFetches.get(cacheKey);
     if (!fetchPromise) {
-        fetchPromise = fetch(url, { cache: 'force-cache' })
-            .then((response) => {
-                if (!response.ok) throw new Error(`PDF fetch failed: ${response.status}`);
-                return response.blob();
-            })
-            .then(async (blob) => {
+        fetchPromise = fetchPdfSourceBlob(url)
+            .then(async ({ blob, sourceSignature }) => {
                 await writePdfSourceRecord(db, {
                     key: cacheKey,
                     sourceUrl: url,
+                    sourceSignature,
                     blob,
                     size: blob.size,
                     createdAt: Date.now(),
@@ -264,14 +312,14 @@ function paintRenderedPage(targetCanvas, renderedPage) {
     context.drawImage(renderedPage.canvas, 0, 0);
 }
 
-export default function PDFViewer({ url, pageNumber, preloadPages = [], className }) {
+export default function PDFViewer({ url, pageNumber, preloadPages = [], className, cacheVersion = '' }) {
     const containerRef = useRef(null);
     const canvasRef = useRef(null);
     const renderTokenRef = useRef(0);
     const hasPaintedRef = useRef(false);
     const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
     const targetPage = normalizePageNumber(pageNumber);
-    const pdfSourceKey = useMemo(() => getPersistentPdfCacheKey(url), [url]);
+    const pdfSourceKey = useMemo(() => getPersistentPdfCacheKey(url, cacheVersion), [cacheVersion, url]);
     const sourceKey = url ? `${pdfSourceKey}|${targetPage}` : '';
     const [resolvedSourceState, setResolvedSourceState] = useState({
         key: '',
@@ -340,7 +388,7 @@ export default function PDFViewer({ url, pageNumber, preloadPages = [], classNam
         let objectUrlToRevoke = null;
         hasPaintedRef.current = false;
 
-        getCachedPdfObjectUrl(url)
+        getCachedPdfObjectUrl(url, cacheVersion)
             .then(({ objectUrl, shouldRevoke }) => {
                 if (!isActive) {
                     if (shouldRevoke) URL.revokeObjectURL(objectUrl);
@@ -369,7 +417,7 @@ export default function PDFViewer({ url, pageNumber, preloadPages = [], classNam
                 URL.revokeObjectURL(objectUrlToRevoke);
             }
         };
-    }, [pdfSourceKey, url]);
+    }, [cacheVersion, pdfSourceKey, url]);
 
     useEffect(() => {
         if (!resolvedUrl) {

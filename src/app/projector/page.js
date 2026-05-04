@@ -391,11 +391,12 @@ export default function ProjectorPage() {
 
 
     // 2. Prepare Source (PDF only mostly)
-    const { finalSource, currentPage } = useMemo(() => {
-        if (!currentAgenda) return { finalSource: null, currentPage: 1 };
+    const { finalSource, currentPage, sourceVersion } = useMemo(() => {
+        if (!currentAgenda) return { finalSource: null, currentPage: 1, sourceVersion: '' };
 
         const individualSource = currentAgenda.presentation_source;
         let masterSource = null;
+        let masterAgenda = null;
 
         if (agendas && currentAgenda) {
             const idx = agendas.findIndex(a => a.id === currentAgenda.id);
@@ -404,6 +405,7 @@ export default function ProjectorPage() {
                 for (let i = idx; i >= 0; i--) {
                     if (agendas[i].type === 'folder') {
                         masterSource = agendas[i].presentation_source;
+                        masterAgenda = agendas[i];
                         break;
                     }
                 }
@@ -412,11 +414,10 @@ export default function ProjectorPage() {
 
         const startPage = displayVoteData?.presentationPage || currentAgenda.start_page || 1;
         let source = individualSource || masterSource;
+        const sourceOwner = individualSource ? currentAgenda : masterAgenda;
+        const version = sourceOwner?.updated_at || sourceOwner?.updatedAt || sourceOwner?.id || '';
 
-        // Clean source URL (remove existing query params or hash if any, though usually clean)
-        // Adjust this if your DB stores params. Assuming clean URL or Supabase URL.
-
-        return { finalSource: source, currentPage: parseInt(startPage) };
+        return { finalSource: source, currentPage: parseInt(startPage), sourceVersion: version };
     }, [currentAgenda, displayVoteData?.presentationPage, agendas]);
     const nearbyPresentationPages = useMemo(() => {
         const pages = new Set([currentPage - 1, currentPage, currentPage + 1]);
@@ -459,6 +460,7 @@ export default function ProjectorPage() {
                                 url={finalSource}
                                 pageNumber={currentPage}
                                 preloadPages={nearbyPresentationPages}
+                                cacheVersion={sourceVersion}
                             />
                         </div>
 

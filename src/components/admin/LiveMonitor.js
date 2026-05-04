@@ -14,24 +14,29 @@ const PDFViewer = dynamic(() => import('@/components/PDFViewer'), { ssr: false }
 const EMPTY_INACTIVE_MEMBER_IDS = [];
 
 const getAgendaPresentation = (agenda, agendas, pageOverride) => {
-    if (!agenda) return { finalSource: null, currentPage: 1 };
+    if (!agenda) return { finalSource: null, currentPage: 1, sourceVersion: '' };
 
     const individualSource = agenda.presentation_source;
     let masterSource = null;
+    let masterAgenda = null;
 
     const agendaIndex = agendas.findIndex((item) => item.id === agenda.id);
     if (agendaIndex >= 0) {
         for (let i = agendaIndex; i >= 0; i -= 1) {
             if (agendas[i].type === 'folder') {
                 masterSource = agendas[i].presentation_source;
+                masterAgenda = agendas[i];
                 break;
             }
         }
     }
 
+    const sourceOwner = individualSource ? agenda : masterAgenda;
+
     return {
         finalSource: individualSource || masterSource,
-        currentPage: Math.max(1, parseInt(pageOverride, 10) || agenda.start_page || 1)
+        currentPage: Math.max(1, parseInt(pageOverride, 10) || agenda.start_page || 1),
+        sourceVersion: sourceOwner?.updated_at || sourceOwner?.updatedAt || sourceOwner?.id || ''
     };
 };
 
@@ -151,7 +156,7 @@ export default function LiveMonitor({ mode = 'admin' }) {
     const normalizedAgendaType = normalizeAgendaType(currentAgenda?.type);
     const isElectionSummary = normalizedAgendaType === 'election';
 
-    const { currentPage } = useMemo(
+    const { finalSource, currentPage, sourceVersion } = useMemo(
         () => getAgendaPresentation(currentAgenda, agendas, voteData?.presentationPage),
         [agendas, currentAgenda, voteData?.presentationPage]
     );
@@ -468,12 +473,13 @@ export default function LiveMonitor({ mode = 'admin' }) {
                         <div
                             className={`relative aspect-video bg-black rounded overflow-hidden group border-[3px] transition-colors ${centerScreenBorder}`}
                         >
-                        {getAgendaPresentation(currentAgenda, agendas, currentPage).finalSource ? (
+                        {finalSource ? (
                             <div className="w-full h-full bg-white relative overflow-hidden">
                                 <PDFViewer
-                                    url={getAgendaPresentation(currentAgenda, agendas, currentPage).finalSource}
+                                    url={finalSource}
                                     pageNumber={currentPage}
                                     preloadPages={nearbyPresentationPages}
+                                    cacheVersion={sourceVersion}
                                 />
                                 <div className="absolute inset-0 bg-transparent z-20" />
                             </div>
