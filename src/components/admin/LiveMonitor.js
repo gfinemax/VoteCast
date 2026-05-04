@@ -72,6 +72,7 @@ export default function LiveMonitor({ mode = 'admin' }) {
     const { projectorMode, agendas, currentAgendaId, voteData, projectorData, attendance, members, projectorConnectedCount, mailElectionVotes } = state;
     
     const currentAgenda = useMemo(() => agendas.find(a => a.id === currentAgendaId), [agendas, currentAgendaId]);
+    const hasSelectedAgenda = !!currentAgenda && currentAgenda.type !== 'folder';
 
     // 1. Identify Context (Meeting/Folder) for Stats
     const meetingId = useMemo(() => {
@@ -283,10 +284,33 @@ export default function LiveMonitor({ mode = 'admin' }) {
             presentationPage: currentPage
         }));
     }, [actions, currentAgenda?.id, currentAgenda?.title, currentPage, handleCommissionCheck]);
+    const publishWaitingStatus = React.useCallback(() => {
+        handleCommissionCheck(() => actions.setProjectorMode('WAITING', {}));
+    }, [actions, handleCommissionCheck]);
 
     useEffect(() => {
         const handleKeyDown = (e) => {
             if (!shouldHandleGlobalShortcut(e)) return;
+            if (!hasSelectedAgenda) return;
+
+            if (e.code === 'Digit1' || e.code === 'Numpad1' || e.key === '1') {
+                e.preventDefault();
+                publishSelectedResult();
+                return;
+            }
+
+            if (e.code === 'Digit2' || e.code === 'Numpad2' || e.key === '2') {
+                e.preventDefault();
+                publishSelectedPpt();
+                return;
+            }
+
+            if (e.code === 'Digit3' || e.code === 'Numpad3' || e.key === '3') {
+                e.preventDefault();
+                publishWaitingStatus();
+                return;
+            }
+
             if (e.code !== 'Space' && e.key !== ' ') return;
 
             if (projectorMode === 'RESULT' && !isSelectedResultOnAir) {
@@ -304,12 +328,14 @@ export default function LiveMonitor({ mode = 'admin' }) {
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, [
+        hasSelectedAgenda,
         isPptModeOnAir,
         isSelectedPptOnAir,
         isSelectedResultOnAir,
         projectorMode,
         publishSelectedPpt,
-        publishSelectedResult
+        publishSelectedResult,
+        publishWaitingStatus
     ]);
 
     return (
@@ -562,9 +588,7 @@ export default function LiveMonitor({ mode = 'admin' }) {
                     </div>
                     {/* Button */}
                     <button
-                        onClick={() => handleCommissionCheck(() =>
-                            actions.setProjectorMode('WAITING', {})
-                        )}
+                        onClick={publishWaitingStatus}
                         className={`w-full py-2 px-3 rounded-lg font-semibold text-xs flex items-center justify-center gap-2 transition-all ${mode === 'commission'
                             ? 'bg-slate-800/50 text-slate-600 cursor-not-allowed border border-slate-800' // Restricted Style
                             : waitingButtonStateClass
